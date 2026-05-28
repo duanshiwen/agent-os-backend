@@ -6,6 +6,7 @@ import (
 	"github.com/agent-os/backend/internal/middleware"
 	"github.com/agent-os/backend/internal/repository"
 	"github.com/agent-os/backend/internal/service"
+	"github.com/agent-os/backend/internal/sidecar"
 	"github.com/agent-os/backend/internal/ws"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -22,6 +23,7 @@ func Setup(
 	syncRepo *repository.SyncRepo,
 	msgSvc *service.MessageService,
 	syncSvc *service.SyncService,
+	sidecarClient *sidecar.Client,
 ) *gin.Engine {
 	r := gin.Default()
 
@@ -30,7 +32,11 @@ func Setup(
 	r.Use(middleware.RateLimiter(10, 50))
 
 	// Services (using injected repos)
-	identitySvc := service.NewIdentityService(userRepo, cfg.JWT)
+	var verifier service.SignatureVerifier = service.NewGoEd25519Verifier()
+	if sidecarClient != nil {
+		verifier = service.NewSidecarVerifier(sidecarClient)
+	}
+	identitySvc := service.NewIdentityServiceWithVerifier(userRepo, cfg.JWT, verifier)
 	admissionSvc := service.NewAdmissionService(userRepo, cfg.Admission)
 	convSvc := service.NewConversationService(convRepo, userRepo)
 
@@ -54,16 +60,28 @@ func Setup(
 		if err := rdb.Ping(c.Request.Context()).Err(); err != nil {
 			redisOK = false
 		}
+		sidecarOK := sidecarClient == nil
+		var sidecarStatus any = "disabled"
+		if sidecarClient != nil {
+			if health, err := sidecarClient.HealthCheck(c.Request.Context()); err != nil {
+				sidecarOK = false
+				sidecarStatus = err.Error()
+			} else {
+				sidecarOK = health.Status == "ok"
+				sidecarStatus = health
+			}
+		}
 		status := "ok"
 		statusCode := 200
-		if !dbOK || !redisOK {
+		if !dbOK || !redisOK || !sidecarOK {
 			status = "degraded"
 			statusCode = 503
 		}
 		c.JSON(statusCode, gin.H{
 			"status":  status,
 			"service": cfg.App.Name,
-			"checks":  gin.H{"database": dbOK, "redis": redisOK},
+			"checks":  gin.H{"database": dbOK, "redis": redisOK, "sidecar": sidecarOK},
+			"sidecar": sidecarStatus,
 		})
 	})
 
@@ -104,7 +122,7 @@ func Setup(
 		// Admin routes
 		admin := v1.Group("/admin")
 		admin.Use(middleware.JWTAuth(cfg.JWT.Secret))
-		admin.Use(middleware.AdminMiddleware())
+		admin.Use(middleware.AdminMiddleware(userRepo))
 		{
 			admin.GET("/admission/requests", admissionH.GetPending)
 			admin.POST("/admission/requests/:id/approve", admissionH.Approve)

@@ -25,6 +25,32 @@ air
 go run ./cmd/server
 ```
 
+### 2.1 Rust Sidecar（可选开发模式 / 生产必需）
+
+开发环境默认 `RUST_SIDECAR_ENABLED=false`，后端会使用 Go 内置 Ed25519 verifier。要联调 connor-agent-core Rust SDK：
+
+```bash
+# 终端 A：启动 Rust sidecar
+./scripts/dev-sidecar.sh
+
+# 终端 B：启用 sidecar 后启动后端
+RUST_SIDECAR_ENABLED=true go run ./cmd/server
+```
+
+Sidecar 默认监听 Unix Socket：`/tmp/agentos-sidecar.sock`。`/health` 会返回 `sidecar` 检查项；生产环境默认启用 sidecar，且 sidecar 不健康时服务启动失败。
+
+重新生成 Go gRPC stubs：
+
+```bash
+./scripts/gen-proto.sh
+```
+
+运行 Go ↔ Rust sidecar 集成测试：
+
+```bash
+./scripts/test-sidecar-integration.sh
+```
+
 ### 3. API 文档
 
 #### 身份认证

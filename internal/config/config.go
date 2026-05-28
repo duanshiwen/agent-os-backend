@@ -10,50 +10,103 @@ import (
 )
 
 type Config struct {
-	App      AppConfig
-	Database DatabaseConfig
-	Redis    RedisConfig
-	JWT      JWTConfig
-	CORS     CORSConfig
+	App       AppConfig
+	Database  DatabaseConfig
+	Redis     RedisConfig
+	JWT       JWTConfig
+	CORS      CORSConfig
 	Admission AdmissionConfig
-	Sidecar  SidecarConfig
+	Sidecar   SidecarConfig
 }
 
-type AppConfig struct { Name, Env, Port string; AutoMigrate bool }
-type DatabaseConfig struct { Host, Port, User, Password, DBName, SSLMode string; MaxOpenConns, MaxIdleConns, ConnMaxLifeMin int }
-type RedisConfig struct { Host, Port, Password string; DB int }
-type JWTConfig struct { Secret string; AccessTokenMins int; Issuer string }
-type CORSConfig struct { AllowOrigins []string }
-type AdmissionConfig struct { PolicyType, InvitationCode string }
-type SidecarConfig struct { UnixSocket string }
+type AppConfig struct {
+	Name, Env, Port string
+	AutoMigrate     bool
+}
+type DatabaseConfig struct {
+	Host, Port, User, Password, DBName, SSLMode string
+	MaxOpenConns, MaxIdleConns, ConnMaxLifeMin  int
+}
+type RedisConfig struct {
+	Host, Port, Password string
+	DB                   int
+}
+type JWTConfig struct {
+	Secret          string
+	AccessTokenMins int
+	Issuer          string
+}
+type CORSConfig struct{ AllowOrigins []string }
+type AdmissionConfig struct{ PolicyType, InvitationCode string }
+type SidecarConfig struct {
+	Enabled    bool
+	UnixSocket string
+}
 
-func (d DatabaseConfig) DSN() string { return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s TimeZone=Asia/Shanghai", d.Host, d.Port, d.User, d.Password, d.DBName, d.SSLMode) }
+func (d DatabaseConfig) DSN() string {
+	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s TimeZone=Asia/Shanghai", d.Host, d.Port, d.User, d.Password, d.DBName, d.SSLMode)
+}
 func (r RedisConfig) Addr() string { return fmt.Sprintf("%s:%s", r.Host, r.Port) }
 
 func Load() (*Config, error) {
 	_ = godotenv.Load()
 	env := getEnv("APP_ENV", "development")
 	cfg := &Config{
-		App: AppConfig{Name: getEnv("APP_NAME", "agent-os-backend"), Env: env, Port: getEnv("APP_PORT", "8080"), AutoMigrate: getEnvBool("AUTO_MIGRATE", env != "production")},
-		Database: DatabaseConfig{Host: getEnv("PG_HOST", "localhost"), Port: getEnv("PG_PORT", "5432"), User: getEnv("PG_USER", "postgres"), Password: getEnv("PG_PASS", "postgres"), DBName: getEnv("PG_DB", "agent_os"), SSLMode: getEnv("PG_SSLMODE", "disable"), MaxOpenConns: 25, MaxIdleConns: 10, ConnMaxLifeMin: 30},
-		Redis: RedisConfig{Host: getEnv("REDIS_HOST", "localhost"), Port: getEnv("REDIS_PORT", "6379"), Password: getEnv("REDIS_PASS", ""), DB: getEnvInt("REDIS_DB", 0)},
-		JWT: JWTConfig{Secret: getEnv("JWT_SECRET", "dev-secret-change-me-use-48-plus-bytes-in-production"), AccessTokenMins: getEnvInt("JWT_ACCESS_TOKEN_MINS", 60), Issuer: "agent-os"},
-		CORS: CORSConfig{AllowOrigins: splitCSV(getEnv("CORS_ORIGIN", "http://localhost:5173"))},
+		App:       AppConfig{Name: getEnv("APP_NAME", "agent-os-backend"), Env: env, Port: getEnv("APP_PORT", "8080"), AutoMigrate: getEnvBool("AUTO_MIGRATE", env != "production")},
+		Database:  DatabaseConfig{Host: getEnv("PG_HOST", "localhost"), Port: getEnv("PG_PORT", "5432"), User: getEnv("PG_USER", "postgres"), Password: getEnv("PG_PASS", "postgres"), DBName: getEnv("PG_DB", "agent_os"), SSLMode: getEnv("PG_SSLMODE", "disable"), MaxOpenConns: 25, MaxIdleConns: 10, ConnMaxLifeMin: 30},
+		Redis:     RedisConfig{Host: getEnv("REDIS_HOST", "localhost"), Port: getEnv("REDIS_PORT", "6379"), Password: getEnv("REDIS_PASS", ""), DB: getEnvInt("REDIS_DB", 0)},
+		JWT:       JWTConfig{Secret: getEnv("JWT_SECRET", "dev-secret-change-me-use-48-plus-bytes-in-production"), AccessTokenMins: getEnvInt("JWT_ACCESS_TOKEN_MINS", 60), Issuer: "agent-os"},
+		CORS:      CORSConfig{AllowOrigins: splitCSV(getEnv("CORS_ORIGIN", "http://localhost:5173"))},
 		Admission: AdmissionConfig{PolicyType: getEnv("ADMISSION_POLICY", "protocol"), InvitationCode: getEnv("ADMISSION_INVITATION_CODE", "agentos-dev")},
-		Sidecar: SidecarConfig{UnixSocket: getEnv("RUST_SIDECAR_SOCKET", "/tmp/agentos-sidecar.sock")},
+		Sidecar:   SidecarConfig{Enabled: getEnvBool("RUST_SIDECAR_ENABLED", env == "production"), UnixSocket: getEnv("RUST_SIDECAR_SOCKET", "/tmp/agentos-sidecar.sock")},
 	}
 	return cfg, cfg.Validate()
 }
 
 func (c *Config) Validate() error {
 	if c.App.Env == "production" {
-		if len(c.JWT.Secret) < 32 || strings.HasPrefix(c.JWT.Secret, "dev-secret") { return fmt.Errorf("production requires a strong JWT_SECRET") }
-		if c.Database.Password == "" || c.Database.Password == "postgres" { return fmt.Errorf("production requires a non-default PG_PASS") }
+		if len(c.JWT.Secret) < 32 || strings.HasPrefix(c.JWT.Secret, "dev-secret") {
+			return fmt.Errorf("production requires a strong JWT_SECRET")
+		}
+		if c.Database.Password == "" || c.Database.Password == "postgres" {
+			return fmt.Errorf("production requires a non-default PG_PASS")
+		}
 	}
-	switch c.Admission.PolicyType { case "protocol", "invitation", "approval": return nil; default: return fmt.Errorf("unsupported ADMISSION_POLICY %q", c.Admission.PolicyType) }
+	switch c.Admission.PolicyType {
+	case "protocol", "invitation", "approval":
+		return nil
+	default:
+		return fmt.Errorf("unsupported ADMISSION_POLICY %q", c.Admission.PolicyType)
+	}
 }
 
-func getEnv(key, fallback string) string { if v := os.Getenv(key); v != "" { return v }; return fallback }
-func getEnvInt(key string, fallback int) int { v, err := strconv.Atoi(getEnv(key, "")); if err != nil { return fallback }; return v }
-func getEnvBool(key string, fallback bool) bool { v := strings.ToLower(strings.TrimSpace(getEnv(key, ""))); if v == "" { return fallback }; return v == "1" || v == "true" || v == "yes" || v == "on" }
-func splitCSV(v string) []string { parts := strings.Split(v, ","); out := make([]string, 0, len(parts)); for _, p := range parts { if s := strings.TrimSpace(p); s != "" { out = append(out, s) } }; return out }
+func getEnv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+func getEnvInt(key string, fallback int) int {
+	v, err := strconv.Atoi(getEnv(key, ""))
+	if err != nil {
+		return fallback
+	}
+	return v
+}
+func getEnvBool(key string, fallback bool) bool {
+	v := strings.ToLower(strings.TrimSpace(getEnv(key, "")))
+	if v == "" {
+		return fallback
+	}
+	return v == "1" || v == "true" || v == "yes" || v == "on"
+}
+func splitCSV(v string) []string {
+	parts := strings.Split(v, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if s := strings.TrimSpace(p); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}

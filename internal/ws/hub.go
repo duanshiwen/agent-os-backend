@@ -10,8 +10,8 @@ import (
 // Hub maintains the set of active clients and broadcasts messages.
 type Hub struct {
 	// Registered clients
-	clients    map[*Client]bool
-	clientsMu  sync.RWMutex
+	clients   map[*Client]bool
+	clientsMu sync.RWMutex
 
 	// User → Device → Client mapping
 	userDevices map[uuid.UUID]map[string]*Client

@@ -11,6 +11,7 @@ import (
 	"github.com/agent-os/backend/internal/repository"
 	"github.com/agent-os/backend/internal/router"
 	"github.com/agent-os/backend/internal/service"
+	"github.com/agent-os/backend/internal/sidecar"
 	"github.com/agent-os/backend/internal/ws"
 )
 
@@ -40,6 +41,25 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Initialize Rust sidecar client if available.
+	var sidecarClient *sidecar.Client
+	if cfg.Sidecar.Enabled {
+		client, err := sidecar.NewClient(cfg.Sidecar.UnixSocket)
+		if err != nil {
+			log.Fatalf("Failed to create sidecar client: %v", err)
+		}
+		defer client.Close()
+		if _, err := client.HealthCheck(ctx); err != nil {
+			if cfg.App.Env == "production" {
+				log.Fatalf("Rust sidecar health check failed in production: %v", err)
+			}
+			log.Printf("WARN: Rust sidecar unavailable, falling back to Go verifier: %v", err)
+		} else {
+			sidecarClient = client
+			log.Println("Rust sidecar connected")
+		}
+	}
+
 	// Initialize WebSocket hub
 	hub := ws.NewHub()
 	go hub.Run()
@@ -63,7 +83,7 @@ func main() {
 	log.Println("Background tasks started")
 
 	// Setup routes
-	r := router.Setup(cfg, db, rdb, hub, userRepo, convRepo, syncRepo, msgService, syncService)
+	r := router.Setup(cfg, db, rdb, hub, userRepo, convRepo, syncRepo, msgService, syncService, sidecarClient)
 
 	// Graceful shutdown
 	quit := make(chan os.Signal, 1)

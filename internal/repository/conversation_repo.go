@@ -63,6 +63,12 @@ func (r *ConversationRepo) IsParticipant(conversationID, userID uuid.UUID) (bool
 	return count > 0, err
 }
 
+func (r *ConversationRepo) GetParticipant(conversationID, userID uuid.UUID) (*model.ConversationParticipant, error) {
+	var cp model.ConversationParticipant
+	err := r.db.Where("conversation_id = ? AND user_id = ?", conversationID, userID).First(&cp).Error
+	return &cp, err
+}
+
 func (r *ConversationRepo) FindPrivateConversation(userA, userB uuid.UUID) (*model.Conversation, error) {
 	var conv model.Conversation
 	err := r.db.

@@ -1,7 +1,7 @@
 package service
 
 import (
-	"crypto/ed25519"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -19,15 +19,24 @@ import (
 type IdentityService struct {
 	userRepo *repository.UserRepo
 	jwtCfg   config.JWTConfig
+	verifier SignatureVerifier
 }
 
 func NewIdentityService(userRepo *repository.UserRepo, jwtCfg config.JWTConfig) *IdentityService {
-	return &IdentityService{userRepo: userRepo, jwtCfg: jwtCfg}
+	return NewIdentityServiceWithVerifier(userRepo, jwtCfg, NewGoEd25519Verifier())
+}
+
+func NewIdentityServiceWithVerifier(userRepo *repository.UserRepo, jwtCfg config.JWTConfig, verifier SignatureVerifier) *IdentityService {
+	if verifier == nil {
+		verifier = NewGoEd25519Verifier()
+	}
+	return &IdentityService{userRepo: userRepo, jwtCfg: jwtCfg, verifier: verifier}
 }
 
 // ChallengeResult is what the server sends back to the client.
 type ChallengeResult struct {
 	Challenge string `json:"challenge"`
+	Nonce     string `json:"nonce"`
 	ExpiresAt int64  `json:"expires_at"`
 }
 
@@ -56,50 +65,45 @@ func (s *IdentityService) InitiateChallenge(deviceID, userPubKey string) (*Chall
 
 	return &ChallengeResult{
 		Challenge: ch.Challenge,
+		Nonce:     ch.Nonce,
 		ExpiresAt: ch.ExpiresAt.Unix(),
 	}, nil
 }
 
 // VerifyRequest is what the client sends after signing the challenge.
 type VerifyRequest struct {
-	DeviceID  string `json:"device_id" binding:"required"`
+	DeviceID   string `json:"device_id" binding:"required"`
 	UserPubKey string `json:"user_pubkey" binding:"required"`
-	Nonce     string `json:"nonce" binding:"required"`
-	Signature string `json:"signature" binding:"required"` // hex-encoded Ed25519 signature
+	Nonce      string `json:"nonce" binding:"required"`
+	Signature  string `json:"signature" binding:"required"` // hex-encoded Ed25519 signature
 }
 
 // AuthResponse is returned after successful verification.
 type AuthResponse struct {
-	AccessToken string       `json:"access_token"`
-	User        *model.User  `json:"user"`
+	AccessToken string        `json:"access_token"`
+	User        *model.User   `json:"user"`
 	Device      *model.Device `json:"device"`
-	IsNewUser   bool         `json:"is_new_user"`
+	IsNewUser   bool          `json:"is_new_user"`
 }
 
 // VerifySignature validates the Ed25519 signature and issues a JWT.
 func (s *IdentityService) VerifySignature(req *VerifyRequest) (*AuthResponse, error) {
+	return s.VerifySignatureContext(context.Background(), req)
+}
+
+// VerifySignatureContext validates the Ed25519 signature and issues a JWT.
+func (s *IdentityService) VerifySignatureContext(ctx context.Context, req *VerifyRequest) (*AuthResponse, error) {
 	// 1. Retrieve and validate challenge
 	ch, err := s.userRepo.GetChallenge(req.DeviceID, req.Nonce)
 	if err != nil {
 		return nil, fmt.Errorf("invalid or expired challenge")
 	}
 
-	// 2. Decode public key and signature
-	pubKeyBytes, err := hex.DecodeString(req.UserPubKey)
+	// 2. Verify Ed25519 signature via the configured verifier.
+	valid, err := s.verifier.VerifyEd25519Challenge(ctx, ch.Challenge, req.Signature, req.UserPubKey)
 	if err != nil {
-		return nil, fmt.Errorf("invalid public key encoding: %w", err)
+		return nil, err
 	}
-	if len(pubKeyBytes) != ed25519.PublicKeySize {
-		return nil, fmt.Errorf("invalid public key length: expected %d, got %d", ed25519.PublicKeySize, len(pubKeyBytes))
-	}
-
-	sigBytes, err := hex.DecodeString(req.Signature)
-	if err != nil {
-		return nil, fmt.Errorf("invalid signature encoding: %w", err)
-	}
-
-	// 3. Verify Ed25519 signature
-	valid := ed25519.Verify(pubKeyBytes, []byte(ch.Challenge), sigBytes)
 	if !valid {
 		return nil, fmt.Errorf("signature verification failed")
 	}
@@ -238,8 +242,8 @@ func (s *IdentityService) UpdateProfile(userID uuid.UUID, displayName, avatarURL
 
 // PairDeviceRequest adds a new device to an existing user.
 type PairDeviceRequest struct {
-	DeviceID    string `json:"device_id" binding:"required"`
-	DeviceName  string `json:"device_name"`
+	DeviceID     string `json:"device_id" binding:"required"`
+	DeviceName   string `json:"device_name"`
 	DevicePubKey string `json:"device_pubkey" binding:"required"`
 }
 

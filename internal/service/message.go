@@ -12,9 +12,9 @@ import (
 )
 
 type MessageService struct {
-	convRepo  *repository.ConversationRepo
-	userRepo  *repository.UserRepo
-	syncSvc   *SyncService
+	convRepo *repository.ConversationRepo
+	userRepo *repository.UserRepo
+	syncSvc  *SyncService
 }
 
 func NewMessageService(convRepo *repository.ConversationRepo, userRepo *repository.UserRepo) *MessageService {
@@ -27,14 +27,14 @@ func (s *MessageService) SetSyncService(svc *SyncService) {
 }
 
 type SendMessageRequest struct {
-	ConversationID uuid.UUID        `json:"conversation_id" binding:"required"`
-	Type           string           `json:"type"` // text, image, voice, file, video, link_card, kb_card
-	Content        string           `json:"content" binding:"required"`
+	ConversationID uuid.UUID         `json:"conversation_id" binding:"required"`
+	Type           string            `json:"type"` // text, image, voice, file, video, link_card, kb_card
+	Content        string            `json:"content" binding:"required"`
 	Metadata       datatypes.JSONMap `json:"metadata"`
 }
 
 type MessageDelivery struct {
-	Message      *model.Message            `json:"message"`
+	Message      *model.Message                  `json:"message"`
 	Participants []model.ConversationParticipant `json:"-"`
 }
 

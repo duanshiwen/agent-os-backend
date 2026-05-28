@@ -19,12 +19,12 @@ func NewConversationService(convRepo *repository.ConversationRepo, userRepo *rep
 }
 
 type CreateConversationRequest struct {
-	Type       string    `json:"type" binding:"required"` // private, group, agent_conversation
-	Name       string    `json:"name"`
+	Type           string      `json:"type" binding:"required"` // private, group, agent_conversation
+	Name           string      `json:"name"`
 	ParticipantIDs []uuid.UUID `json:"participant_ids" binding:"required,min=1"`
-	GeoLat     *float64  `json:"geo_lat"`
-	GeoLng     *float64  `json:"geo_lng"`
-	GeoRadius  *float64  `json:"geo_radius"`
+	GeoLat         *float64    `json:"geo_lat"`
+	GeoLng         *float64    `json:"geo_lng"`
+	GeoRadius      *float64    `json:"geo_radius"`
 }
 
 func (s *ConversationService) CreateConversation(creatorID uuid.UUID, req *CreateConversationRequest) (*model.Conversation, error) {
@@ -133,9 +133,9 @@ func (s *ConversationService) GetConversation(convID, userID uuid.UUID) (*model.
 }
 
 func (s *ConversationService) AddParticipant(convID, actorID, targetID uuid.UUID) error {
-	// Only admins can add participants
-	isParticipant, err := s.convRepo.IsParticipant(convID, actorID)
-	if err != nil || !isParticipant {
+	// Only conversation admins/owners can add participants.
+	actorParticipant, err := s.convRepo.GetParticipant(convID, actorID)
+	if err != nil || actorParticipant == nil || (actorParticipant.Role != "admin" && actorParticipant.Role != "owner") {
 		return fmt.Errorf("access denied")
 	}
 
