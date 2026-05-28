@@ -51,15 +51,13 @@ func Load() (*Config, error) {
 	_ = godotenv.Load()
 	env := getEnv("APP_ENV", "development")
 	cfg := &Config{
-		App:       AppConfig{Name: getEnv("APP_NAME", "agent-os-backend"), Env: env, Port: getEnv("APP_PORT", "8080"), AutoMigrate: getEnvBool("AUTO_MIGRATE", env != "production")},
-		Database:  DatabaseConfig{Host: getEnv("PG_HOST", "localhost"), Port: getEnv("PG_PORT", "5432"), User: getEnv("PG_USER", "postgres"), Password: getEnv("PG_PASS", "postgres"), DBName: getEnv("PG_DB", "agent_os"), SSLMode: getEnv("PG_SSLMODE", "disable"), MaxOpenConns: 25, MaxIdleConns: 10, ConnMaxLifeMin: 30},
-		Redis:     RedisConfig{Host: getEnv("REDIS_HOST", "localhost"), Port: getEnv("REDIS_PORT", "6379"), Password: getEnv("REDIS_PASS", ""), DB: getEnvInt("REDIS_DB", 0)},
-		JWT:       JWTConfig{Secret: getEnv("JWT_SECRET", "dev-secret-change-me-use-48-plus-bytes-in-production"), AccessTokenMins: getEnvInt("JWT_ACCESS_TOKEN_MINS", 60), Issuer: "agent-os"},
-		CORS:      CORSConfig{AllowOrigins: splitCSV(getEnv("CORS_ORIGIN", "http://localhost:5173"))},
-		Admission: AdmissionConfig{PolicyType: getEnv("ADMISSION_POLICY", "protocol"), InvitationCode: getEnv("ADMISSION_INVITATION_CODE", "agentos-dev")},
-		IdentityVerifier: IdentityVerifierConfig{
-			FFILibraryPath: getEnv("AGENTOS_FFI_LIBRARY_PATH", "/Users/yakii/code/agent-os/Infrastructure/connor-agent-core/target/release/libagentos_ffi.dylib"),
-		},
+		App:              AppConfig{Name: getEnv("APP_NAME", "agent-os-backend"), Env: env, Port: getEnv("APP_PORT", "8080"), AutoMigrate: getEnvBool("AUTO_MIGRATE", env != "production")},
+		Database:         DatabaseConfig{Host: getEnv("PG_HOST", "localhost"), Port: getEnv("PG_PORT", "5432"), User: getEnv("PG_USER", "postgres"), Password: getEnv("PG_PASS", "postgres"), DBName: getEnv("PG_DB", "agent_os"), SSLMode: getEnv("PG_SSLMODE", "disable"), MaxOpenConns: 25, MaxIdleConns: 10, ConnMaxLifeMin: 30},
+		Redis:            RedisConfig{Host: getEnv("REDIS_HOST", "localhost"), Port: getEnv("REDIS_PORT", "6379"), Password: getEnv("REDIS_PASS", ""), DB: getEnvInt("REDIS_DB", 0)},
+		JWT:              JWTConfig{Secret: getEnv("JWT_SECRET", "dev-secret-change-me-use-48-plus-bytes-in-production"), AccessTokenMins: getEnvInt("JWT_ACCESS_TOKEN_MINS", 60), Issuer: "agent-os"},
+		CORS:             CORSConfig{AllowOrigins: splitCSV(getEnv("CORS_ORIGIN", "http://localhost:5173"))},
+		Admission:        AdmissionConfig{PolicyType: getEnv("ADMISSION_POLICY", "protocol"), InvitationCode: getEnv("ADMISSION_INVITATION_CODE", "agentos-dev")},
+		IdentityVerifier: IdentityVerifierConfig{},
 	}
 	return cfg, cfg.Validate()
 }
@@ -77,9 +75,6 @@ func (c *Config) Validate() error {
 	case "protocol", "invitation", "approval":
 	default:
 		return fmt.Errorf("unsupported ADMISSION_POLICY %q", c.Admission.PolicyType)
-	}
-	if strings.TrimSpace(c.IdentityVerifier.FFILibraryPath) == "" {
-		return fmt.Errorf("AGENTOS_FFI_LIBRARY_PATH is required")
 	}
 	return nil
 }

@@ -5,6 +5,7 @@
 *.dll
 *.so
 *.dylib
+!internal/runtime/**/libagentos_ffi.dylib
 *.test
 *.out
 coverage.out

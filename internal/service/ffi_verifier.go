@@ -3,6 +3,9 @@ package service
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
@@ -21,7 +24,11 @@ type FFIVerifier struct {
 
 func NewFFIVerifier(libraryPath string) (*FFIVerifier, error) {
 	if libraryPath == "" {
-		return nil, fmt.Errorf("AGENTOS_FFI_LIBRARY_PATH is required for ffi verifier")
+		var err error
+		libraryPath, err = DefaultAgentOSFFILibraryPath()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	handle, err := purego.Dlopen(libraryPath, purego.RTLD_NOW|purego.RTLD_LOCAL)
@@ -71,6 +78,23 @@ func (v *FFIVerifier) Close() error {
 func (v *FFIVerifier) Backend() string     { return "ffi" }
 func (v *FFIVerifier) Version() string     { return v.libraryVersion }
 func (v *FFIVerifier) LibraryPath() string { return v.libraryPath }
+
+func DefaultAgentOSFFILibraryPath() (string, error) {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		return "", fmt.Errorf("resolve AgentOS FFI library path: runtime caller unavailable")
+	}
+	root := filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
+	libName := "libagentos_ffi.dylib"
+	if runtime.GOOS == "linux" {
+		libName = "libagentos_ffi.so"
+	}
+	path := filepath.Join(root, "internal", "runtime", runtime.GOOS+"-"+runtime.GOARCH, libName)
+	if _, err := os.Stat(path); err != nil {
+		return "", fmt.Errorf("AgentOS FFI library not found at %s: %w", path, err)
+	}
+	return path, nil
+}
 
 func cStringToGo(ptr *byte) string {
 	if ptr == nil {

@@ -5,18 +5,12 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
-	"os"
 	"strings"
 	"testing"
 )
 
 func TestFFIVerifierIntegration(t *testing.T) {
-	libraryPath := os.Getenv("AGENTOS_FFI_LIBRARY_PATH")
-	if libraryPath == "" {
-		t.Skip("set AGENTOS_FFI_LIBRARY_PATH to run FFI verifier integration test")
-	}
-
-	verifier, err := NewFFIVerifier(libraryPath)
+	verifier, err := NewFFIVerifier("")
 	if err != nil {
 		t.Fatalf("new ffi verifier: %v", err)
 	}
