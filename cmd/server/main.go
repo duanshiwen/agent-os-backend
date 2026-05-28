@@ -54,6 +54,9 @@ func main() {
 	msgService := service.NewMessageService(convRepo, userRepo)
 	syncService := service.NewSyncService(syncRepo, hub)
 
+	// Inject sync service into message service (avoids import cycle)
+	msgService.SetSyncService(syncService)
+
 	// Start background tasks
 	bgTasks := service.NewBackgroundTasks(msgService, syncService)
 	bgTasks.Start(ctx)

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/agent-os/backend/internal/config"
 	"github.com/agent-os/backend/internal/middleware"
 	"github.com/agent-os/backend/internal/model"
@@ -198,10 +200,11 @@ func (s *IdentityService) Register(req *RegisterRequest) (*model.User, error) {
 	}
 
 	if req.Password != "" {
-		// Use golang.org/x/crypto/bcrypt for password hashing
-		// For now, we'll store the hash using a simple approach
-		// In production, use bcrypt.GenerateFromPassword
-		user.PasswordHash = req.Password // TODO: bcrypt hash
+		hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+		if err != nil {
+			return nil, fmt.Errorf("hash password: %w", err)
+		}
+		user.PasswordHash = string(hash)
 	}
 
 	if err := s.userRepo.Create(user); err != nil {
@@ -267,4 +270,32 @@ func (s *IdentityService) PairDevice(userID uuid.UUID, req *PairDeviceRequest) (
 // GetUserDevices returns all devices for the authenticated user.
 func (s *IdentityService) GetUserDevices(userID uuid.UUID) ([]model.Device, error) {
 	return s.userRepo.GetUserDevices(userID)
+}
+
+// VerifyPassword checks if the provided password matches the user's stored hash.
+// Used for sensitive operations like new device login or asset transactions.
+func (s *IdentityService) VerifyPassword(userID uuid.UUID, password string) (bool, error) {
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil {
+		return false, fmt.Errorf("user not found: %w", err)
+	}
+	if user.PasswordHash == "" {
+		return false, fmt.Errorf("no password set")
+	}
+	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
+	return err == nil, nil
+}
+
+// SetPassword sets or updates the user's password.
+func (s *IdentityService) SetPassword(userID uuid.UUID, password string) error {
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil {
+		return fmt.Errorf("user not found: %w", err)
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+	user.PasswordHash = string(hash)
+	return s.userRepo.Update(user)
 }

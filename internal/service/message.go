@@ -12,12 +12,18 @@ import (
 )
 
 type MessageService struct {
-	convRepo *repository.ConversationRepo
-	userRepo *repository.UserRepo
+	convRepo  *repository.ConversationRepo
+	userRepo  *repository.UserRepo
+	syncSvc   *SyncService
 }
 
 func NewMessageService(convRepo *repository.ConversationRepo, userRepo *repository.UserRepo) *MessageService {
 	return &MessageService{convRepo: convRepo, userRepo: userRepo}
+}
+
+// SetSyncService injects the sync service (called after initialization to avoid cycles).
+func (s *MessageService) SetSyncService(svc *SyncService) {
+	s.syncSvc = svc
 }
 
 type SendMessageRequest struct {
@@ -55,6 +61,16 @@ func (s *MessageService) SendMessage(senderID uuid.UUID, req *SendMessageRequest
 	}
 	if err := s.convRepo.CreateMessage(msg); err != nil {
 		return nil, fmt.Errorf("create message: %w", err)
+	}
+
+	// Record sync event for cross-device sync
+	if s.syncSvc != nil {
+		syncPayload := datatypes.JSONMap{
+			"conversation_id": req.ConversationID.String(),
+			"message_id":      msg.ID.String(),
+			"type":            msgType,
+		}
+		_ = s.syncSvc.RecordEvent(senderID, "", SyncEventMessage, "created", syncPayload)
 	}
 
 	// Get all participants for delivery
