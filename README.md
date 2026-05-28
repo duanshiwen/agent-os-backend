@@ -36,7 +36,7 @@ internal/runtime/darwin-arm64/libagentos_ffi.dylib
 启动后端：
 
 ```bash
-cd /Users/yakii/code/agent-os/backend/agent-os-backend
+# from the agent-os-backend repository root
 go run ./cmd/server
 ```
 
