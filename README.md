@@ -1,6 +1,6 @@
 # AgentOS Backend
 
-Agent OS 联邦化网络的服务端进程（Go + Rust Sidecar），提供身份接入、即时通讯、跨设备同步、知识库 Hub、插件市场和多服务器支持。
+Agent OS 联邦化网络的服务端进程（Go + Rust SDK FFI），提供身份接入、即时通讯、跨设备同步、知识库 Hub、插件市场和多服务器支持。
 
 ## 快速开始
 
@@ -25,31 +25,25 @@ air
 go run ./cmd/server
 ```
 
-### 2.1 Rust Sidecar（可选开发模式 / 生产必需）
+### 2.1 Rust SDK FFI（Purego + 动态库）
 
-开发环境默认 `RUST_SIDECAR_ENABLED=false`，后端会使用 Go 内置 Ed25519 verifier。要联调 connor-agent-core Rust SDK：
-
-```bash
-# 终端 A：启动 Rust sidecar
-./scripts/dev-sidecar.sh
-
-# 终端 B：启用 sidecar 后启动后端
-RUST_SIDECAR_ENABLED=true go run ./cmd/server
-```
-
-Sidecar 默认监听 Unix Socket：`/tmp/agentos-sidecar.sock`。`/health` 会返回 `sidecar` 检查项；生产环境默认启用 sidecar，且 sidecar 不健康时服务启动失败。
-
-重新生成 Go gRPC stubs：
+开发环境默认 `IDENTITY_VERIFY_BACKEND=go`，使用 Go 内置 Ed25519 verifier。要联调 connor-agent-core Rust SDK，请先编译 FFI 动态库：
 
 ```bash
-./scripts/gen-proto.sh
+cd /Users/yakii/code/agent-os/Infrastructure/connor-agent-core
+cargo build -p agentos-ffi --release
 ```
 
-运行 Go ↔ Rust sidecar 集成测试：
+然后启用 FFI verifier 启动后端：
 
 ```bash
-./scripts/test-sidecar-integration.sh
+cd /Users/yakii/code/agent-os/backend/agent-os-backend
+IDENTITY_VERIFY_BACKEND=ffi \
+AGENTOS_FFI_LIBRARY_PATH=/Users/yakii/code/agent-os/Infrastructure/connor-agent-core/target/release/libagentos_ffi.dylib \
+go run ./cmd/server
 ```
+
+`/health` 会返回 `identity_verifier` 检查项。生产环境默认使用 `ffi`，如果动态库不可加载会启动失败。
 
 ### 3. API 文档
 
@@ -114,8 +108,7 @@ agent-os-backend/
 │   ├── pkg/response/    # 统一响应格式
 │   ├── repository/      # 数据访问层
 │   ├── router/          # 路由注册
-│   ├── service/         # 业务逻辑层
-│   ├── sidecar/         # Rust Sidecar gRPC 客户端
+│   ├── service/         # 业务逻辑层（含 Purego FFI verifier）
 │   └── ws/              # WebSocket Hub + 消息分发
 ├── migrations/          # SQL 迁移文件
 ├── docker-compose.yml   # 开发环境
@@ -134,15 +127,10 @@ agent-os-backend/
 │         Go 网络服务层           │
 │  API GW │ WS Hub │ IM Router   │
 │  Identity │ Conversation │ ...  │
-└────────────────┬────────────────┘
-                 │ gRPC / Unix Socket
-┌────────────────▼────────────────┐
-│       Rust Sidecar 层           │
-│     (connor-agent-core)         │
-└────────────────┬────────────────┘
-                 │
-┌────────────────▼────────────────┐
-│         存储层                  │
-│ PostgreSQL │ Redis │ S3/MinIO  │
-└─────────────────────────────────┘
+└───────┬─────────────────┬───────┘
+        │ Purego / dylib  │
+┌───────▼────────┐ ┌──────▼─────────┐
+│ Rust SDK FFI   │ │     存储层     │
+│ libagentos_ffi │ │ PostgreSQL等   │
+└────────────────┘ └────────────────┘
 ```

@@ -6,7 +6,6 @@ import (
 	"github.com/agent-os/backend/internal/middleware"
 	"github.com/agent-os/backend/internal/repository"
 	"github.com/agent-os/backend/internal/service"
-	"github.com/agent-os/backend/internal/sidecar"
 	"github.com/agent-os/backend/internal/ws"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -23,7 +22,7 @@ func Setup(
 	syncRepo *repository.SyncRepo,
 	msgSvc *service.MessageService,
 	syncSvc *service.SyncService,
-	sidecarClient *sidecar.Client,
+	signatureVerifier service.SignatureVerifier,
 ) *gin.Engine {
 	r := gin.Default()
 
@@ -32,11 +31,10 @@ func Setup(
 	r.Use(middleware.RateLimiter(10, 50))
 
 	// Services (using injected repos)
-	var verifier service.SignatureVerifier = service.NewGoEd25519Verifier()
-	if sidecarClient != nil {
-		verifier = service.NewSidecarVerifier(sidecarClient)
+	if signatureVerifier == nil {
+		signatureVerifier = service.NewGoEd25519Verifier()
 	}
-	identitySvc := service.NewIdentityServiceWithVerifier(userRepo, cfg.JWT, verifier)
+	identitySvc := service.NewIdentityServiceWithVerifier(userRepo, cfg.JWT, signatureVerifier)
 	admissionSvc := service.NewAdmissionService(userRepo, cfg.Admission)
 	convSvc := service.NewConversationService(convRepo, userRepo)
 
@@ -60,28 +58,21 @@ func Setup(
 		if err := rdb.Ping(c.Request.Context()).Err(); err != nil {
 			redisOK = false
 		}
-		sidecarOK := sidecarClient == nil
-		var sidecarStatus any = "disabled"
-		if sidecarClient != nil {
-			if health, err := sidecarClient.HealthCheck(c.Request.Context()); err != nil {
-				sidecarOK = false
-				sidecarStatus = err.Error()
-			} else {
-				sidecarOK = health.Status == "ok"
-				sidecarStatus = health
-			}
-		}
+		identityVerifierOK := signatureVerifier != nil
 		status := "ok"
 		statusCode := 200
-		if !dbOK || !redisOK || !sidecarOK {
+		if !dbOK || !redisOK || !identityVerifierOK {
 			status = "degraded"
 			statusCode = 503
 		}
 		c.JSON(statusCode, gin.H{
 			"status":  status,
 			"service": cfg.App.Name,
-			"checks":  gin.H{"database": dbOK, "redis": redisOK, "sidecar": sidecarOK},
-			"sidecar": sidecarStatus,
+			"checks":  gin.H{"database": dbOK, "redis": redisOK, "identity_verifier": identityVerifierOK},
+			"identity_verifier": gin.H{
+				"backend": service.SignatureVerifierBackend(signatureVerifier),
+				"version": service.SignatureVerifierVersion(signatureVerifier),
+			},
 		})
 	})
 

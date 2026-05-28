@@ -93,7 +93,7 @@ func TestIdentityServiceVerifySignatureRejectsInvalidSignature(t *testing.T) {
 }
 
 func TestIdentityServiceVerifySignaturePropagatesVerifierError(t *testing.T) {
-	verifierErr := errors.New("sidecar unavailable")
+	verifierErr := errors.New("verifier unavailable")
 	verifier := &stubVerifier{err: verifierErr}
 	svc := newIdentityTestService(t, verifier)
 	pubKey := hex.EncodeToString(make([]byte, ed25519.PublicKeySize))

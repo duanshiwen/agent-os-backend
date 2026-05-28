@@ -10,13 +10,13 @@ import (
 )
 
 type Config struct {
-	App       AppConfig
-	Database  DatabaseConfig
-	Redis     RedisConfig
-	JWT       JWTConfig
-	CORS      CORSConfig
-	Admission AdmissionConfig
-	Sidecar   SidecarConfig
+	App              AppConfig
+	Database         DatabaseConfig
+	Redis            RedisConfig
+	JWT              JWTConfig
+	CORS             CORSConfig
+	Admission        AdmissionConfig
+	IdentityVerifier IdentityVerifierConfig
 }
 
 type AppConfig struct {
@@ -38,9 +38,9 @@ type JWTConfig struct {
 }
 type CORSConfig struct{ AllowOrigins []string }
 type AdmissionConfig struct{ PolicyType, InvitationCode string }
-type SidecarConfig struct {
-	Enabled    bool
-	UnixSocket string
+type IdentityVerifierConfig struct {
+	Backend        string
+	FFILibraryPath string
 }
 
 func (d DatabaseConfig) DSN() string {
@@ -58,7 +58,10 @@ func Load() (*Config, error) {
 		JWT:       JWTConfig{Secret: getEnv("JWT_SECRET", "dev-secret-change-me-use-48-plus-bytes-in-production"), AccessTokenMins: getEnvInt("JWT_ACCESS_TOKEN_MINS", 60), Issuer: "agent-os"},
 		CORS:      CORSConfig{AllowOrigins: splitCSV(getEnv("CORS_ORIGIN", "http://localhost:5173"))},
 		Admission: AdmissionConfig{PolicyType: getEnv("ADMISSION_POLICY", "protocol"), InvitationCode: getEnv("ADMISSION_INVITATION_CODE", "agentos-dev")},
-		Sidecar:   SidecarConfig{Enabled: getEnvBool("RUST_SIDECAR_ENABLED", env == "production"), UnixSocket: getEnv("RUST_SIDECAR_SOCKET", "/tmp/agentos-sidecar.sock")},
+		IdentityVerifier: IdentityVerifierConfig{
+			Backend:        getEnv("IDENTITY_VERIFY_BACKEND", defaultIdentityVerifierBackend(env)),
+			FFILibraryPath: getEnv("AGENTOS_FFI_LIBRARY_PATH", "/Users/yakii/code/agent-os/Infrastructure/connor-agent-core/target/release/libagentos_ffi.dylib"),
+		},
 	}
 	return cfg, cfg.Validate()
 }
@@ -74,9 +77,14 @@ func (c *Config) Validate() error {
 	}
 	switch c.Admission.PolicyType {
 	case "protocol", "invitation", "approval":
-		return nil
 	default:
 		return fmt.Errorf("unsupported ADMISSION_POLICY %q", c.Admission.PolicyType)
+	}
+	switch c.IdentityVerifier.Backend {
+	case "ffi", "go":
+		return nil
+	default:
+		return fmt.Errorf("unsupported IDENTITY_VERIFY_BACKEND %q", c.IdentityVerifier.Backend)
 	}
 }
 
@@ -100,6 +108,13 @@ func getEnvBool(key string, fallback bool) bool {
 	}
 	return v == "1" || v == "true" || v == "yes" || v == "on"
 }
+func defaultIdentityVerifierBackend(env string) string {
+	if env == "production" {
+		return "ffi"
+	}
+	return "go"
+}
+
 func splitCSV(v string) []string {
 	parts := strings.Split(v, ",")
 	out := make([]string, 0, len(parts))
