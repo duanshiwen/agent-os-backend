@@ -46,7 +46,33 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 
 	// Health check
 	r.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok", "service": cfg.App.Name})
+		// Check database connectivity
+		dbOK := true
+		if sqlDB, err := db.DB(); err != nil || sqlDB.Ping() != nil {
+			dbOK = false
+		}
+
+		// Check Redis connectivity
+		redisOK := true
+		if err := rdb.Ping(c.Request.Context()).Err(); err != nil {
+			redisOK = false
+		}
+
+		status := "ok"
+		statusCode := 200
+		if !dbOK || !redisOK {
+			status = "degraded"
+			statusCode = 503
+		}
+
+		c.JSON(statusCode, gin.H{
+			"status":  status,
+			"service": cfg.App.Name,
+			"checks": gin.H{
+				"database": dbOK,
+				"redis":    redisOK,
+			},
+		})
 	})
 
 	// API v1
@@ -91,6 +117,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 		// === Admin routes ===
 		admin := v1.Group("/admin")
 		admin.Use(middleware.JWTAuth(cfg.JWT.Secret))
+		admin.Use(middleware.AdminMiddleware())
 		{
 			admin.GET("/admission/requests", admissionH.GetPending)
 			admin.POST("/admission/requests/:id/approve", admissionH.Approve)
