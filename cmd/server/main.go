@@ -41,7 +41,7 @@ func main() {
 	defer cancel()
 
 	// Initialize identity verifier.
-	signatureVerifier, cleanupVerifier, err := service.NewSignatureVerifierFromConfig(cfg.IdentityVerifier, cfg.App.Env)
+	signatureVerifier, cleanupVerifier, err := service.NewSignatureVerifierFromConfig(cfg.IdentityVerifier)
 	if err != nil {
 		log.Fatalf("Failed to initialize identity verifier: %v", err)
 	}

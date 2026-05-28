@@ -22,15 +22,12 @@ type IdentityService struct {
 	verifier SignatureVerifier
 }
 
-func NewIdentityService(userRepo *repository.UserRepo, jwtCfg config.JWTConfig) *IdentityService {
-	return NewIdentityServiceWithVerifier(userRepo, jwtCfg, NewGoEd25519Verifier())
+func NewIdentityService(userRepo *repository.UserRepo, jwtCfg config.JWTConfig, verifier SignatureVerifier) *IdentityService {
+	return &IdentityService{userRepo: userRepo, jwtCfg: jwtCfg, verifier: verifier}
 }
 
 func NewIdentityServiceWithVerifier(userRepo *repository.UserRepo, jwtCfg config.JWTConfig, verifier SignatureVerifier) *IdentityService {
-	if verifier == nil {
-		verifier = NewGoEd25519Verifier()
-	}
-	return &IdentityService{userRepo: userRepo, jwtCfg: jwtCfg, verifier: verifier}
+	return NewIdentityService(userRepo, jwtCfg, verifier)
 }
 
 // ChallengeResult is what the server sends back to the client.

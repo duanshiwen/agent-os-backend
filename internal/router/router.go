@@ -31,9 +31,6 @@ func Setup(
 	r.Use(middleware.RateLimiter(10, 50))
 
 	// Services (using injected repos)
-	if signatureVerifier == nil {
-		signatureVerifier = service.NewGoEd25519Verifier()
-	}
 	identitySvc := service.NewIdentityServiceWithVerifier(userRepo, cfg.JWT, signatureVerifier)
 	admissionSvc := service.NewAdmissionService(userRepo, cfg.Admission)
 	convSvc := service.NewConversationService(convRepo, userRepo)

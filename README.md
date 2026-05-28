@@ -27,7 +27,7 @@ go run ./cmd/server
 
 ### 2.1 Rust SDK FFI（Purego + 动态库）
 
-所有环境默认 `IDENTITY_VERIFY_BACKEND=ffi`，通过 Purego 调用 connor-agent-core Rust SDK 动态库。启动前请先编译 FFI 动态库：
+后端通过 Purego 调用 connor-agent-core Rust SDK 动态库完成身份验签。启动前请先编译 FFI 动态库：
 
 ```bash
 cd /Users/yakii/code/agent-os/Infrastructure/connor-agent-core
@@ -38,12 +38,11 @@ cargo build -p agentos-ffi --release
 
 ```bash
 cd /Users/yakii/code/agent-os/backend/agent-os-backend
-IDENTITY_VERIFY_BACKEND=ffi \
 AGENTOS_FFI_LIBRARY_PATH=/Users/yakii/code/agent-os/Infrastructure/connor-agent-core/target/release/libagentos_ffi.dylib \
 go run ./cmd/server
 ```
 
-`/health` 会返回 `identity_verifier` 检查项。默认使用 `ffi`，如果动态库不可加载会启动失败。`IDENTITY_VERIFY_BACKEND=go` 仅用于测试或人工临时 override。
+`/health` 会返回 `identity_verifier` 检查项。如果动态库不可加载，服务会启动失败。
 
 ### 3. API 文档
 

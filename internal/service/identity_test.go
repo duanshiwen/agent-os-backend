@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"crypto/ed25519"
-	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"net/url"
@@ -110,31 +109,5 @@ func TestIdentityServiceVerifySignaturePropagatesVerifierError(t *testing.T) {
 	})
 	if !errors.Is(err, verifierErr) {
 		t.Fatalf("expected verifier error, got %v", err)
-	}
-}
-
-func TestIdentityServiceVerifySignatureWithRealGoVerifier(t *testing.T) {
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatalf("generate key: %v", err)
-	}
-	svc := newIdentityTestService(t, NewGoEd25519Verifier())
-	challenge, err := svc.InitiateChallenge("device-1", hex.EncodeToString(pub))
-	if err != nil {
-		t.Fatalf("initiate challenge: %v", err)
-	}
-	sig := ed25519.Sign(priv, []byte(challenge.Challenge))
-
-	res, err := svc.VerifySignature(&VerifyRequest{
-		DeviceID:   "device-1",
-		UserPubKey: hex.EncodeToString(pub),
-		Nonce:      challenge.Nonce,
-		Signature:  hex.EncodeToString(sig),
-	})
-	if err != nil {
-		t.Fatalf("verify signature: %v", err)
-	}
-	if res.AccessToken == "" {
-		t.Fatal("expected access token")
 	}
 }

@@ -39,7 +39,6 @@ type JWTConfig struct {
 type CORSConfig struct{ AllowOrigins []string }
 type AdmissionConfig struct{ PolicyType, InvitationCode string }
 type IdentityVerifierConfig struct {
-	Backend        string
 	FFILibraryPath string
 }
 
@@ -59,7 +58,6 @@ func Load() (*Config, error) {
 		CORS:      CORSConfig{AllowOrigins: splitCSV(getEnv("CORS_ORIGIN", "http://localhost:5173"))},
 		Admission: AdmissionConfig{PolicyType: getEnv("ADMISSION_POLICY", "protocol"), InvitationCode: getEnv("ADMISSION_INVITATION_CODE", "agentos-dev")},
 		IdentityVerifier: IdentityVerifierConfig{
-			Backend:        getEnv("IDENTITY_VERIFY_BACKEND", defaultIdentityVerifierBackend(env)),
 			FFILibraryPath: getEnv("AGENTOS_FFI_LIBRARY_PATH", "/Users/yakii/code/agent-os/Infrastructure/connor-agent-core/target/release/libagentos_ffi.dylib"),
 		},
 	}
@@ -80,12 +78,10 @@ func (c *Config) Validate() error {
 	default:
 		return fmt.Errorf("unsupported ADMISSION_POLICY %q", c.Admission.PolicyType)
 	}
-	switch c.IdentityVerifier.Backend {
-	case "ffi", "go":
-		return nil
-	default:
-		return fmt.Errorf("unsupported IDENTITY_VERIFY_BACKEND %q", c.IdentityVerifier.Backend)
+	if strings.TrimSpace(c.IdentityVerifier.FFILibraryPath) == "" {
+		return fmt.Errorf("AGENTOS_FFI_LIBRARY_PATH is required")
 	}
+	return nil
 }
 
 func getEnv(key, fallback string) string {
@@ -108,10 +104,6 @@ func getEnvBool(key string, fallback bool) bool {
 	}
 	return v == "1" || v == "true" || v == "yes" || v == "on"
 }
-func defaultIdentityVerifierBackend(env string) string {
-	return "ffi"
-}
-
 func splitCSV(v string) []string {
 	parts := strings.Split(v, ",")
 	out := make([]string, 0, len(parts))
