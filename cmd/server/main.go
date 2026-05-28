@@ -8,7 +8,10 @@ import (
 	"syscall"
 
 	"github.com/agent-os/backend/internal/config"
+	"github.com/agent-os/backend/internal/repository"
 	"github.com/agent-os/backend/internal/router"
+	"github.com/agent-os/backend/internal/service"
+	"github.com/agent-os/backend/internal/ws"
 )
 
 func main() {
@@ -33,20 +36,40 @@ func main() {
 	defer rdb.Close()
 	log.Println("Redis initialized")
 
-	// Setup routes
-	r := router.Setup(cfg, db, rdb)
-
-	// Graceful shutdown
-	_, cancel := context.WithCancel(context.Background())
+	// Create context for background tasks
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Initialize WebSocket hub
+	hub := ws.NewHub()
+	go hub.Run()
+	log.Println("WebSocket hub started")
+
+	// Initialize repositories
+	userRepo := repository.NewUserRepo(db)
+	convRepo := repository.NewConversationRepo(db)
+	syncRepo := repository.NewSyncRepo(db)
+
+	// Initialize services
+	msgService := service.NewMessageService(convRepo, userRepo)
+	syncService := service.NewSyncService(syncRepo, hub)
+
+	// Start background tasks
+	bgTasks := service.NewBackgroundTasks(msgService, syncService)
+	bgTasks.Start(ctx)
+	log.Println("Background tasks started")
+
+	// Setup routes
+	r := router.Setup(cfg, db, rdb, hub, userRepo, convRepo, syncRepo, msgService, syncService)
+
+	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
 		<-quit
 		log.Println("Shutting down gracefully...")
-		cancel()
+		cancel() // Stop background tasks
 	}()
 
 	// Start server

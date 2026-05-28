@@ -12,28 +12,27 @@ import (
 	"gorm.io/gorm"
 )
 
-func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
+func Setup(
+	cfg *config.Config,
+	db *gorm.DB,
+	rdb *redis.Client,
+	hub *ws.Hub,
+	userRepo *repository.UserRepo,
+	convRepo *repository.ConversationRepo,
+	syncRepo *repository.SyncRepo,
+	msgSvc *service.MessageService,
+	syncSvc *service.SyncService,
+) *gin.Engine {
 	r := gin.Default()
 
 	// Middleware
 	r.Use(middleware.CORS(cfg.CORS.AllowOrigins))
-	r.Use(middleware.RateLimiter(10, 50)) // 10 req/s, burst 50
+	r.Use(middleware.RateLimiter(10, 50))
 
-	// Repositories
-	userRepo := repository.NewUserRepo(db)
-	convRepo := repository.NewConversationRepo(db)
-	syncRepo := repository.NewSyncRepo(db)
-
-	// WebSocket (must be created before services that need hub)
-	hub := ws.NewHub()
-	go hub.Run()
-
-	// Services
+	// Services (using injected repos)
 	identitySvc := service.NewIdentityService(userRepo, cfg.JWT)
 	admissionSvc := service.NewAdmissionService(userRepo, cfg.Admission)
 	convSvc := service.NewConversationService(convRepo, userRepo)
-	msgSvc := service.NewMessageService(convRepo, userRepo)
-	syncSvc := service.NewSyncService(syncRepo, hub)
 
 	// Handlers
 	identityH := handler.NewIdentityHandler(identitySvc)
@@ -41,44 +40,37 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 	convH := handler.NewConversationHandler(convSvc, msgSvc)
 	syncH := handler.NewSyncHandler(syncSvc)
 
+	// WebSocket dispatcher
 	dispatcher := ws.NewDispatcher(hub, msgSvc, convSvc, convRepo)
 	wsH := handler.NewWebSocketHandler(hub, dispatcher, cfg.JWT.Secret)
 
 	// Health check
 	r.GET("/health", func(c *gin.Context) {
-		// Check database connectivity
 		dbOK := true
 		if sqlDB, err := db.DB(); err != nil || sqlDB.Ping() != nil {
 			dbOK = false
 		}
-
-		// Check Redis connectivity
 		redisOK := true
 		if err := rdb.Ping(c.Request.Context()).Err(); err != nil {
 			redisOK = false
 		}
-
 		status := "ok"
 		statusCode := 200
 		if !dbOK || !redisOK {
 			status = "degraded"
 			statusCode = 503
 		}
-
 		c.JSON(statusCode, gin.H{
 			"status":  status,
 			"service": cfg.App.Name,
-			"checks": gin.H{
-				"database": dbOK,
-				"redis":    redisOK,
-			},
+			"checks":  gin.H{"database": dbOK, "redis": redisOK},
 		})
 	})
 
 	// API v1
 	v1 := r.Group("/api/v1")
 	{
-		// === Auth (public) ===
+		// Auth (public)
 		auth := v1.Group("/auth")
 		{
 			auth.POST("/challenge", identityH.Challenge)
@@ -86,22 +78,18 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 			auth.POST("/register", identityH.Register)
 		}
 
-		// === WebSocket (token in query) ===
+		// WebSocket
 		v1.GET("/ws", wsH.HandleWS)
 
-		// === Protected routes ===
+		// Protected routes
 		protected := v1.Group("")
 		protected.Use(middleware.JWTAuth(cfg.JWT.Secret))
 		{
-			// User profile
 			protected.GET("/users/me", identityH.GetProfile)
 			protected.PUT("/users/me", identityH.UpdateProfile)
-
-			// Devices
 			protected.POST("/users/me/devices", identityH.PairDevice)
 			protected.GET("/users/me/devices", identityH.GetDevices)
 
-			// Conversations
 			protected.POST("/conversations", convH.Create)
 			protected.GET("/conversations", convH.List)
 			protected.GET("/conversations/:id", convH.Get)
@@ -109,12 +97,11 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 			protected.POST("/conversations/:id/participants", convH.AddParticipant)
 			protected.DELETE("/conversations/:id/participants/me", convH.Leave)
 
-			// Sync
 			protected.GET("/sync/events", syncH.GetEvents)
 			protected.POST("/sync/ack", syncH.AckEvents)
 		}
 
-		// === Admin routes ===
+		// Admin routes
 		admin := v1.Group("/admin")
 		admin.Use(middleware.JWTAuth(cfg.JWT.Secret))
 		admin.Use(middleware.AdminMiddleware())
