@@ -1,0 +1,61 @@
+package main
+
+import (
+	"context"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/agent-os/backend/internal/config"
+	"github.com/agent-os/backend/internal/router"
+)
+
+func main() {
+	// Load configuration
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Initialize database
+	db, err := config.InitDatabase(&cfg.Database, cfg.App.AutoMigrate)
+	if err != nil {
+		log.Fatalf("Failed to init database: %v", err)
+	}
+	log.Println("Database initialized")
+
+	// Initialize Redis
+	rdb, err := config.InitRedis(&cfg.Redis)
+	if err != nil {
+		log.Fatalf("Failed to init redis: %v", err)
+	}
+	defer rdb.Close()
+	log.Println("Redis initialized")
+
+	// Setup routes
+	r := router.Setup(cfg, db, rdb)
+
+	// Graceful shutdown
+	_, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		<-quit
+		log.Println("Shutting down gracefully...")
+		cancel()
+	}()
+
+	// Start server
+	port := cfg.App.Port
+	if p := os.Getenv("APP_PORT"); p != "" {
+		port = p
+	}
+	log.Printf("AgentOS Backend starting on :%s (env=%s)", port, cfg.App.Env)
+	if err := r.Run(":" + port); err != nil {
+		log.Fatalf("Server failed: %v", err)
+	}
+}

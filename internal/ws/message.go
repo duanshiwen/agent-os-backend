@@ -1,0 +1,80 @@
+package ws
+
+import (
+	"encoding/json"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// Envelope is the top-level WS message structure.
+type Envelope struct {
+	Type    string          `json:"type"`
+	Payload json.RawMessage `json:"payload"`
+	ID      string          `json:"id,omitempty"` // client correlation ID
+}
+
+// === Outbound messages (server → client) ===
+
+type MsgNewMessage struct {
+	ConversationID uuid.UUID `json:"conversation_id"`
+	MessageID      uuid.UUID `json:"message_id"`
+	SenderID       uuid.UUID `json:"sender_id"`
+	Type           string    `json:"type"`
+	Content        string    `json:"content"`
+	Metadata       any       `json:"metadata,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+type MsgDeliveryAck struct {
+	MessageID uuid.UUID `json:"message_id"`
+	Status    string    `json:"status"` // delivered, stored
+}
+
+type MsgOfflineBatch struct {
+	Messages []MsgNewMessage `json:"messages"`
+}
+
+type MsgError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+type MsgPong struct {
+	Timestamp int64 `json:"ts"`
+}
+
+type MsgPresenceUpdate struct {
+	UserID   uuid.UUID `json:"user_id"`
+	DeviceID string    `json:"device_id"`
+	Status   string    `json:"status"` // online, offline
+}
+
+// === Inbound messages (client → server) ===
+
+type MsgSendMessage struct {
+	ConversationID uuid.UUID       `json:"conversation_id"`
+	Type           string          `json:"type"`
+	Content        string          `json:"content"`
+	Metadata       json.RawMessage `json:"metadata,omitempty"`
+}
+
+type MsgPing struct {
+	Timestamp int64 `json:"ts"`
+}
+
+type MsgFetchOffline struct {
+	// No fields needed — server uses authenticated user context
+}
+
+type MsgAckOffline struct {
+	MessageIDs []uuid.UUID `json:"message_ids"`
+}
+
+// Marshal helper
+func marshalEnvelope(msgType string, payload any) []byte {
+	data, _ := json.Marshal(payload)
+	env := Envelope{Type: msgType, Payload: data}
+	out, _ := json.Marshal(env)
+	return out
+}

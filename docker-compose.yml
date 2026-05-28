@@ -1,0 +1,89 @@
+services:
+  # === AgentOS Backend (Go + Air hot reload) ===
+  api:
+    build:
+      context: .
+      target: dev-base
+    container_name: agentos-dev-api
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    volumes:
+      - ./:/app
+      - go-mod-cache:/go/pkg/mod
+    env_file:
+      - .env
+    networks:
+      - agentos-dev-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: on-failure
+
+  # === PostgreSQL 16 ===
+  postgres:
+    image: postgres:16-alpine
+    container_name: agentos-dev-postgres
+    ports:
+      - "${PG_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${PG_USER:-postgres}
+      POSTGRES_PASSWORD: ${PG_PASS:-postgres}
+      POSTGRES_DB: ${PG_DB:-agent_os}
+      TZ: Asia/Shanghai
+    volumes:
+      - postgres-data:/var/lib/postgresql/data/
+    networks:
+      - agentos-dev-network
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-postgres} -d ${PG_DB:-agent_os}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # === Redis 7 ===
+  redis:
+    image: redis:7-alpine
+    container_name: agentos-dev-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - agentos-dev-network
+    restart: always
+    command: redis-server --appendonly yes --save 60 1000 --bind 0.0.0.0
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # === MinIO (S3-compatible object storage) ===
+  minio:
+    image: minio/minio:latest
+    container_name: agentos-dev-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-data:/data
+    networks:
+      - agentos-dev-network
+    restart: always
+    command: server /data --console-address ":9001"
+
+networks:
+  agentos-dev-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+  go-mod-cache:

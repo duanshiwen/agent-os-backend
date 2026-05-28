@@ -1,0 +1,38 @@
+# === Go ===
+/vendor/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.out
+coverage.html
+
+# === Air (hot reload) ===
+/tmp/
+*.log
+
+# === Environment ===
+.env
+.env.local
+.env.*.local
+
+# === IDE ===
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# === Docker ===
+docker-compose.override.yml
+
+# === Build ===
+/bin/
+/dist/
+
+# === Misc ===
+.qoder/
