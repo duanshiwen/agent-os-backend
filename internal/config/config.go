@@ -109,10 +109,7 @@ func getEnvBool(key string, fallback bool) bool {
 	return v == "1" || v == "true" || v == "yes" || v == "on"
 }
 func defaultIdentityVerifierBackend(env string) string {
-	if env == "production" {
-		return "ffi"
-	}
-	return "go"
+	return "ffi"
 }
 
 func splitCSV(v string) []string {
