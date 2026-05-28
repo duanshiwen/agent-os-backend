@@ -96,6 +96,15 @@ func (r *ConversationRepo) GetMessagesSince(conversationID uuid.UUID, since time
 	return msgs, err
 }
 
+func (r *ConversationRepo) GetMessagesByIDs(ids []uuid.UUID) ([]model.Message, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var msgs []model.Message
+	err := r.db.Where("id IN ?", ids).Find(&msgs).Error
+	return msgs, err
+}
+
 // === OfflineMessage ===
 
 func (r *ConversationRepo) SaveOfflineMessage(om *model.OfflineMessage) error {

@@ -22,23 +22,26 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 	// Repositories
 	userRepo := repository.NewUserRepo(db)
 	convRepo := repository.NewConversationRepo(db)
+	syncRepo := repository.NewSyncRepo(db)
+
+	// WebSocket (must be created before services that need hub)
+	hub := ws.NewHub()
+	go hub.Run()
 
 	// Services
 	identitySvc := service.NewIdentityService(userRepo, cfg.JWT)
 	admissionSvc := service.NewAdmissionService(userRepo, cfg.Admission)
 	convSvc := service.NewConversationService(convRepo, userRepo)
 	msgSvc := service.NewMessageService(convRepo, userRepo)
+	syncSvc := service.NewSyncService(syncRepo, hub)
 
 	// Handlers
 	identityH := handler.NewIdentityHandler(identitySvc)
 	admissionH := handler.NewAdmissionHandler(admissionSvc)
 	convH := handler.NewConversationHandler(convSvc, msgSvc)
+	syncH := handler.NewSyncHandler(syncSvc)
 
-	// WebSocket
-	hub := ws.NewHub()
-	go hub.Run()
-
-	dispatcher := ws.NewDispatcher(hub, msgSvc, convSvc)
+	dispatcher := ws.NewDispatcher(hub, msgSvc, convSvc, convRepo)
 	wsH := handler.NewWebSocketHandler(hub, dispatcher, cfg.JWT.Secret)
 
 	// Health check
@@ -79,6 +82,10 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 			protected.GET("/conversations/:id/messages", convH.GetMessages)
 			protected.POST("/conversations/:id/participants", convH.AddParticipant)
 			protected.DELETE("/conversations/:id/participants/me", convH.Leave)
+
+			// Sync
+			protected.GET("/sync/events", syncH.GetEvents)
+			protected.POST("/sync/ack", syncH.AckEvents)
 		}
 
 		// === Admin routes ===

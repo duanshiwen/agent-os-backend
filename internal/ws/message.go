@@ -71,10 +71,31 @@ type MsgAckOffline struct {
 	MessageIDs []uuid.UUID `json:"message_ids"`
 }
 
+type MsgSyncFetch struct {
+	Limit int `json:"limit,omitempty"`
+}
+
+type MsgSyncAck struct {
+	LastSequence uint64 `json:"last_sequence"`
+}
+
+// SyncEventMessage is sent to clients when a sync event occurs.
+type SyncEventMessage struct {
+	EventType string `json:"event_type"`
+	Sequence  uint64 `json:"sequence"`
+	Timestamp int64  `json:"timestamp"`
+	Payload   any    `json:"payload,omitempty"`
+}
+
 // Marshal helper
 func marshalEnvelope(msgType string, payload any) []byte {
 	data, _ := json.Marshal(payload)
 	env := Envelope{Type: msgType, Payload: data}
 	out, _ := json.Marshal(env)
 	return out
+}
+
+// MarshalSyncEvent creates a sync event envelope.
+func MarshalSyncEvent(event SyncEventMessage) []byte {
+	return marshalEnvelope("sync.event", event)
 }

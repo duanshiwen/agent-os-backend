@@ -136,6 +136,22 @@ func (h *Hub) SendToUsers(userIDs []uuid.UUID, message []byte) {
 	}
 }
 
+// SendToUserExceptDevice sends a message to all devices of a user except the specified device.
+func (h *Hub) SendToUserExceptDevice(userID uuid.UUID, excludeDeviceID string, message []byte) {
+	h.udMu.RLock()
+	defer h.udMu.RUnlock()
+
+	devices, ok := h.userDevices[userID]
+	if !ok {
+		return
+	}
+	for deviceID, client := range devices {
+		if deviceID != excludeDeviceID {
+			client.SendMessage(message)
+		}
+	}
+}
+
 // IsUserOnline checks if a user has any connected device.
 func (h *Hub) IsUserOnline(userID uuid.UUID) bool {
 	h.udMu.RLock()

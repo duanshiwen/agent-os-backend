@@ -5,23 +5,26 @@ import (
 	"log"
 	"time"
 
+	"github.com/agent-os/backend/internal/model"
 	"github.com/agent-os/backend/internal/repository"
 	"github.com/agent-os/backend/internal/service"
+	"github.com/google/uuid"
 )
 
 // Dispatcher routes incoming WS messages to the appropriate service methods.
 type Dispatcher struct {
-	hub        *Hub
-	msgService *service.MessageService
+	hub         *Hub
+	msgService  *service.MessageService
 	convService *service.ConversationService
-	convRepo   *repository.ConversationRepo
+	convRepo    *repository.ConversationRepo
 }
 
-func NewDispatcher(hub *Hub, msgService *service.MessageService, convService *service.ConversationService) *Dispatcher {
+func NewDispatcher(hub *Hub, msgService *service.MessageService, convService *service.ConversationService, convRepo *repository.ConversationRepo) *Dispatcher {
 	return &Dispatcher{
-		hub:        hub,
-		msgService: msgService,
+		hub:         hub,
+		msgService:  msgService,
 		convService: convService,
+		convRepo:    convRepo,
 	}
 }
 
@@ -93,16 +96,41 @@ func (d *Dispatcher) handleFetchOffline(client *Client) {
 		return
 	}
 
-	// Fetch actual message content for each offline message
+	// Collect unique message IDs for batch lookup
+	msgIDs := make([]uuid.UUID, 0, len(offlineMsgs))
+	for _, om := range offlineMsgs {
+		msgIDs = append(msgIDs, om.MessageID)
+	}
+
+	// Fetch actual messages from repository
+	messages, err := d.convRepo.GetMessagesByIDs(msgIDs)
+	if err != nil {
+		d.sendError(client, 500, "failed to fetch message content")
+		return
+	}
+
+	// Build message map for efficient lookup
+	msgMap := make(map[uuid.UUID]*model.Message, len(messages))
+	for i := range messages {
+		msgMap[messages[i].ID] = &messages[i]
+	}
+
 	batch := MsgOfflineBatch{
 		Messages: make([]MsgNewMessage, 0, len(offlineMsgs)),
 	}
 	for _, om := range offlineMsgs {
-		// The OfflineMessage stores MessageID — we need to look up the actual message
-		// For now, we'll include what we have from the OfflineMessage record
+		msg, ok := msgMap[om.MessageID]
+		if !ok {
+			continue
+		}
 		batch.Messages = append(batch.Messages, MsgNewMessage{
-			MessageID: om.MessageID,
-			SenderID:  om.UserID,
+			ConversationID: msg.ConversationID,
+			MessageID:      msg.ID,
+			SenderID:       msg.SenderID,
+			Type:           msg.Type,
+			Content:        msg.Content,
+			Metadata:       msg.Metadata,
+			CreatedAt:      msg.CreatedAt,
 		})
 	}
 
