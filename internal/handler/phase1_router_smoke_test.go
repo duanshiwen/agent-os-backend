@@ -98,6 +98,17 @@ func TestSyncEventsResponseIncludesStableEnvelopeFields(t *testing.T) {
 	}
 }
 
+func TestSyncEventsRejectsInvalidAfterSequenceQuery(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	env := newPhase1RouterSmokeEnv(t)
+
+	alice := env.verifyNewUser(t, "bad-query-device-1", "bad-query-pubkey")
+	res := env.doRawJSON(t, http.MethodGet, "/api/v1/sync/events?after_sequence=not-a-number", alice.AccessToken, nil, http.StatusBadRequest)
+	if res.Code != http.StatusBadRequest || res.Message == "" {
+		t.Fatalf("expected bad request response for invalid after_sequence, got %+v", res)
+	}
+}
+
 type phase1RouterSmokeVerifier struct{}
 
 func (v *phase1RouterSmokeVerifier) VerifyEd25519Challenge(_ context.Context, _, _, _ string) (bool, error) {
@@ -278,8 +289,11 @@ func (e *phase1RouterSmokeEnv) doRawJSON(t *testing.T, method, path, token strin
 	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
 		t.Fatalf("decode api response: %v body=%s", err, rec.Body.String())
 	}
-	if res.Code != 0 {
+	if expectedStatus < http.StatusBadRequest && res.Code != 0 {
 		t.Fatalf("expected api code 0, got response %+v", res)
+	}
+	if expectedStatus >= http.StatusBadRequest && res.Code != expectedStatus {
+		t.Fatalf("expected api error code %d, got response %+v", expectedStatus, res)
 	}
 	return res
 }
