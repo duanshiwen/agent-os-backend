@@ -112,18 +112,52 @@ func isSupportedAdmissionPolicy(policyType string) bool {
 
 // CheckAdmission evaluates whether a user can register based on the server's admission policy.
 func (s *AdmissionService) CheckAdmission(pubKey string, invitationCode *string) (bool, string, error) {
-	switch s.cfg.PolicyType {
+	policyType := s.cfg.PolicyType
+	invitationCodeHash := ""
+	if s.admissionRepo != nil {
+		policy, err := s.GetPolicy("default")
+		if err != nil {
+			return false, "", err
+		}
+		policyType = policy.PolicyType
+		invitationCodeHash = policy.InvitationCodeHash
+	}
+
+	switch policyType {
 	case "protocol":
 		// Auto-admit: any valid AgentOS client is accepted
 		return true, "auto_admitted", nil
 
 	case "invitation":
-		if invitationCode == nil || *invitationCode != s.cfg.InvitationCode {
+		if invitationCode == nil || strings.TrimSpace(*invitationCode) == "" {
+			return false, "invalid_invitation_code", nil
+		}
+		if invitationCodeHash != "" {
+			if err := bcrypt.CompareHashAndPassword([]byte(invitationCodeHash), []byte(*invitationCode)); err != nil {
+				return false, "invalid_invitation_code", nil
+			}
+			return true, "admitted_via_invitation", nil
+		}
+		if *invitationCode != s.cfg.InvitationCode {
 			return false, "invalid_invitation_code", nil
 		}
 		return true, "admitted_via_invitation", nil
 
 	case "approval":
+		existing, err := s.userRepo.GetLatestAdmissionRequestByPubKey(pubKey)
+		if err == nil {
+			switch existing.Status {
+			case "approved":
+				return true, "approved", nil
+			case "pending":
+				return false, "pending_approval", nil
+			case "rejected":
+				return false, "admission_rejected", nil
+			}
+		} else if err != gorm.ErrRecordNotFound {
+			return false, "", err
+		}
+
 		// Create a pending admission request
 		req := &model.AdmissionRequest{
 			UserPubKey: pubKey,
@@ -135,8 +169,12 @@ func (s *AdmissionService) CheckAdmission(pubKey string, invitationCode *string)
 		return false, "pending_approval", nil
 
 	default:
-		return false, "", fmt.Errorf("unknown admission policy: %s", s.cfg.PolicyType)
+		return false, "", fmt.Errorf("unknown admission policy: %s", policyType)
 	}
+}
+
+func (s *AdmissionService) GetLatestRequestByPubKey(pubKey string) (*model.AdmissionRequest, error) {
+	return s.userRepo.GetLatestAdmissionRequestByPubKey(pubKey)
 }
 
 // ApproveRequest approves a pending admission request (admin only).

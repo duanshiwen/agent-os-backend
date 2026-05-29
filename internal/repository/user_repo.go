@@ -104,6 +104,12 @@ func (r *UserRepo) GetAdmissionRequest(id uuid.UUID) (*model.AdmissionRequest, e
 	return &req, err
 }
 
+func (r *UserRepo) GetLatestAdmissionRequestByPubKey(pubKey string) (*model.AdmissionRequest, error) {
+	var req model.AdmissionRequest
+	err := r.db.Where("user_pub_key = ?", pubKey).Order("created_at DESC").First(&req).Error
+	return &req, err
+}
+
 func (r *UserRepo) UpdateAdmissionRequest(req *model.AdmissionRequest) error {
 	return r.db.Save(req).Error
 }

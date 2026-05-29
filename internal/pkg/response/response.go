@@ -28,6 +28,14 @@ func Created(c *gin.Context, data any) {
 	})
 }
 
+func Accepted(c *gin.Context, data any) {
+	c.JSON(http.StatusAccepted, Response{
+		Code:    0,
+		Message: "accepted",
+		Data:    data,
+	})
+}
+
 func Error(c *gin.Context, httpStatus int, msg string) {
 	c.JSON(httpStatus, Response{
 		Code:    httpStatus,
