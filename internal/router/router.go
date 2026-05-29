@@ -34,6 +34,7 @@ func Setup(
 	admissionRepo := repository.NewAdmissionRepo(db)
 	admissionSvc := service.NewAdmissionServiceWithRepo(userRepo, admissionRepo, cfg.Admission)
 	identitySvc := service.NewIdentityServiceWithAdmission(userRepo, cfg.JWT, signatureVerifier, admissionSvc)
+	identitySvc.SetSyncService(syncSvc)
 	convSvc := service.NewConversationService(convRepo, userRepo)
 	pairingRepo := repository.NewDevicePairingRepo(db)
 	pairingSvc := service.NewDevicePairingService(pairingRepo, userRepo, signatureVerifier)

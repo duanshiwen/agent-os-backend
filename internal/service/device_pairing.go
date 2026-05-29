@@ -157,14 +157,8 @@ func (s *DevicePairingService) ClaimPairing(req *ClaimPairingRequest) (*model.De
 		DevicePubKey: req.NewDevicePubKey,
 		PairedAt:     time.Now(),
 	}
-	if err := s.userRepo.CreateDevice(device); err != nil {
-		return nil, fmt.Errorf("create paired device: %w", err)
-	}
-	now := time.Now()
-	session.UsedAt = &now
-	session.ClaimedByDeviceID = req.NewDeviceID
-	if err := s.pairingRepo.SavePairingSession(session); err != nil {
-		return nil, fmt.Errorf("mark pairing session used: %w", err)
+	if err := s.pairingRepo.ClaimPairingSession(session.ID, device); err != nil {
+		return nil, err
 	}
 	return device, nil
 }

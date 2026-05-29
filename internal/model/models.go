@@ -34,7 +34,7 @@ type User struct {
 type Device struct {
 	Base
 	UserID       uuid.UUID  `gorm:"type:uuid;index;not null" json:"user_id"`
-	DeviceID     string     `gorm:"index;not null" json:"device_id"`
+	DeviceID     string     `gorm:"uniqueIndex;not null" json:"device_id"`
 	DeviceName   string     `json:"device_name"`
 	DevicePubKey string     `json:"device_pubkey"`
 	PairedAt     time.Time  `json:"paired_at"`
@@ -45,7 +45,7 @@ type DevicePairingSession struct {
 	Base
 	UserID            uuid.UUID  `gorm:"type:uuid;index;not null" json:"user_id"`
 	PairingTokenHash  string     `gorm:"not null" json:"-"`
-	QRPayloadHash     string     `gorm:"not null" json:"-"`
+	QRPayloadHash     string     `gorm:"uniqueIndex;not null" json:"-"`
 	ExpiresAt         time.Time  `gorm:"index;not null" json:"expires_at"`
 	UsedAt            *time.Time `json:"used_at"`
 	CreatedByDeviceID string     `gorm:"index;not null" json:"created_by_device_id"`
@@ -113,12 +113,18 @@ type OfflineMessage struct {
 
 type SyncEvent struct {
 	Base
-	UserID    uuid.UUID         `gorm:"type:uuid;index" json:"user_id"`
-	DeviceID  string            `gorm:"index" json:"device_id"`
-	EventType string            `gorm:"index" json:"event_type"`
-	Payload   datatypes.JSONMap `gorm:"type:jsonb" json:"payload"`
-	Timestamp time.Time         `gorm:"index" json:"timestamp"`
-	Sequence  uint64            `gorm:"index" json:"sequence"`
+	UserID         uuid.UUID         `gorm:"type:uuid;index" json:"user_id"`
+	DeviceID       string            `gorm:"index" json:"device_id"`
+	EventType      string            `gorm:"index" json:"event_type"`
+	SchemaVersion  int               `gorm:"default:1;not null" json:"schema_version"`
+	ObjectType     string            `gorm:"index;not null" json:"object_type"`
+	ObjectID       string            `gorm:"index;not null" json:"object_id"`
+	Operation      string            `gorm:"index;not null" json:"operation"`
+	SourceDeviceID string            `gorm:"index;not null" json:"source_device_id"`
+	ClientEventID  string            `gorm:"index;not null" json:"client_event_id"`
+	Payload        datatypes.JSONMap `gorm:"type:jsonb" json:"payload"`
+	Timestamp      time.Time         `gorm:"index" json:"timestamp"`
+	Sequence       uint64            `gorm:"index" json:"sequence"`
 }
 type SyncCursor struct {
 	UserID             uuid.UUID `gorm:"type:uuid;primaryKey" json:"user_id"`

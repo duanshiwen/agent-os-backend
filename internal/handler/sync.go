@@ -21,13 +21,20 @@ func (h *SyncHandler) GetEvents(c *gin.Context) {
 	deviceID := middleware.MustGetDeviceID(c)
 
 	var req struct {
-		Limit int `form:"limit"`
+		Limit         int     `form:"limit"`
+		AfterSequence *uint64 `form:"after_sequence"`
 	}
 	if err := c.ShouldBindQuery(&req); err != nil {
 		req.Limit = 100
 	}
 
-	events, err := h.svc.GetEvents(userID, deviceID, req.Limit)
+	var events any
+	var err error
+	if req.AfterSequence != nil {
+		events, err = h.svc.GetEventsAfter(userID, *req.AfterSequence, req.Limit)
+	} else {
+		events, err = h.svc.GetEvents(userID, deviceID, req.Limit)
+	}
 	if err != nil {
 		response.InternalError(c, err.Error())
 		return

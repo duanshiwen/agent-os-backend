@@ -14,6 +14,7 @@ import (
 	"github.com/agent-os/backend/internal/model"
 	"github.com/agent-os/backend/internal/repository"
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 )
 
 type IdentityService struct {
@@ -21,6 +22,7 @@ type IdentityService struct {
 	jwtCfg       config.JWTConfig
 	verifier     SignatureVerifier
 	admissionSvc *AdmissionService
+	syncSvc      *SyncService
 }
 
 func NewIdentityService(userRepo *repository.UserRepo, jwtCfg config.JWTConfig, verifier SignatureVerifier) *IdentityService {
@@ -33,6 +35,10 @@ func NewIdentityServiceWithVerifier(userRepo *repository.UserRepo, jwtCfg config
 
 func NewIdentityServiceWithAdmission(userRepo *repository.UserRepo, jwtCfg config.JWTConfig, verifier SignatureVerifier, admissionSvc *AdmissionService) *IdentityService {
 	return &IdentityService{userRepo: userRepo, jwtCfg: jwtCfg, verifier: verifier, admissionSvc: admissionSvc}
+}
+
+func (s *IdentityService) SetSyncService(syncSvc *SyncService) {
+	s.syncSvc = syncSvc
 }
 
 // ChallengeResult is what the server sends back to the client.
@@ -282,6 +288,21 @@ func (s *IdentityService) UpdateProfile(userID uuid.UUID, displayName, avatarURL
 	}
 	if err := s.userRepo.Update(user); err != nil {
 		return nil, err
+	}
+	if s.syncSvc != nil {
+		payload := datatypes.JSONMap{
+			"object_id":    user.ID.String(),
+			"user_id":      user.ID.String(),
+			"display_name": user.DisplayName,
+			"avatar_url":   user.AvatarURL,
+		}
+		_ = s.syncSvc.RecordEnvelope(SyncEnvelope{
+			UserID:     user.ID,
+			ObjectType: SyncEventProfile,
+			ObjectID:   user.ID.String(),
+			Operation:  SyncActionUpdated,
+			Payload:    payload,
+		})
 	}
 	return user, nil
 }

@@ -75,12 +75,13 @@ func (s *MessageService) SendMessage(senderID uuid.UUID, req *SendMessageRequest
 	if s.syncSvc != nil {
 		for _, p := range participants {
 			syncPayload := datatypes.JSONMap{
+				"object_id":       msg.ID.String(),
 				"conversation_id": req.ConversationID.String(),
 				"message_id":      msg.ID.String(),
 				"sender_id":       senderID.String(),
 				"type":            msgType,
 			}
-			_ = s.syncSvc.RecordEvent(p.UserID, "", SyncEventMessage, "created", syncPayload)
+			_ = s.syncSvc.RecordEvent(p.UserID, "", SyncEventMessage, SyncActionCreated, syncPayload)
 		}
 	}
 

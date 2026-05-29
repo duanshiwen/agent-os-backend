@@ -32,6 +32,20 @@ func (r *SyncRepo) GetEventsSince(userID uuid.UUID, deviceID string, sinceSequen
 	return events, err
 }
 
+func (r *SyncRepo) GetEventByClientEventID(userID uuid.UUID, clientEventID string) (*model.SyncEvent, error) {
+	if clientEventID == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
+	var event model.SyncEvent
+	err := r.db.
+		Where("user_id = ? AND client_event_id = ?", userID, clientEventID).
+		First(&event).Error
+	if err != nil {
+		return nil, err
+	}
+	return &event, nil
+}
+
 func (r *SyncRepo) GetEventsByType(userID uuid.UUID, eventType string, since time.Time, limit int) ([]model.SyncEvent, error) {
 	var events []model.SyncEvent
 	err := r.db.
