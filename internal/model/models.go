@@ -40,6 +40,18 @@ type Device struct {
 	PairedAt     time.Time  `json:"paired_at"`
 	LastSeenAt   *time.Time `json:"last_seen_at"`
 }
+
+type DevicePairingSession struct {
+	Base
+	UserID            uuid.UUID  `gorm:"type:uuid;index;not null" json:"user_id"`
+	PairingTokenHash  string     `gorm:"not null" json:"-"`
+	QRPayloadHash     string     `gorm:"not null" json:"-"`
+	ExpiresAt         time.Time  `gorm:"index;not null" json:"expires_at"`
+	UsedAt            *time.Time `json:"used_at"`
+	CreatedByDeviceID string     `gorm:"index;not null" json:"created_by_device_id"`
+	ClaimedByDeviceID string     `gorm:"index" json:"claimed_by_device_id"`
+}
+
 type AuthChallenge struct {
 	Base
 	DeviceID   string     `gorm:"index;not null" json:"device_id"`
@@ -220,5 +232,5 @@ type ContributorEarning struct {
 }
 
 func AllModels() []any {
-	return []any{&User{}, &Device{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBUsageRecord{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}}
+	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBUsageRecord{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}}
 }
