@@ -323,7 +323,7 @@ func TestIdentityServiceUpdateProfileRecordsProfileUpdatedSyncEvent(t *testing.T
 	}
 
 	newName := "Alice"
-	updated, err := svc.UpdateProfile(user.ID, &newName, nil)
+	updated, err := svc.UpdateProfile(user.ID, "profile-device-1", &newName, nil)
 	if err != nil {
 		t.Fatalf("update profile: %v", err)
 	}
@@ -339,7 +339,7 @@ func TestIdentityServiceUpdateProfileRecordsProfileUpdatedSyncEvent(t *testing.T
 		t.Fatalf("expected one sync event, got %+v", events)
 	}
 	event := events[0]
-	if event.EventType != "profile.updated" || event.ObjectType != SyncEventProfile || event.ObjectID != user.ID.String() || event.Operation != SyncActionUpdated {
+	if event.EventType != "profile.updated" || event.ObjectType != SyncEventProfile || event.ObjectID != user.ID.String() || event.Operation != SyncActionUpdated || event.SourceDeviceID != "profile-device-1" {
 		t.Fatalf("unexpected profile sync event: %+v", event)
 	}
 	if event.Payload["display_name"] != newName {

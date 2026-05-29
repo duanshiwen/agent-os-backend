@@ -54,7 +54,7 @@ func TestPhase1RouterSmokeAuthConversationSyncAndQRPairing(t *testing.T) {
 		t.Fatalf("unexpected updated profile: %+v", aliceProfile)
 	}
 	aliceEvents := env.getSyncEventsAfter(t, alice.AccessToken, 1, 100)
-	if len(aliceEvents) != 1 || aliceEvents[0].EventType != "profile.updated" || aliceEvents[0].ObjectType != service.SyncEventProfile || aliceEvents[0].ObjectID != alice.User.ID.String() || aliceEvents[0].Operation != service.SyncActionUpdated {
+	if len(aliceEvents) != 1 || aliceEvents[0].EventType != "profile.updated" || aliceEvents[0].ObjectType != service.SyncEventProfile || aliceEvents[0].ObjectID != alice.User.ID.String() || aliceEvents[0].Operation != service.SyncActionUpdated || aliceEvents[0].SourceDeviceID != alice.Device.DeviceID {
 		t.Fatalf("expected alice profile.updated sync event, got %+v", aliceEvents)
 	}
 	if aliceEvents[0].Payload["display_name"] != "Alice Router Smoke" {
@@ -89,7 +89,7 @@ func TestSyncEventsResponseIncludesStableEnvelopeFields(t *testing.T) {
 			t.Fatalf("expected sync event JSON field %q in %+v", field, event)
 		}
 	}
-	if event["event_type"] != "profile.updated" || event["object_type"] != service.SyncEventProfile || event["operation"] != service.SyncActionUpdated || event["object_id"] != alice.User.ID.String() {
+	if event["event_type"] != "profile.updated" || event["object_type"] != service.SyncEventProfile || event["operation"] != service.SyncActionUpdated || event["object_id"] != alice.User.ID.String() || event["source_device_id"] != alice.Device.DeviceID {
 		t.Fatalf("unexpected sync event contract values: %+v", event)
 	}
 	payload, ok := event["payload"].(map[string]any)
