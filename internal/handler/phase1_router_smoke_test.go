@@ -226,6 +226,62 @@ func TestKnowledgeEntriesMutationsEmitPullableSyncEvents(t *testing.T) {
 	}
 }
 
+func TestKnowledgeEntriesStaleBaseVersionReturnsConflictWithoutSyncEvent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	env := newPhase1RouterSmokeEnv(t)
+
+	aliceA := env.verifyNewUser(t, "knowledge-conflict-device-a", "knowledge-conflict-pubkey")
+	start := env.startPairing(t, aliceA.AccessToken)
+	env.claimPairing(t, start.QRPayload, "knowledge-conflict-device-b", "knowledge-conflict-device-b-pubkey")
+	aliceB := env.verifyExistingUser(t, "knowledge-conflict-device-b", "knowledge-conflict-pubkey")
+
+	var created model.UserKnowledgeEntry
+	env.doJSON(t, http.MethodPost, "/api/v1/knowledge/entries", aliceA.AccessToken, map[string]any{
+		"entry_id":         "notes/conflict",
+		"title":            "Conflict",
+		"content_markdown": "v1",
+		"client_event_id":  "knowledge-conflict-router-create-1",
+	}, http.StatusCreated, &created)
+	if created.Version != 1 {
+		t.Fatalf("unexpected created version: %+v", created)
+	}
+	createEvents := env.getSyncEvents(t, aliceB.AccessToken, 100)
+	if len(createEvents) != 1 || createEvents[0].EventType != "knowledge.created" {
+		t.Fatalf("expected initial knowledge.created event, got %+v", createEvents)
+	}
+	env.ackSyncEvents(t, aliceB.AccessToken, createEvents[0].Sequence)
+
+	conflict := env.doRawJSON(t, http.MethodPut, "/api/v1/knowledge/entries/notes/conflict", aliceA.AccessToken, map[string]any{
+		"title":            "Conflict stale",
+		"content_markdown": "stale",
+		"client_event_id":  "knowledge-conflict-router-update-stale",
+		"base_version":     0,
+	}, http.StatusConflict)
+	if conflict.Message == "" {
+		t.Fatalf("expected conflict message, got %+v", conflict)
+	}
+	if events := env.getSyncEvents(t, aliceB.AccessToken, 100); len(events) != 0 {
+		t.Fatalf("expected stale update to create no sync event, got %+v", events)
+	}
+
+	conflict = env.doRawJSON(t, http.MethodDelete, "/api/v1/knowledge/entries/notes/conflict", aliceA.AccessToken, map[string]any{
+		"client_event_id": "knowledge-conflict-router-delete-stale",
+		"base_version":    0,
+	}, http.StatusConflict)
+	if conflict.Message == "" {
+		t.Fatalf("expected delete conflict message, got %+v", conflict)
+	}
+	if events := env.getSyncEvents(t, aliceB.AccessToken, 100); len(events) != 0 {
+		t.Fatalf("expected stale delete to create no sync event, got %+v", events)
+	}
+
+	var current model.UserKnowledgeEntry
+	env.doJSON(t, http.MethodGet, "/api/v1/knowledge/entries/notes/conflict", aliceA.AccessToken, nil, http.StatusOK, &current)
+	if current.Status != "active" || current.Version != 1 || current.Title != "Conflict" {
+		t.Fatalf("expected stale writes to leave entry unchanged, got %+v", current)
+	}
+}
+
 func TestSyncEventsResponseIncludesStableEnvelopeFields(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	env := newPhase1RouterSmokeEnv(t)

@@ -401,9 +401,33 @@ Knowledge entry writes are domain-specific APIs:
 
 All mutating requests accept optional `client_event_id` for idempotency. `PUT` and `DELETE` also accept optional `base_version` for optimistic concurrency control.
 
+Example update request with version guard:
+
+```json
+{
+  "title": "Alpha v2",
+  "content_markdown": "# Alpha v2",
+  "summary": "second revision",
+  "tags": ["agentos"],
+  "metadata": {"category": "notes"},
+  "source_uri": "file://alpha.md",
+  "client_event_id": "knowledge-update-1",
+  "base_version": 1
+}
+```
+
+Example delete request with version guard:
+
+```json
+{
+  "client_event_id": "knowledge-delete-1",
+  "base_version": 2
+}
+```
+
 ### Object identity
 
-`entry_id` is the stable cross-device object identity. The sync event uses:
+`entry_id` is the stable cross-device object identity. Entry IDs may contain `/` (for example `notes/alpha`). HTTP clients must URL-encode path segments when needed; the server accepts slash-containing IDs through the knowledge routes. The sync event uses:
 
 - `object_type = knowledge`
 - `object_id = entry_id`
