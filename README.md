@@ -109,6 +109,13 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
   http://localhost:8080/api/v1/sync/ack
 ```
 
+也可以使用脚本做手动 smoke 验证：
+
+```bash
+TOKEN="<jwt>" ./scripts/smoke-sync.sh
+ACK_SEQUENCE=123 TOKEN="<jwt>" ./scripts/smoke-sync.sh
+```
+
 完整契约见 `docs/sync-contract.md`。
 
 #### WebSocket
