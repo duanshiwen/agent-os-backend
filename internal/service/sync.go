@@ -34,7 +34,49 @@ const (
 	SyncEventServer    = "server"
 	SyncEventPlugin    = "plugin"
 	SyncEventProfile   = "profile"
+
+	SyncActionCreated  = "created"
+	SyncActionUpdated  = "updated"
+	SyncActionDeleted  = "deleted"
+	SyncActionAdded    = "added"
+	SyncActionRemoved  = "removed"
+	SyncActionEnabled  = "enabled"
+	SyncActionDisabled = "disabled"
 )
+
+var supportedSyncActions = map[string]map[string]bool{
+	SyncEventMessage: {
+		SyncActionCreated: true,
+		SyncActionUpdated: true,
+		SyncActionDeleted: true,
+	},
+	SyncEventKnowledge: {
+		SyncActionCreated: true,
+		SyncActionUpdated: true,
+		SyncActionDeleted: true,
+	},
+	SyncEventSkill: {
+		SyncActionEnabled:  true,
+		SyncActionDisabled: true,
+		SyncActionUpdated:  true,
+	},
+	SyncEventAgent: {
+		SyncActionUpdated: true,
+	},
+	SyncEventServer: {
+		SyncActionAdded:   true,
+		SyncActionUpdated: true,
+		SyncActionRemoved: true,
+	},
+	SyncEventPlugin: {
+		SyncActionAdded:   true,
+		SyncActionUpdated: true,
+		SyncActionRemoved: true,
+	},
+	SyncEventProfile: {
+		SyncActionUpdated: true,
+	},
+}
 
 type SyncEventMsg struct {
 	EventType string `json:"event_type"`
@@ -44,6 +86,10 @@ type SyncEventMsg struct {
 }
 
 func (s *SyncService) RecordEvent(userID uuid.UUID, deviceID, eventType string, action string, payload datatypes.JSONMap) error {
+	if err := validateSyncEvent(eventType, action); err != nil {
+		return err
+	}
+
 	seq, err := s.syncRepo.GetNextSequence(userID)
 	if err != nil {
 		return fmt.Errorf("get next sequence: %w", err)
@@ -99,6 +145,17 @@ func (s *SyncService) notifyDevices(userID uuid.UUID, sourceDeviceID string, eve
 	env := map[string]any{"type": "sync.event", "payload": msg}
 	data, _ := json.Marshal(env)
 	s.hub.SendToUserExceptDevice(userID, sourceDeviceID, data)
+}
+
+func validateSyncEvent(eventType, action string) error {
+	allowedActions, ok := supportedSyncActions[eventType]
+	if !ok {
+		return fmt.Errorf("unsupported sync event type: %s", eventType)
+	}
+	if !allowedActions[action] {
+		return fmt.Errorf("unsupported sync action %s for event type %s", action, eventType)
+	}
+	return nil
 }
 
 func (s *SyncService) CleanupOldEvents(retentionDays int) (int64, error) {

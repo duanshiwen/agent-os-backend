@@ -29,10 +29,10 @@ func TestSyncServiceRecordEventAssignsMonotonicSequencesAndNotifiesOtherDevices(
 	svc, _ := newSyncTestService(t)
 	userID := uuid.New()
 
-	if err := svc.RecordEvent(userID, "device-a", SyncEventMessage, "created", datatypes.JSONMap{"n": 1}); err != nil {
+	if err := svc.RecordEvent(userID, "device-a", SyncEventMessage, SyncActionCreated, datatypes.JSONMap{"n": 1}); err != nil {
 		t.Fatalf("record event 1: %v", err)
 	}
-	if err := svc.RecordEvent(userID, "device-a", SyncEventProfile, "updated", datatypes.JSONMap{"n": 2}); err != nil {
+	if err := svc.RecordEvent(userID, "device-a", SyncEventProfile, SyncActionUpdated, datatypes.JSONMap{"n": 2}); err != nil {
 		t.Fatalf("record event 2: %v", err)
 	}
 
@@ -67,7 +67,7 @@ func TestSyncServiceAckAdvancesCursorAndFiltersEvents(t *testing.T) {
 	svc, _ := newSyncTestService(t)
 	userID := uuid.New()
 	for i := 0; i < 3; i++ {
-		if err := svc.RecordEvent(userID, "device-a", SyncEventMessage, "created", datatypes.JSONMap{"n": i}); err != nil {
+		if err := svc.RecordEvent(userID, "device-a", SyncEventMessage, SyncActionCreated, datatypes.JSONMap{"n": i}); err != nil {
 			t.Fatalf("record event %d: %v", i, err)
 		}
 	}
@@ -89,7 +89,7 @@ func TestSyncServiceGetEventsAfterUsesExplicitSequenceWithoutCursor(t *testing.T
 	svc, _ := newSyncTestService(t)
 	userID := uuid.New()
 	for i := 0; i < 3; i++ {
-		if err := svc.RecordEvent(userID, "device-a", SyncEventMessage, "created", datatypes.JSONMap{"n": i}); err != nil {
+		if err := svc.RecordEvent(userID, "device-a", SyncEventMessage, SyncActionCreated, datatypes.JSONMap{"n": i}); err != nil {
 			t.Fatalf("record event %d: %v", i, err)
 		}
 	}
@@ -119,10 +119,10 @@ func TestSyncServiceEventsAreIsolatedByUser(t *testing.T) {
 	userA := uuid.New()
 	userB := uuid.New()
 
-	if err := svc.RecordEvent(userA, "device-a", SyncEventMessage, "created", datatypes.JSONMap{"user": "a"}); err != nil {
+	if err := svc.RecordEvent(userA, "device-a", SyncEventMessage, SyncActionCreated, datatypes.JSONMap{"user": "a"}); err != nil {
 		t.Fatalf("record user A event: %v", err)
 	}
-	if err := svc.RecordEvent(userB, "device-b", SyncEventMessage, "created", datatypes.JSONMap{"user": "b"}); err != nil {
+	if err := svc.RecordEvent(userB, "device-b", SyncEventMessage, SyncActionCreated, datatypes.JSONMap{"user": "b"}); err != nil {
 		t.Fatalf("record user B event: %v", err)
 	}
 
@@ -139,7 +139,7 @@ func TestSyncServiceLimitDefaultsAndCaps(t *testing.T) {
 	svc, _ := newSyncTestService(t)
 	userID := uuid.New()
 	for i := 0; i < 3; i++ {
-		if err := svc.RecordEvent(userID, "device-a", SyncEventMessage, "created", datatypes.JSONMap{"n": i}); err != nil {
+		if err := svc.RecordEvent(userID, "device-a", SyncEventMessage, SyncActionCreated, datatypes.JSONMap{"n": i}); err != nil {
 			t.Fatalf("record event %d: %v", i, err)
 		}
 	}
@@ -150,6 +150,18 @@ func TestSyncServiceLimitDefaultsAndCaps(t *testing.T) {
 	}
 	if len(events) != 3 {
 		t.Fatalf("expected 3 events with default limit, got %d", len(events))
+	}
+}
+
+func TestSyncServiceRejectsUnsupportedEventTypesAndActions(t *testing.T) {
+	svc, _ := newSyncTestService(t)
+	userID := uuid.New()
+
+	if err := svc.RecordEvent(userID, "device-a", "unknown", SyncActionCreated, datatypes.JSONMap{}); err == nil {
+		t.Fatal("expected unsupported event type to be rejected")
+	}
+	if err := svc.RecordEvent(userID, "device-a", SyncEventProfile, SyncActionDeleted, datatypes.JSONMap{}); err == nil {
+		t.Fatal("expected unsupported profile action to be rejected")
 	}
 }
 

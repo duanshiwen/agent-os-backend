@@ -80,7 +80,7 @@ func (s *MessageService) SendMessage(senderID uuid.UUID, req *SendMessageRequest
 				"sender_id":       senderID.String(),
 				"type":            msgType,
 			}
-			_ = s.syncSvc.RecordEvent(p.UserID, "", SyncEventMessage, "created", syncPayload)
+			_ = s.syncSvc.RecordEvent(p.UserID, "", SyncEventMessage, SyncActionCreated, syncPayload)
 		}
 	}
 
