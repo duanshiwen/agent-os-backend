@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -46,6 +47,18 @@ func TestPhase1RouterSmokeAuthConversationSyncAndQRPairing(t *testing.T) {
 	bobEvents = env.getSyncEvents(t, bob.AccessToken, 100)
 	if len(bobEvents) != 0 {
 		t.Fatalf("expected no bob sync events after ack, got %+v", bobEvents)
+	}
+
+	aliceProfile := env.updateProfile(t, alice.AccessToken, "Alice Router Smoke")
+	if aliceProfile.ID != alice.User.ID || aliceProfile.DisplayName != "Alice Router Smoke" {
+		t.Fatalf("unexpected updated profile: %+v", aliceProfile)
+	}
+	aliceEvents := env.getSyncEventsAfter(t, alice.AccessToken, 1, 100)
+	if len(aliceEvents) != 1 || aliceEvents[0].EventType != "profile.updated" || aliceEvents[0].ObjectType != service.SyncEventProfile || aliceEvents[0].ObjectID != alice.User.ID.String() || aliceEvents[0].Operation != service.SyncActionUpdated {
+		t.Fatalf("expected alice profile.updated sync event, got %+v", aliceEvents)
+	}
+	if aliceEvents[0].Payload["display_name"] != "Alice Router Smoke" {
+		t.Fatalf("unexpected profile sync payload: %+v", aliceEvents[0].Payload)
 	}
 
 	start := env.startPairing(t, alice.AccessToken)
@@ -146,10 +159,24 @@ func (e *phase1RouterSmokeEnv) createPrivateConversation(t *testing.T, token str
 	return conv
 }
 
+func (e *phase1RouterSmokeEnv) updateProfile(t *testing.T, token string, displayName string) model.User {
+	t.Helper()
+	var user model.User
+	e.doJSON(t, http.MethodPut, "/api/v1/users/me", token, map[string]any{"display_name": displayName}, http.StatusOK, &user)
+	return user
+}
+
 func (e *phase1RouterSmokeEnv) getSyncEvents(t *testing.T, token string, limit int) []model.SyncEvent {
 	t.Helper()
 	var events []model.SyncEvent
 	e.doJSON(t, http.MethodGet, "/api/v1/sync/events?limit=100", token, nil, http.StatusOK, &events)
+	return events
+}
+
+func (e *phase1RouterSmokeEnv) getSyncEventsAfter(t *testing.T, token string, afterSequence uint64, limit int) []model.SyncEvent {
+	t.Helper()
+	var events []model.SyncEvent
+	e.doJSON(t, http.MethodGet, fmt.Sprintf("/api/v1/sync/events?after_sequence=%d&limit=%d", afterSequence, limit), token, nil, http.StatusOK, &events)
 	return events
 }
 
