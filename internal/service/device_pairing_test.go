@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -209,6 +210,70 @@ func TestDevicePairingServiceClaimPairingRejectsDuplicateDeviceID(t *testing.T) 
 	_, err = svc.ClaimPairing(&ClaimPairingRequest{QRPayload: start.QRPayload, NewDeviceID: "old-device-1", NewDevicePubKey: "new-pubkey", Signature: "valid-signature"})
 	if err == nil || !strings.Contains(err.Error(), "device id already exists") {
 		t.Fatalf("expected duplicate device error, got %v", err)
+	}
+}
+
+func TestDevicePairingServiceClaimPairingAllowsOnlyOneConcurrentClaim(t *testing.T) {
+	svc, pairingRepo, user := newDevicePairingTestService(t)
+	start, err := svc.StartPairing(user.ID, "old-device-1")
+	if err != nil {
+		t.Fatalf("start pairing: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	results := make(chan error, 2)
+	for _, deviceID := range []string{"new-device-1", "new-device-2"} {
+		deviceID := deviceID
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := svc.ClaimPairing(&ClaimPairingRequest{
+				QRPayload:       start.QRPayload,
+				NewDeviceID:     deviceID,
+				NewDevicePubKey: deviceID + "-pubkey",
+				Signature:       "valid-signature",
+			})
+			results <- err
+		}()
+	}
+	wg.Wait()
+	close(results)
+
+	successes := 0
+	failures := 0
+	for err := range results {
+		if err == nil {
+			successes++
+			continue
+		}
+		failures++
+		if !strings.Contains(err.Error(), "pairing session already used") && !strings.Contains(err.Error(), "database table is locked") {
+			t.Fatalf("expected already-used or sqlite lock error for losing concurrent claim, got %v", err)
+		}
+	}
+	if successes != 1 || failures != 1 {
+		t.Fatalf("expected exactly one success and one failure, got successes=%d failures=%d", successes, failures)
+	}
+
+	session, err := pairingRepo.GetPairingSession(start.PairingSessionID)
+	if err != nil {
+		t.Fatalf("load session: %v", err)
+	}
+	if session.UsedAt == nil || session.ClaimedByDeviceID == "" {
+		t.Fatalf("expected used session with claimed device id, got %+v", session)
+	}
+	devices, err := svc.userRepo.GetUserDevices(user.ID)
+	if err != nil {
+		t.Fatalf("load user devices: %v", err)
+	}
+	newDevices := 0
+	for _, d := range devices {
+		if strings.HasPrefix(d.DeviceID, "new-device-") {
+			newDevices++
+		}
+	}
+	if newDevices != 1 {
+		t.Fatalf("expected exactly one newly paired device, got %d devices=%+v", newDevices, devices)
 	}
 }
 

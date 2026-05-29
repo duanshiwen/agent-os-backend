@@ -34,7 +34,7 @@ type User struct {
 type Device struct {
 	Base
 	UserID       uuid.UUID  `gorm:"type:uuid;index;not null" json:"user_id"`
-	DeviceID     string     `gorm:"index;not null" json:"device_id"`
+	DeviceID     string     `gorm:"uniqueIndex;not null" json:"device_id"`
 	DeviceName   string     `json:"device_name"`
 	DevicePubKey string     `json:"device_pubkey"`
 	PairedAt     time.Time  `json:"paired_at"`
@@ -45,7 +45,7 @@ type DevicePairingSession struct {
 	Base
 	UserID            uuid.UUID  `gorm:"type:uuid;index;not null" json:"user_id"`
 	PairingTokenHash  string     `gorm:"not null" json:"-"`
-	QRPayloadHash     string     `gorm:"not null" json:"-"`
+	QRPayloadHash     string     `gorm:"uniqueIndex;not null" json:"-"`
 	ExpiresAt         time.Time  `gorm:"index;not null" json:"expires_at"`
 	UsedAt            *time.Time `json:"used_at"`
 	CreatedByDeviceID string     `gorm:"index;not null" json:"created_by_device_id"`
