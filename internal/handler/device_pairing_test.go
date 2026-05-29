@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -51,7 +52,7 @@ func TestDevicePairingHTTPStartAndClaim(t *testing.T) {
 		t.Fatalf("expected qr payload in start response: %+v", startResp)
 	}
 
-	claimBody := `{"qr_payload":"` + startResp.Data.QRPayload + `","new_device_id":"new-device-http","new_device_name":"New HTTP Device","new_device_pubkey":"new-pubkey-http"}`
+	claimBody := `{"qr_payload":"` + startResp.Data.QRPayload + `","new_device_id":"new-device-http","new_device_name":"New HTTP Device","new_device_pubkey":"new-pubkey-http","signature":"valid-signature"}`
 	claimReq := httptest.NewRequest(http.MethodPost, "/api/v1/devices/pairing/claim", strings.NewReader(claimBody))
 	claimReq.Header.Set("Content-Type", "application/json")
 	claimW := httptest.NewRecorder()
@@ -96,7 +97,7 @@ func newDevicePairingHTTPTestRouter(t *testing.T) (*gin.Engine, *model.User, str
 		t.Fatalf("create old device: %v", err)
 	}
 
-	pairingSvc := service.NewDevicePairingService(pairingRepo, userRepo)
+	pairingSvc := service.NewDevicePairingService(pairingRepo, userRepo, &handlerStubVerifier{valid: true})
 	pairingH := NewDevicePairingHandler(pairingSvc)
 	r := gin.New()
 	v1 := r.Group("/api/v1")
@@ -112,6 +113,14 @@ func decodeJSONForTest(t *testing.T, body string, dest any) {
 	if err := json.Unmarshal([]byte(body), dest); err != nil {
 		t.Fatalf("decode json %s: %v", body, err)
 	}
+}
+
+type handlerStubVerifier struct {
+	valid bool
+}
+
+func (s *handlerStubVerifier) VerifyEd25519Challenge(_ context.Context, _, _, _ string) (bool, error) {
+	return s.valid, nil
 }
 
 var _ = response.OK

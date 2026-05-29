@@ -78,6 +78,7 @@ func TestDevicePairingServiceStartPairingRejectsDeviceFromAnotherUser(t *testing
 
 func TestDevicePairingServiceClaimPairingCreatesNewDevice(t *testing.T) {
 	svc, pairingRepo, user := newDevicePairingTestService(t)
+	verifier := svc.verifier.(*stubVerifier)
 	start, err := svc.StartPairing(user.ID, "old-device-1")
 	if err != nil {
 		t.Fatalf("start pairing: %v", err)
@@ -88,9 +89,19 @@ func TestDevicePairingServiceClaimPairingCreatesNewDevice(t *testing.T) {
 		NewDeviceID:     "new-device-1",
 		NewDeviceName:   "New Device",
 		NewDevicePubKey: "new-pubkey",
+		Signature:       "valid-signature",
 	})
 	if err != nil {
 		t.Fatalf("claim pairing: %v", err)
+	}
+	if verifier.calls != 1 {
+		t.Fatalf("expected verifier to be called once, got %d", verifier.calls)
+	}
+	if verifier.lastPublicKey != "new-pubkey" || verifier.lastSignature != "valid-signature" {
+		t.Fatalf("verifier called with wrong key/signature: key=%q sig=%q", verifier.lastPublicKey, verifier.lastSignature)
+	}
+	if !strings.Contains(verifier.lastChallenge, "new-device-1") || !strings.Contains(verifier.lastChallenge, "new-pubkey") {
+		t.Fatalf("canonical claim challenge should bind device id and pubkey, got %q", verifier.lastChallenge)
 	}
 	if device.UserID != user.ID || device.DeviceID != "new-device-1" || device.DevicePubKey != "new-pubkey" {
 		t.Fatalf("unexpected device: %+v", device)
@@ -102,6 +113,25 @@ func TestDevicePairingServiceClaimPairingCreatesNewDevice(t *testing.T) {
 	}
 	if session.UsedAt == nil || session.ClaimedByDeviceID != "new-device-1" {
 		t.Fatalf("expected session marked used by new device, got %+v", session)
+	}
+}
+
+func TestDevicePairingServiceClaimPairingRejectsInvalidNewDeviceSignature(t *testing.T) {
+	svc, _, user := newDevicePairingTestService(t)
+	svc.verifier.(*stubVerifier).valid = false
+	start, err := svc.StartPairing(user.ID, "old-device-1")
+	if err != nil {
+		t.Fatalf("start pairing: %v", err)
+	}
+
+	_, err = svc.ClaimPairing(&ClaimPairingRequest{
+		QRPayload:       start.QRPayload,
+		NewDeviceID:     "new-device-1",
+		NewDevicePubKey: "new-pubkey",
+		Signature:       "invalid-signature",
+	})
+	if err == nil || !strings.Contains(err.Error(), "new device signature verification failed") {
+		t.Fatalf("expected signature verification failure, got %v", err)
 	}
 }
 
@@ -120,7 +150,7 @@ func TestDevicePairingServiceClaimPairingRejectsExpiredPayload(t *testing.T) {
 		t.Fatalf("save expired session: %v", err)
 	}
 
-	_, err = svc.ClaimPairing(&ClaimPairingRequest{QRPayload: start.QRPayload, NewDeviceID: "new-device-1", NewDevicePubKey: "new-pubkey"})
+	_, err = svc.ClaimPairing(&ClaimPairingRequest{QRPayload: start.QRPayload, NewDeviceID: "new-device-1", NewDevicePubKey: "new-pubkey", Signature: "valid-signature"})
 	if err == nil || !strings.Contains(err.Error(), "pairing session expired") {
 		t.Fatalf("expected expired error, got %v", err)
 	}
@@ -132,11 +162,11 @@ func TestDevicePairingServiceClaimPairingRejectsUsedPayload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("start pairing: %v", err)
 	}
-	if _, err := svc.ClaimPairing(&ClaimPairingRequest{QRPayload: start.QRPayload, NewDeviceID: "new-device-1", NewDevicePubKey: "new-pubkey"}); err != nil {
+	if _, err := svc.ClaimPairing(&ClaimPairingRequest{QRPayload: start.QRPayload, NewDeviceID: "new-device-1", NewDevicePubKey: "new-pubkey", Signature: "valid-signature"}); err != nil {
 		t.Fatalf("first claim pairing: %v", err)
 	}
 
-	_, err = svc.ClaimPairing(&ClaimPairingRequest{QRPayload: start.QRPayload, NewDeviceID: "new-device-2", NewDevicePubKey: "new-pubkey-2"})
+	_, err = svc.ClaimPairing(&ClaimPairingRequest{QRPayload: start.QRPayload, NewDeviceID: "new-device-2", NewDevicePubKey: "new-pubkey-2", Signature: "valid-signature"})
 	if err == nil || !strings.Contains(err.Error(), "pairing session already used") {
 		t.Fatalf("expected used error, got %v", err)
 	}
@@ -163,7 +193,7 @@ func TestDevicePairingServiceClaimPairingRejectsTamperedToken(t *testing.T) {
 		t.Fatalf("save tampered qr hash: %v", err)
 	}
 
-	_, err = svc.ClaimPairing(&ClaimPairingRequest{QRPayload: tamperedPayload, NewDeviceID: "new-device-1", NewDevicePubKey: "new-pubkey"})
+	_, err = svc.ClaimPairing(&ClaimPairingRequest{QRPayload: tamperedPayload, NewDeviceID: "new-device-1", NewDevicePubKey: "new-pubkey", Signature: "valid-signature"})
 	if err == nil || !strings.Contains(err.Error(), "invalid pairing token") {
 		t.Fatalf("expected invalid token error, got %v", err)
 	}
@@ -176,7 +206,7 @@ func TestDevicePairingServiceClaimPairingRejectsDuplicateDeviceID(t *testing.T) 
 		t.Fatalf("start pairing: %v", err)
 	}
 
-	_, err = svc.ClaimPairing(&ClaimPairingRequest{QRPayload: start.QRPayload, NewDeviceID: "old-device-1", NewDevicePubKey: "new-pubkey"})
+	_, err = svc.ClaimPairing(&ClaimPairingRequest{QRPayload: start.QRPayload, NewDeviceID: "old-device-1", NewDevicePubKey: "new-pubkey", Signature: "valid-signature"})
 	if err == nil || !strings.Contains(err.Error(), "device id already exists") {
 		t.Fatalf("expected duplicate device error, got %v", err)
 	}
@@ -201,7 +231,7 @@ func newDevicePairingTestService(t *testing.T) (*DevicePairingService, *reposito
 	if err := userRepo.CreateDevice(device); err != nil {
 		t.Fatalf("create device: %v", err)
 	}
-	return NewDevicePairingService(pairingRepo, userRepo), pairingRepo, user
+	return NewDevicePairingService(pairingRepo, userRepo, &stubVerifier{valid: true}), pairingRepo, user
 }
 
 func decodeQRPayloadForTest(t *testing.T, encoded string) DevicePairingQRPayload {

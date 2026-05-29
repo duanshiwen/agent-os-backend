@@ -50,7 +50,7 @@ go run ./cmd/server
 |------|------|------|
 | POST | `/api/v1/auth/challenge` | 发起 Ed25519 挑战 |
 | POST | `/api/v1/auth/verify` | 验证签名，获取 JWT |
-| POST | `/api/v1/auth/register` | 注册新用户 |
+| POST | `/api/v1/auth/register` | **Gone**：直接注册已禁用；新用户必须通过 `/auth/challenge` + `/auth/verify` 并经过准入策略 |
 
 #### 用户
 
@@ -59,8 +59,8 @@ go run ./cmd/server
 | GET | `/api/v1/users/me` | 获取当前用户信息 |
 | PUT | `/api/v1/users/me` | 更新用户信息 |
 | POST | `/api/v1/devices/pairing/start` | 已登录旧设备发起 QR 配对会话 |
-| POST | `/api/v1/devices/pairing/claim` | 新设备扫码后提交 QR payload 完成配对 |
-| POST | `/api/v1/users/me/devices` | **Deprecated**：旧的直接配对入口，后续应使用 QR-only 配对流程 |
+| POST | `/api/v1/devices/pairing/claim` | 新设备扫码后提交 QR payload、设备公钥和签名完成配对 |
+| POST | `/api/v1/users/me/devices` | **Gone**：直接配对已禁用；必须使用 QR-only 配对流程 |
 | GET | `/api/v1/users/me/devices` | 获取设备列表 |
 
 #### 即时通讯

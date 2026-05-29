@@ -23,7 +23,7 @@ func (b *Base) BeforeCreate(tx *gorm.DB) error {
 
 type User struct {
 	Base
-	PubKeyEd25519 string `gorm:"uniqueIndex;not null" json:"pubkey_ed25519"`
+	PubKeyEd25519 string `gorm:"column:pubkey_ed25519;uniqueIndex;not null" json:"pubkey_ed25519"`
 	PasswordHash  string `json:"-"`
 	DisplayName   string `json:"display_name"`
 	AvatarURL     string `json:"avatar_url"`
@@ -63,7 +63,7 @@ type AuthChallenge struct {
 }
 type AdmissionRequest struct {
 	Base
-	UserPubKey string `gorm:"index;not null" json:"user_pubkey"`
+	UserPubKey string `gorm:"column:user_pubkey;index;not null" json:"user_pubkey"`
 	DeviceID   string `json:"device_id"`
 	Status     string `gorm:"default:pending" json:"status"`
 	Reason     string `json:"reason"`
