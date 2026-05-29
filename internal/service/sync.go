@@ -71,10 +71,17 @@ func (s *SyncService) GetEvents(userID uuid.UUID, deviceID string, limit int) ([
 	if err != nil {
 		return nil, fmt.Errorf("get cursor: %w", err)
 	}
+	return s.GetEventsAfter(userID, cursor.LastSyncedSequence, limit)
+}
+
+// GetEventsAfter returns sync events after an explicit sequence without reading
+// or mutating the device cursor. This supports deterministic client catch-up and
+// easier sync debugging while keeping AckEvents as the durable cursor mechanism.
+func (s *SyncService) GetEventsAfter(userID uuid.UUID, afterSequence uint64, limit int) ([]model.SyncEvent, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
-	return s.syncRepo.GetEventsSince(userID, deviceID, cursor.LastSyncedSequence, limit)
+	return s.syncRepo.GetEventsSince(userID, "", afterSequence, limit)
 }
 
 func (s *SyncService) AckEvents(userID uuid.UUID, deviceID string, lastSequence uint64) error {

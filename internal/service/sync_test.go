@@ -85,6 +85,35 @@ func TestSyncServiceAckAdvancesCursorAndFiltersEvents(t *testing.T) {
 	}
 }
 
+func TestSyncServiceGetEventsAfterUsesExplicitSequenceWithoutCursor(t *testing.T) {
+	svc, _ := newSyncTestService(t)
+	userID := uuid.New()
+	for i := 0; i < 3; i++ {
+		if err := svc.RecordEvent(userID, "device-a", SyncEventMessage, "created", datatypes.JSONMap{"n": i}); err != nil {
+			t.Fatalf("record event %d: %v", i, err)
+		}
+	}
+	if err := svc.AckEvents(userID, "device-b", 2); err != nil {
+		t.Fatalf("ack events: %v", err)
+	}
+
+	events, err := svc.GetEventsAfter(userID, 1, 100)
+	if err != nil {
+		t.Fatalf("get events after explicit sequence: %v", err)
+	}
+	if len(events) != 2 || events[0].Sequence != 2 || events[1].Sequence != 3 {
+		t.Fatalf("expected sequences 2 and 3 from explicit after_sequence, got %+v", events)
+	}
+
+	cursorEvents, err := svc.GetEvents(userID, "device-b", 100)
+	if err != nil {
+		t.Fatalf("get cursor events: %v", err)
+	}
+	if len(cursorEvents) != 1 || cursorEvents[0].Sequence != 3 {
+		t.Fatalf("expected cursor to remain at acked sequence 2, got %+v", cursorEvents)
+	}
+}
+
 func TestSyncServiceEventsAreIsolatedByUser(t *testing.T) {
 	svc, _ := newSyncTestService(t)
 	userA := uuid.New()
