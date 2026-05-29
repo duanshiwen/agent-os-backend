@@ -31,9 +31,9 @@ func Setup(
 	r.Use(middleware.RateLimiter(10, 50))
 
 	// Services (using injected repos)
-	identitySvc := service.NewIdentityServiceWithVerifier(userRepo, cfg.JWT, signatureVerifier)
 	admissionRepo := repository.NewAdmissionRepo(db)
 	admissionSvc := service.NewAdmissionServiceWithRepo(userRepo, admissionRepo, cfg.Admission)
+	identitySvc := service.NewIdentityServiceWithAdmission(userRepo, cfg.JWT, signatureVerifier, admissionSvc)
 	convSvc := service.NewConversationService(convRepo, userRepo)
 
 	// Handlers

@@ -17,9 +17,10 @@ import (
 )
 
 type IdentityService struct {
-	userRepo *repository.UserRepo
-	jwtCfg   config.JWTConfig
-	verifier SignatureVerifier
+	userRepo     *repository.UserRepo
+	jwtCfg       config.JWTConfig
+	verifier     SignatureVerifier
+	admissionSvc *AdmissionService
 }
 
 func NewIdentityService(userRepo *repository.UserRepo, jwtCfg config.JWTConfig, verifier SignatureVerifier) *IdentityService {
@@ -28,6 +29,10 @@ func NewIdentityService(userRepo *repository.UserRepo, jwtCfg config.JWTConfig, 
 
 func NewIdentityServiceWithVerifier(userRepo *repository.UserRepo, jwtCfg config.JWTConfig, verifier SignatureVerifier) *IdentityService {
 	return NewIdentityService(userRepo, jwtCfg, verifier)
+}
+
+func NewIdentityServiceWithAdmission(userRepo *repository.UserRepo, jwtCfg config.JWTConfig, verifier SignatureVerifier, admissionSvc *AdmissionService) *IdentityService {
+	return &IdentityService{userRepo: userRepo, jwtCfg: jwtCfg, verifier: verifier, admissionSvc: admissionSvc}
 }
 
 // ChallengeResult is what the server sends back to the client.
@@ -69,18 +74,21 @@ func (s *IdentityService) InitiateChallenge(deviceID, userPubKey string) (*Chall
 
 // VerifyRequest is what the client sends after signing the challenge.
 type VerifyRequest struct {
-	DeviceID   string `json:"device_id" binding:"required"`
-	UserPubKey string `json:"user_pubkey" binding:"required"`
-	Nonce      string `json:"nonce" binding:"required"`
-	Signature  string `json:"signature" binding:"required"` // hex-encoded Ed25519 signature
+	DeviceID       string  `json:"device_id" binding:"required"`
+	UserPubKey     string  `json:"user_pubkey" binding:"required"`
+	Nonce          string  `json:"nonce" binding:"required"`
+	Signature      string  `json:"signature" binding:"required"` // hex-encoded Ed25519 signature
+	InvitationCode *string `json:"invitation_code,omitempty"`
 }
 
 // AuthResponse is returned after successful verification.
 type AuthResponse struct {
-	AccessToken string        `json:"access_token"`
-	User        *model.User   `json:"user"`
-	Device      *model.Device `json:"device"`
-	IsNewUser   bool          `json:"is_new_user"`
+	AccessToken        string        `json:"access_token,omitempty"`
+	User               *model.User   `json:"user,omitempty"`
+	Device             *model.Device `json:"device,omitempty"`
+	IsNewUser          bool          `json:"is_new_user"`
+	AdmissionStatus    string        `json:"admission_status,omitempty"`
+	AdmissionRequestID *uuid.UUID    `json:"admission_request_id,omitempty"`
 }
 
 // VerifySignature validates the Ed25519 signature and issues a JWT.
@@ -108,10 +116,13 @@ func (s *IdentityService) VerifySignatureContext(ctx context.Context, req *Verif
 	// 4. Mark challenge as used
 	_ = s.userRepo.MarkChallengeUsed(ch.ID)
 
-	// 5. Find or create user
-	user, isNew, err := s.findOrCreateUser(req.UserPubKey)
+	// 5. Find or create user, gated by admission policy for first-time users.
+	user, isNew, err := s.findOrCreateUserWithAdmission(req.UserPubKey, req.InvitationCode)
 	if err != nil {
 		return nil, err
+	}
+	if user == nil {
+		return s.pendingAdmissionResponse(req.UserPubKey)
 	}
 
 	// 6. Register device if new
@@ -146,8 +157,33 @@ func (s *IdentityService) findOrCreateUser(pubKey string) (*model.User, bool, er
 		return user, false, nil
 	}
 
-	// Create new user
-	user = &model.User{
+	return s.createUser(pubKey)
+}
+
+func (s *IdentityService) findOrCreateUserWithAdmission(pubKey string, invitationCode *string) (*model.User, bool, error) {
+	user, err := s.userRepo.GetByPubKey(pubKey)
+	if err == nil {
+		return user, false, nil
+	}
+
+	if s.admissionSvc != nil {
+		allowed, reason, err := s.admissionSvc.CheckAdmission(pubKey, invitationCode)
+		if err != nil {
+			return nil, false, err
+		}
+		if !allowed {
+			if reason == "pending_approval" {
+				return nil, true, nil
+			}
+			return nil, false, fmt.Errorf("admission denied: %s", reason)
+		}
+	}
+
+	return s.createUser(pubKey)
+}
+
+func (s *IdentityService) createUser(pubKey string) (*model.User, bool, error) {
+	user := &model.User{
 		PubKeyEd25519: pubKey,
 		DisplayName:   "AgentOS User",
 		Status:        "active",
@@ -156,6 +192,19 @@ func (s *IdentityService) findOrCreateUser(pubKey string) (*model.User, bool, er
 		return nil, false, fmt.Errorf("create user: %w", err)
 	}
 	return user, true, nil
+}
+
+func (s *IdentityService) pendingAdmissionResponse(pubKey string) (*AuthResponse, error) {
+	res := &AuthResponse{AdmissionStatus: "pending_approval", IsNewUser: true}
+	if s.admissionSvc == nil {
+		return res, nil
+	}
+	req, err := s.admissionSvc.GetLatestRequestByPubKey(pubKey)
+	if err != nil {
+		return res, nil
+	}
+	res.AdmissionRequestID = &req.ID
+	return res, nil
 }
 
 func (s *IdentityService) findOrCreateDevice(deviceID string, userID uuid.UUID, pubKey string) (*model.Device, error) {
