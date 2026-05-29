@@ -133,6 +133,12 @@ type SyncCursor struct {
 	UpdatedAt          time.Time `json:"updated_at"`
 }
 
+type SyncSequence struct {
+	UserID       uuid.UUID `gorm:"type:uuid;primaryKey" json:"user_id"`
+	NextSequence uint64    `gorm:"not null;default:1" json:"next_sequence"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
 type KBCollection struct {
 	Base
 	OwnerID          uuid.UUID `gorm:"type:uuid;index" json:"owner_id"`
@@ -238,5 +244,5 @@ type ContributorEarning struct {
 }
 
 func AllModels() []any {
-	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBUsageRecord{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}}
+	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBUsageRecord{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}}
 }

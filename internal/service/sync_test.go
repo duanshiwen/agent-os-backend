@@ -25,6 +25,31 @@ func (h *captureHub) SendToUserExceptDevice(userID uuid.UUID, excludeDeviceID st
 	h.messages = append(h.messages, append([]byte(nil), message...))
 }
 
+func TestSyncRepoGetNextSequenceUsesDurableUserCursor(t *testing.T) {
+	_, repo := newSyncTestService(t)
+	userID := uuid.New()
+
+	seq1, err := repo.GetNextSequence(userID)
+	if err != nil {
+		t.Fatalf("get first sequence: %v", err)
+	}
+	seq2, err := repo.GetNextSequence(userID)
+	if err != nil {
+		t.Fatalf("get second sequence: %v", err)
+	}
+	if seq1 != 1 || seq2 != 2 {
+		t.Fatalf("expected durable cursor sequences 1,2 got %d,%d", seq1, seq2)
+	}
+
+	otherUserSeq, err := repo.GetNextSequence(uuid.New())
+	if err != nil {
+		t.Fatalf("get other user sequence: %v", err)
+	}
+	if otherUserSeq != 1 {
+		t.Fatalf("expected independent per-user sequence to start at 1, got %d", otherUserSeq)
+	}
+}
+
 func TestSyncServiceRecordEventAssignsMonotonicSequencesAndNotifiesOtherDevices(t *testing.T) {
 	svc, _ := newSyncTestService(t)
 	userID := uuid.New()
@@ -266,7 +291,7 @@ func newSyncTestService(t *testing.T) (*SyncService, *repository.SyncRepo) {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.SyncEvent{}, &model.SyncCursor{}); err != nil {
+	if err := db.AutoMigrate(&model.SyncEvent{}, &model.SyncCursor{}, &model.SyncSequence{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	repo := repository.NewSyncRepo(db)
