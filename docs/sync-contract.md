@@ -17,9 +17,14 @@ M2 covers the stable contract for:
 - client event idempotency;
 - conversation incremental sync;
 - profile sync;
+- skill settings sync;
+- agent settings sync;
+- server list sync;
 - compatibility and error semantics.
 
-M2 does not implement KB Hub, Plugin Marketplace, Billing, multi-server federation, or a full merge engine.
+M2.1 currently has implemented and verified domain-specific write coverage for `profile`, `message`, `skill`, `agent`, and `server` object families.
+
+M2 does not implement KB Hub, Plugin Marketplace, Billing, multi-server federation, generic external sync writes, or a full merge engine.
 
 ## 2. Event Envelope
 

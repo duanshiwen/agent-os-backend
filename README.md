@@ -143,6 +143,12 @@ TOKEN="<jwt>" ./scripts/smoke-sync.sh
 ACK_SEQUENCE=123 TOKEN="<jwt>" ./scripts/smoke-sync.sh
 ```
 
+M2.1 配置对象同步的本地 smoke 验证：
+
+```bash
+./scripts/smoke-sync-settings.sh
+```
+
 完整契约见 `docs/sync-contract.md`。
 
 #### WebSocket
