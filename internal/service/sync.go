@@ -85,6 +85,7 @@ type SyncEventMsg struct {
 	ObjectID       string `json:"object_id"`
 	Operation      string `json:"operation"`
 	SourceDeviceID string `json:"source_device_id"`
+	ClientEventID  string `json:"client_event_id"`
 	Sequence       uint64 `json:"sequence"`
 	Timestamp      int64  `json:"timestamp"`
 	Payload        any    `json:"payload,omitempty"`
@@ -96,6 +97,7 @@ type SyncEnvelope struct {
 	ObjectType     string
 	ObjectID       string
 	Operation      string
+	ClientEventID  string
 	Payload        datatypes.JSONMap
 }
 
@@ -120,6 +122,12 @@ func (s *SyncService) RecordEnvelope(envelope SyncEnvelope) error {
 	if err := validateSyncEvent(envelope.ObjectType, envelope.Operation); err != nil {
 		return err
 	}
+	if envelope.ClientEventID != "" {
+		existing, err := s.syncRepo.GetEventByClientEventID(envelope.UserID, envelope.ClientEventID)
+		if err == nil {
+			return s.validateIdempotentReplay(existing, envelope)
+		}
+	}
 
 	seq, err := s.syncRepo.GetNextSequence(envelope.UserID)
 	if err != nil {
@@ -135,6 +143,7 @@ func (s *SyncService) RecordEnvelope(envelope SyncEnvelope) error {
 		ObjectID:       envelope.ObjectID,
 		Operation:      envelope.Operation,
 		SourceDeviceID: envelope.SourceDeviceID,
+		ClientEventID:  envelope.ClientEventID,
 		Payload:        envelope.Payload,
 		Timestamp:      time.Now(),
 		Sequence:       seq,
@@ -178,6 +187,7 @@ func (s *SyncService) notifyDevices(userID uuid.UUID, sourceDeviceID string, eve
 		ObjectID:       event.ObjectID,
 		Operation:      event.Operation,
 		SourceDeviceID: event.SourceDeviceID,
+		ClientEventID:  event.ClientEventID,
 		Sequence:       event.Sequence,
 		Timestamp:      event.Timestamp.UnixMilli(),
 		Payload:        event.Payload,
@@ -186,6 +196,13 @@ func (s *SyncService) notifyDevices(userID uuid.UUID, sourceDeviceID string, eve
 	env := map[string]any{"type": "sync.event", "payload": msg}
 	data, _ := json.Marshal(env)
 	s.hub.SendToUserExceptDevice(userID, sourceDeviceID, data)
+}
+
+func (s *SyncService) validateIdempotentReplay(existing *model.SyncEvent, envelope SyncEnvelope) error {
+	if existing.ObjectType != envelope.ObjectType || existing.ObjectID != envelope.ObjectID || existing.Operation != envelope.Operation || existing.SourceDeviceID != envelope.SourceDeviceID {
+		return fmt.Errorf("client_event_id already used for different sync event")
+	}
+	return nil
 }
 
 func validateSyncEvent(eventType, action string) error {

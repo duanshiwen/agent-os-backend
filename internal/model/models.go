@@ -121,6 +121,7 @@ type SyncEvent struct {
 	ObjectID       string            `gorm:"index;not null" json:"object_id"`
 	Operation      string            `gorm:"index;not null" json:"operation"`
 	SourceDeviceID string            `gorm:"index;not null" json:"source_device_id"`
+	ClientEventID  string            `gorm:"index;not null" json:"client_event_id"`
 	Payload        datatypes.JSONMap `gorm:"type:jsonb" json:"payload"`
 	Timestamp      time.Time         `gorm:"index" json:"timestamp"`
 	Sequence       uint64            `gorm:"index" json:"sequence"`

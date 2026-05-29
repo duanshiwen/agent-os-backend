@@ -98,6 +98,41 @@ func TestSyncServiceRecordEnvelopePersistsStableContractFields(t *testing.T) {
 	}
 }
 
+func TestSyncServiceRecordEnvelopeIsIdempotentByClientEventID(t *testing.T) {
+	svc, _ := newSyncTestService(t)
+	userID := uuid.New()
+	objectID := uuid.New().String()
+
+	envelope := SyncEnvelope{
+		UserID:         userID,
+		SourceDeviceID: "device-a",
+		ObjectType:     SyncEventProfile,
+		ObjectID:       objectID,
+		Operation:      SyncActionUpdated,
+		ClientEventID:  "client-event-1",
+		Payload:        datatypes.JSONMap{"display_name": "Alice"},
+	}
+	if err := svc.RecordEnvelope(envelope); err != nil {
+		t.Fatalf("record first envelope: %v", err)
+	}
+	if err := svc.RecordEnvelope(envelope); err != nil {
+		t.Fatalf("replay same envelope: %v", err)
+	}
+
+	events, err := svc.GetEventsAfter(userID, 0, 100)
+	if err != nil {
+		t.Fatalf("get events: %v", err)
+	}
+	if len(events) != 1 || events[0].ClientEventID != "client-event-1" {
+		t.Fatalf("expected exactly one idempotent event, got %+v", events)
+	}
+
+	envelope.ObjectID = uuid.New().String()
+	if err := svc.RecordEnvelope(envelope); err == nil {
+		t.Fatal("expected conflicting client_event_id replay to be rejected")
+	}
+}
+
 func TestSyncServiceAckAdvancesCursorAndFiltersEvents(t *testing.T) {
 	svc, _ := newSyncTestService(t)
 	userID := uuid.New()
