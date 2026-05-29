@@ -68,6 +68,36 @@ func TestPhase1RouterSmokeAuthConversationSyncAndQRPairing(t *testing.T) {
 	}
 }
 
+func TestSyncEventsResponseIncludesStableEnvelopeFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	env := newPhase1RouterSmokeEnv(t)
+
+	alice := env.verifyNewUser(t, "contract-device-1", "contract-pubkey")
+	env.updateProfile(t, alice.AccessToken, "Contract Alice")
+
+	res := env.doRawJSON(t, http.MethodGet, "/api/v1/sync/events?after_sequence=0&limit=100", alice.AccessToken, nil, http.StatusOK)
+	var events []map[string]any
+	if err := json.Unmarshal(res.Data, &events); err != nil {
+		t.Fatalf("decode raw sync events: %v data=%s", err, string(res.Data))
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected one sync event, got %+v", events)
+	}
+	event := events[0]
+	for _, field := range []string{"id", "user_id", "device_id", "event_type", "schema_version", "object_type", "object_id", "operation", "source_device_id", "client_event_id", "payload", "timestamp", "sequence", "created_at", "updated_at"} {
+		if _, ok := event[field]; !ok {
+			t.Fatalf("expected sync event JSON field %q in %+v", field, event)
+		}
+	}
+	if event["event_type"] != "profile.updated" || event["object_type"] != service.SyncEventProfile || event["operation"] != service.SyncActionUpdated || event["object_id"] != alice.User.ID.String() {
+		t.Fatalf("unexpected sync event contract values: %+v", event)
+	}
+	payload, ok := event["payload"].(map[string]any)
+	if !ok || payload["display_name"] != "Contract Alice" {
+		t.Fatalf("unexpected sync payload contract: %+v", event["payload"])
+	}
+}
+
 type phase1RouterSmokeVerifier struct{}
 
 func (v *phase1RouterSmokeVerifier) VerifyEd25519Challenge(_ context.Context, _, _, _ string) (bool, error) {
@@ -214,6 +244,16 @@ func (e *phase1RouterSmokeEnv) claimPairing(t *testing.T, qrPayload, newDeviceID
 
 func (e *phase1RouterSmokeEnv) doJSON(t *testing.T, method, path, token string, body any, expectedStatus int, out any) {
 	t.Helper()
+	res := e.doRawJSON(t, method, path, token, body, expectedStatus)
+	if out != nil {
+		if err := json.Unmarshal(res.Data, out); err != nil {
+			t.Fatalf("decode response data: %v data=%s", err, string(res.Data))
+		}
+	}
+}
+
+func (e *phase1RouterSmokeEnv) doRawJSON(t *testing.T, method, path, token string, body any, expectedStatus int) apiResponse {
+	t.Helper()
 	var payload []byte
 	var err error
 	if body != nil {
@@ -241,9 +281,5 @@ func (e *phase1RouterSmokeEnv) doJSON(t *testing.T, method, path, token string, 
 	if res.Code != 0 {
 		t.Fatalf("expected api code 0, got response %+v", res)
 	}
-	if out != nil {
-		if err := json.Unmarshal(res.Data, out); err != nil {
-			t.Fatalf("decode response data: %v data=%s", err, string(res.Data))
-		}
-	}
+	return res
 }
