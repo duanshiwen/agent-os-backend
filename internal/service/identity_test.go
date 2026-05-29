@@ -46,7 +46,7 @@ func newIdentityAdmissionTestService(t *testing.T, verifier SignatureVerifier) (
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.Device{}, &model.AuthChallenge{}, &model.AdmissionRequest{}, &model.ServerAdmission{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Device{}, &model.AuthChallenge{}, &model.AdmissionRequest{}, &model.ServerAdmission{}, &model.SyncEvent{}, &model.SyncCursor{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	repo := repository.NewUserRepo(db)
@@ -311,4 +311,38 @@ func mustUUIDForTest(t *testing.T) uuid.UUID {
 		t.Fatal(err)
 	}
 	return id
+}
+
+func TestIdentityServiceUpdateProfileRecordsProfileUpdatedSyncEvent(t *testing.T) {
+	svc, _, repo := newIdentityAdmissionTestService(t, &stubVerifier{valid: true})
+	syncSvc, _ := newSyncTestService(t)
+	svc.SetSyncService(syncSvc)
+	user := &model.User{PubKeyEd25519: "profile-sync-pubkey", DisplayName: "Old"}
+	if err := repo.Create(user); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	newName := "Alice"
+	updated, err := svc.UpdateProfile(user.ID, &newName, nil)
+	if err != nil {
+		t.Fatalf("update profile: %v", err)
+	}
+	if updated.DisplayName != newName {
+		t.Fatalf("expected updated display name, got %+v", updated)
+	}
+
+	events, err := syncSvc.GetEventsAfter(user.ID, 0, 100)
+	if err != nil {
+		t.Fatalf("get sync events: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected one sync event, got %+v", events)
+	}
+	event := events[0]
+	if event.EventType != "profile.updated" || event.ObjectType != SyncEventProfile || event.ObjectID != user.ID.String() || event.Operation != SyncActionUpdated {
+		t.Fatalf("unexpected profile sync event: %+v", event)
+	}
+	if event.Payload["display_name"] != newName {
+		t.Fatalf("unexpected profile sync payload: %+v", event.Payload)
+	}
 }
