@@ -63,20 +63,25 @@ func (s *MessageService) SendMessage(senderID uuid.UUID, req *SendMessageRequest
 		return nil, fmt.Errorf("create message: %w", err)
 	}
 
-	// Record sync event for cross-device sync
-	if s.syncSvc != nil {
-		syncPayload := datatypes.JSONMap{
-			"conversation_id": req.ConversationID.String(),
-			"message_id":      msg.ID.String(),
-			"type":            msgType,
-		}
-		_ = s.syncSvc.RecordEvent(senderID, "", SyncEventMessage, "created", syncPayload)
-	}
-
-	// Get all participants for delivery
+	// Get all participants for delivery and cross-device sync
 	participants, err := s.convRepo.GetParticipants(req.ConversationID)
 	if err != nil {
 		return nil, fmt.Errorf("get participants: %w", err)
+	}
+
+	// Record sync events for every participant so both recipient devices and the sender's
+	// other devices can converge through the sync cursor. Offline message delivery remains
+	// recipient-only and is handled separately by SaveOfflineMessages.
+	if s.syncSvc != nil {
+		for _, p := range participants {
+			syncPayload := datatypes.JSONMap{
+				"conversation_id": req.ConversationID.String(),
+				"message_id":      msg.ID.String(),
+				"sender_id":       senderID.String(),
+				"type":            msgType,
+			}
+			_ = s.syncSvc.RecordEvent(p.UserID, "", SyncEventMessage, "created", syncPayload)
+		}
 	}
 
 	return &MessageDelivery{
