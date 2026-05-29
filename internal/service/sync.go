@@ -67,18 +67,31 @@ func (s *SyncService) RecordEvent(userID uuid.UUID, deviceID, eventType string, 
 }
 
 func (s *SyncService) RecordEnvelope(envelope SyncEnvelope) (*model.SyncEvent, error) {
+	event, err := s.recordEnvelopeWithRepo(s.syncRepo, envelope)
+	if err != nil {
+		return nil, err
+	}
+	s.notifyDevices(envelope.UserID, envelope.SourceDeviceID, event)
+	return event, nil
+}
+
+func (s *SyncService) RecordEnvelopeWithRepo(syncRepo *repository.SyncRepo, envelope SyncEnvelope) (*model.SyncEvent, error) {
+	return s.recordEnvelopeWithRepo(syncRepo, envelope)
+}
+
+func (s *SyncService) recordEnvelopeWithRepo(syncRepo *repository.SyncRepo, envelope SyncEnvelope) (*model.SyncEvent, error) {
 	eventType, err := BuildSyncEventType(envelope.ObjectType, envelope.Operation)
 	if err != nil {
 		return nil, err
 	}
 	if envelope.ClientEventID != "" {
-		existing, err := s.syncRepo.GetEventByClientEventID(envelope.UserID, envelope.ClientEventID)
+		existing, err := syncRepo.GetEventByClientEventID(envelope.UserID, envelope.ClientEventID)
 		if err == nil {
 			return existing, s.validateIdempotentReplay(existing, envelope)
 		}
 	}
 
-	seq, err := s.syncRepo.GetNextSequence(envelope.UserID)
+	seq, err := syncRepo.GetNextSequence(envelope.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("get next sequence: %w", err)
 	}
@@ -98,11 +111,10 @@ func (s *SyncService) RecordEnvelope(envelope SyncEnvelope) (*model.SyncEvent, e
 		Sequence:       seq,
 	}
 
-	if err := s.syncRepo.CreateEvent(event); err != nil {
+	if err := syncRepo.CreateEvent(event); err != nil {
 		return nil, fmt.Errorf("create sync event: %w", err)
 	}
 
-	s.notifyDevices(envelope.UserID, envelope.SourceDeviceID, event)
 	return event, nil
 }
 

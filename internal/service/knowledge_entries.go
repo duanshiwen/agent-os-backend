@@ -82,17 +82,27 @@ func (s *KnowledgeEntriesService) CreateEntry(userID uuid.UUID, sourceDeviceID s
 		ContentHash:       knowledgeContentHash(input.ContentMarkdown),
 		UpdatedByDeviceID: sourceDeviceID,
 	}
-	if err := s.repo.Create(entry); err != nil {
-		return nil, nil, fmt.Errorf("create knowledge entry: %w", err)
-	}
-	persisted, err := s.repo.GetByEntryID(userID, entryID, true)
-	if err != nil {
-		return nil, nil, fmt.Errorf("get created knowledge entry: %w", err)
-	}
-	event, err := s.recordKnowledgeEvent(userID, sourceDeviceID, persisted, SyncOperationCreated, input.ClientEventID)
-	if err != nil {
+	var persisted *model.UserKnowledgeEntry
+	var event *model.SyncEvent
+	if err := s.repo.Transaction(func(tx *gorm.DB, txRepo *repository.KnowledgeEntriesRepo) error {
+		if err := txRepo.Create(entry); err != nil {
+			return fmt.Errorf("create knowledge entry: %w", err)
+		}
+		created, err := txRepo.GetByEntryID(userID, entryID, true)
+		if err != nil {
+			return fmt.Errorf("get created knowledge entry: %w", err)
+		}
+		persisted = created
+		recorded, err := s.recordKnowledgeEventWithRepo(s.syncSvc.syncRepo.WithTx(tx), userID, sourceDeviceID, persisted, SyncOperationCreated, input.ClientEventID)
+		if err != nil {
+			return err
+		}
+		event = recorded
+		return nil
+	}); err != nil {
 		return nil, nil, err
 	}
+	s.notifyKnowledgeEvent(userID, sourceDeviceID, event)
 	return persisted, event, nil
 }
 
@@ -133,17 +143,27 @@ func (s *KnowledgeEntriesService) UpdateEntry(userID uuid.UUID, sourceDeviceID, 
 		ContentHash:       knowledgeContentHash(input.ContentMarkdown),
 		UpdatedByDeviceID: sourceDeviceID,
 	}
-	if err := s.repo.UpdateActive(updated); err != nil {
-		return nil, nil, fmt.Errorf("update knowledge entry: %w", err)
-	}
-	persisted, err := s.repo.GetByEntryID(userID, entryID, true)
-	if err != nil {
+	var persisted *model.UserKnowledgeEntry
+	var event *model.SyncEvent
+	if err := s.repo.Transaction(func(tx *gorm.DB, txRepo *repository.KnowledgeEntriesRepo) error {
+		if err := txRepo.UpdateActive(updated); err != nil {
+			return fmt.Errorf("update knowledge entry: %w", err)
+		}
+		current, err := txRepo.GetByEntryID(userID, entryID, true)
+		if err != nil {
+			return err
+		}
+		persisted = current
+		recorded, err := s.recordKnowledgeEventWithRepo(s.syncSvc.syncRepo.WithTx(tx), userID, sourceDeviceID, persisted, SyncOperationUpdated, input.ClientEventID)
+		if err != nil {
+			return err
+		}
+		event = recorded
+		return nil
+	}); err != nil {
 		return nil, nil, err
 	}
-	event, err := s.recordKnowledgeEvent(userID, sourceDeviceID, persisted, SyncOperationUpdated, input.ClientEventID)
-	if err != nil {
-		return nil, nil, err
-	}
+	s.notifyKnowledgeEvent(userID, sourceDeviceID, event)
 	return persisted, event, nil
 }
 
@@ -166,29 +186,39 @@ func (s *KnowledgeEntriesService) DeleteEntry(userID uuid.UUID, sourceDeviceID, 
 		return nil, nil, ErrKnowledgeEntryDeleted
 	}
 	deletedAt := time.Now()
-	if err := s.repo.Tombstone(userID, entryID, sourceDeviceID, knowledgeContentHash(existing.ContentMarkdown), deletedAt); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil, ErrKnowledgeEntryNotFound
+	var persisted *model.UserKnowledgeEntry
+	var event *model.SyncEvent
+	if err := s.repo.Transaction(func(tx *gorm.DB, txRepo *repository.KnowledgeEntriesRepo) error {
+		if err := txRepo.Tombstone(userID, entryID, sourceDeviceID, knowledgeContentHash(existing.ContentMarkdown), deletedAt); err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrKnowledgeEntryNotFound
+			}
+			return err
 		}
+		current, err := txRepo.GetByEntryID(userID, entryID, true)
+		if err != nil {
+			return err
+		}
+		persisted = current
+		recorded, err := s.recordKnowledgeEventWithRepo(s.syncSvc.syncRepo.WithTx(tx), userID, sourceDeviceID, persisted, SyncOperationDeleted, clientEventID)
+		if err != nil {
+			return err
+		}
+		event = recorded
+		return nil
+	}); err != nil {
 		return nil, nil, err
 	}
-	persisted, err := s.repo.GetByEntryID(userID, entryID, true)
-	if err != nil {
-		return nil, nil, err
-	}
-	event, err := s.recordKnowledgeEvent(userID, sourceDeviceID, persisted, SyncOperationDeleted, clientEventID)
-	if err != nil {
-		return nil, nil, err
-	}
+	s.notifyKnowledgeEvent(userID, sourceDeviceID, event)
 	return persisted, event, nil
 }
 
-func (s *KnowledgeEntriesService) recordKnowledgeEvent(userID uuid.UUID, sourceDeviceID string, entry *model.UserKnowledgeEntry, operation, clientEventID string) (*model.SyncEvent, error) {
+func (s *KnowledgeEntriesService) recordKnowledgeEventWithRepo(syncRepo *repository.SyncRepo, userID uuid.UUID, sourceDeviceID string, entry *model.UserKnowledgeEntry, operation, clientEventID string) (*model.SyncEvent, error) {
 	if s.syncSvc == nil {
 		return nil, nil
 	}
 	payload := knowledgeEntryPayload(entry)
-	return s.syncSvc.RecordEnvelope(SyncEnvelope{
+	return s.syncSvc.RecordEnvelopeWithRepo(syncRepo, SyncEnvelope{
 		UserID:         userID,
 		SourceDeviceID: sourceDeviceID,
 		ObjectType:     SyncObjectKnowledge,
@@ -197,6 +227,13 @@ func (s *KnowledgeEntriesService) recordKnowledgeEvent(userID uuid.UUID, sourceD
 		ClientEventID:  clientEventID,
 		Payload:        payload,
 	})
+}
+
+func (s *KnowledgeEntriesService) notifyKnowledgeEvent(userID uuid.UUID, sourceDeviceID string, event *model.SyncEvent) {
+	if s.syncSvc == nil || event == nil {
+		return
+	}
+	s.syncSvc.notifyDevices(userID, sourceDeviceID, event)
 }
 
 func (s *KnowledgeEntriesService) idempotentKnowledgeReplay(userID uuid.UUID, sourceDeviceID, entryID, operation, clientEventID string) (*model.SyncEvent, *model.UserKnowledgeEntry, error) {

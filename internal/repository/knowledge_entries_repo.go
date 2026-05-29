@@ -22,6 +22,12 @@ func NewKnowledgeEntriesRepo(db *gorm.DB) *KnowledgeEntriesRepo {
 	return &KnowledgeEntriesRepo{db: db}
 }
 
+func (r *KnowledgeEntriesRepo) Transaction(fn func(tx *gorm.DB, repo *KnowledgeEntriesRepo) error) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		return fn(tx, &KnowledgeEntriesRepo{db: tx})
+	})
+}
+
 func (r *KnowledgeEntriesRepo) ListByUser(userID uuid.UUID, includeDeleted bool) ([]model.UserKnowledgeEntry, error) {
 	var entries []model.UserKnowledgeEntry
 	q := r.db.Where("user_id = ?", userID)
