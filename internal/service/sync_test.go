@@ -184,6 +184,31 @@ func TestSyncServiceGetEventsAfterUsesExplicitSequenceWithoutCursor(t *testing.T
 	}
 }
 
+func TestSyncServiceAckDoesNotMoveCursorBackwards(t *testing.T) {
+	svc, _ := newSyncTestService(t)
+	userID := uuid.New()
+	for i := 0; i < 5; i++ {
+		if err := svc.RecordEvent(userID, "device-a", SyncEventMessage, SyncActionCreated, datatypes.JSONMap{"n": i}); err != nil {
+			t.Fatalf("record event %d: %v", i, err)
+		}
+	}
+
+	if err := svc.AckEvents(userID, "device-b", 4); err != nil {
+		t.Fatalf("ack sequence 4: %v", err)
+	}
+	if err := svc.AckEvents(userID, "device-b", 2); err != nil {
+		t.Fatalf("ack older sequence 2: %v", err)
+	}
+
+	events, err := svc.GetEvents(userID, "device-b", 100)
+	if err != nil {
+		t.Fatalf("get events: %v", err)
+	}
+	if len(events) != 1 || events[0].Sequence != 5 {
+		t.Fatalf("expected cursor to remain at 4 and return only sequence 5, got %+v", events)
+	}
+}
+
 func TestSyncServiceEventsAreIsolatedByUser(t *testing.T) {
 	svc, _ := newSyncTestService(t)
 	userA := uuid.New()

@@ -89,12 +89,15 @@ func (r *SyncRepo) GetCursor(userID uuid.UUID, deviceID string) (*model.SyncCurs
 }
 
 func (r *SyncRepo) UpdateCursor(userID uuid.UUID, deviceID string, sequence uint64) error {
-	cursor := &model.SyncCursor{
-		UserID:             userID,
-		DeviceID:           deviceID,
-		LastSyncedSequence: sequence,
-		UpdatedAt:          time.Now(),
+	cursor, err := r.GetCursor(userID, deviceID)
+	if err != nil {
+		return err
 	}
+	if sequence < cursor.LastSyncedSequence {
+		sequence = cursor.LastSyncedSequence
+	}
+	cursor.LastSyncedSequence = sequence
+	cursor.UpdatedAt = time.Now()
 	return r.db.Save(cursor).Error
 }
 
