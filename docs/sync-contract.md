@@ -261,7 +261,42 @@ Minimum payload:
 
 The source device is recorded in `source_device_id`; other devices can pull the event through `/sync/events` and receive real-time `sync.event` notification when connected.
 
-## 12. Error Semantics
+## 12. Agent Settings Sync
+
+Agent settings use a baseline + incremental model.
+
+### Baseline
+
+Clients load the current user's agent settings through:
+
+- `GET /api/v1/agents/settings`
+
+### Incremental changes
+
+Agent setting writes emit:
+
+| Endpoint | Event |
+|---|---|
+| `PUT /api/v1/agents/settings/:agent_id` | `agent.updated` |
+
+Mutating requests accept optional `client_event_id` for idempotency.
+
+Minimum payload:
+
+```json
+{
+  "object_id": "agent id",
+  "agent_id": "agent id",
+  "display_name": "Assistant",
+  "config": {},
+  "updated_by_device_id": "device-a",
+  "updated_at": "..."
+}
+```
+
+The source device is recorded in `source_device_id`; other devices can pull the event through `/sync/events` and receive real-time `sync.event` notification when connected.
+
+## 13. Error Semantics
 
 | Condition | HTTP status / behavior |
 |---|---:|
@@ -274,7 +309,7 @@ The source device is recorded in `source_device_id`; other devices can pull the 
 | authenticated but not allowed | 403 |
 | database / internal failure | 500 |
 
-## 13. Compatibility Rules
+## 14. Compatibility Rules
 
 - `schema_version` must increase for breaking payload changes.
 - Existing fields should remain additive whenever possible.

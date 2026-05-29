@@ -40,6 +40,8 @@ func Setup(
 	pairingSvc := service.NewDevicePairingService(pairingRepo, userRepo, signatureVerifier)
 	skillSettingsRepo := repository.NewSkillSettingsRepo(db)
 	skillSettingsSvc := service.NewSkillSettingsService(skillSettingsRepo, syncSvc)
+	agentSettingsRepo := repository.NewAgentSettingsRepo(db)
+	agentSettingsSvc := service.NewAgentSettingsService(agentSettingsRepo, syncSvc)
 
 	// Handlers
 	identityH := handler.NewIdentityHandler(identitySvc)
@@ -48,6 +50,7 @@ func Setup(
 	syncH := handler.NewSyncHandler(syncSvc)
 	pairingH := handler.NewDevicePairingHandler(pairingSvc)
 	skillSettingsH := handler.NewSkillSettingsHandler(skillSettingsSvc)
+	agentSettingsH := handler.NewAgentSettingsHandler(agentSettingsSvc)
 
 	// WebSocket dispatcher
 	dispatcher := ws.NewDispatcher(hub, msgSvc, convSvc, convRepo)
@@ -122,6 +125,9 @@ func Setup(
 			protected.PUT("/skills/settings/:skill_id", skillSettingsH.Update)
 			protected.POST("/skills/settings/:skill_id/enable", skillSettingsH.Enable)
 			protected.POST("/skills/settings/:skill_id/disable", skillSettingsH.Disable)
+
+			protected.GET("/agents/settings", agentSettingsH.List)
+			protected.PUT("/agents/settings/:agent_id", agentSettingsH.Update)
 		}
 
 		// Admin routes

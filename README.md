@@ -83,7 +83,14 @@ go run ./cmd/server
 | POST | `/api/v1/skills/settings/:skill_id/enable` | 启用 Skill，并产生 `skill.enabled` 同步事件 |
 | POST | `/api/v1/skills/settings/:skill_id/disable` | 禁用 Skill，并产生 `skill.disabled` 同步事件 |
 
-变更接口支持可选 `client_event_id`，用于同步写入幂等。
+#### Agent 设置
+
+| 方法 | 路径 | 描述 |
+|------|------|------|
+| GET | `/api/v1/agents/settings` | 获取当前用户的 Agent 设置 |
+| PUT | `/api/v1/agents/settings/:agent_id` | 更新 Agent 设置，并产生 `agent.updated` 同步事件 |
+
+Skill / Agent 变更接口支持可选 `client_event_id`，用于同步写入幂等。
 
 #### 跨设备同步
 
