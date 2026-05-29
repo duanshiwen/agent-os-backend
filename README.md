@@ -74,6 +74,17 @@ go run ./cmd/server
 | POST | `/api/v1/conversations/:id/participants` | 添加参与者 |
 | DELETE | `/api/v1/conversations/:id/participants/me` | 退出会话 |
 
+#### Skill 设置
+
+| 方法 | 路径 | 描述 |
+|------|------|------|
+| GET | `/api/v1/skills/settings` | 获取当前用户的 Skill 设置 |
+| PUT | `/api/v1/skills/settings/:skill_id` | 更新 Skill 配置，并产生 `skill.updated` 同步事件 |
+| POST | `/api/v1/skills/settings/:skill_id/enable` | 启用 Skill，并产生 `skill.enabled` 同步事件 |
+| POST | `/api/v1/skills/settings/:skill_id/disable` | 禁用 Skill，并产生 `skill.disabled` 同步事件 |
+
+变更接口支持可选 `client_event_id`，用于同步写入幂等。
+
 #### 跨设备同步
 
 | 方法 | 路径 | 描述 |

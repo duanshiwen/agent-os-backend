@@ -68,6 +68,30 @@ func TestPhase1RouterSmokeAuthConversationSyncAndQRPairing(t *testing.T) {
 	}
 }
 
+func TestSkillSettingsEnableEmitsPullableSyncEvent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	env := newPhase1RouterSmokeEnv(t)
+
+	aliceA := env.verifyNewUser(t, "skill-device-a", "skill-pubkey")
+	start := env.startPairing(t, aliceA.AccessToken)
+	env.claimPairing(t, start.QRPayload, "skill-device-b", "skill-device-b-pubkey")
+	aliceB := env.verifyExistingUser(t, "skill-device-b", "skill-pubkey")
+
+	var setting model.UserSkillSetting
+	env.doJSON(t, http.MethodPost, "/api/v1/skills/settings/superpowers/enable", aliceA.AccessToken, map[string]any{"client_event_id": "skill-router-enable-1"}, http.StatusOK, &setting)
+	if !setting.Enabled || setting.SkillID != "superpowers" || setting.UpdatedByDeviceID != "skill-device-a" {
+		t.Fatalf("unexpected skill setting response: %+v", setting)
+	}
+
+	events := env.getSyncEvents(t, aliceB.AccessToken, 100)
+	if len(events) != 1 || events[0].EventType != "skill.enabled" || events[0].ObjectType != service.SyncObjectSkill || events[0].ObjectID != "superpowers" || events[0].Operation != service.SyncOperationEnabled || events[0].SourceDeviceID != "skill-device-a" || events[0].ClientEventID != "skill-router-enable-1" {
+		t.Fatalf("expected device B to pull skill.enabled event, got %+v", events)
+	}
+	if events[0].Payload["skill_id"] != "superpowers" || events[0].Payload["enabled"] != true {
+		t.Fatalf("unexpected skill sync payload: %+v", events[0].Payload)
+	}
+}
+
 func TestSyncEventsResponseIncludesStableEnvelopeFields(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	env := newPhase1RouterSmokeEnv(t)
@@ -192,7 +216,7 @@ func newPhase1RouterSmokeEnv(t *testing.T) *phase1RouterSmokeEnv {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.Device{}, &model.AuthChallenge{}, &model.AdmissionRequest{}, &model.ServerAdmission{}, &model.DevicePairingSession{}, &model.Conversation{}, &model.ConversationParticipant{}, &model.Message{}, &model.OfflineMessage{}, &model.SyncEvent{}, &model.SyncCursor{}, &model.SyncSequence{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Device{}, &model.AuthChallenge{}, &model.AdmissionRequest{}, &model.ServerAdmission{}, &model.DevicePairingSession{}, &model.Conversation{}, &model.ConversationParticipant{}, &model.Message{}, &model.OfflineMessage{}, &model.SyncEvent{}, &model.SyncCursor{}, &model.SyncSequence{}, &model.UserSkillSetting{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
@@ -236,6 +260,31 @@ func (e *phase1RouterSmokeEnv) verifyNewUser(t *testing.T, deviceID, pubKey stri
 	}, http.StatusOK, &auth)
 	if auth.AccessToken == "" || auth.User.ID == uuid.Nil || auth.Device.DeviceID != deviceID || !auth.IsNewUser {
 		t.Fatalf("unexpected auth result: %+v", auth)
+	}
+	return auth
+}
+
+func (e *phase1RouterSmokeEnv) verifyExistingUser(t *testing.T, deviceID, pubKey string) authResult {
+	t.Helper()
+	var challenge struct {
+		Challenge string `json:"challenge"`
+		Nonce     string `json:"nonce"`
+		ExpiresAt int64  `json:"expires_at"`
+	}
+	e.doJSON(t, http.MethodPost, "/api/v1/auth/challenge", "", map[string]any{
+		"device_id":   deviceID,
+		"user_pubkey": pubKey,
+	}, http.StatusOK, &challenge)
+
+	var auth authResult
+	e.doJSON(t, http.MethodPost, "/api/v1/auth/verify", "", map[string]any{
+		"device_id":   deviceID,
+		"user_pubkey": pubKey,
+		"nonce":       challenge.Nonce,
+		"signature":   "valid-signature",
+	}, http.StatusOK, &auth)
+	if auth.AccessToken == "" || auth.User.ID == uuid.Nil || auth.Device.DeviceID != deviceID || auth.IsNewUser {
+		t.Fatalf("unexpected existing auth result: %+v", auth)
 	}
 	return auth
 }

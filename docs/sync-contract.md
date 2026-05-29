@@ -224,7 +224,44 @@ Minimum payload:
 
 This event is emitted by `PUT /api/v1/users/me`.
 
-## 11. Error Semantics
+## 11. Skill Settings Sync
+
+Skill settings use a baseline + incremental model.
+
+### Baseline
+
+Clients load the current user's skill settings through:
+
+- `GET /api/v1/skills/settings`
+
+### Incremental changes
+
+Skill setting writes emit these events:
+
+| Endpoint | Event |
+|---|---|
+| `POST /api/v1/skills/settings/:skill_id/enable` | `skill.enabled` |
+| `POST /api/v1/skills/settings/:skill_id/disable` | `skill.disabled` |
+| `PUT /api/v1/skills/settings/:skill_id` | `skill.updated` |
+
+Mutating requests accept optional `client_event_id` for idempotency.
+
+Minimum payload:
+
+```json
+{
+  "object_id": "skill id",
+  "skill_id": "skill id",
+  "enabled": true,
+  "config": {},
+  "updated_by_device_id": "device-a",
+  "updated_at": "..."
+}
+```
+
+The source device is recorded in `source_device_id`; other devices can pull the event through `/sync/events` and receive real-time `sync.event` notification when connected.
+
+## 12. Error Semantics
 
 | Condition | HTTP status / behavior |
 |---|---:|
@@ -237,7 +274,7 @@ This event is emitted by `PUT /api/v1/users/me`.
 | authenticated but not allowed | 403 |
 | database / internal failure | 500 |
 
-## 12. Compatibility Rules
+## 13. Compatibility Rules
 
 - `schema_version` must increase for breaking payload changes.
 - Existing fields should remain additive whenever possible.

@@ -38,6 +38,8 @@ func Setup(
 	convSvc := service.NewConversationService(convRepo, userRepo)
 	pairingRepo := repository.NewDevicePairingRepo(db)
 	pairingSvc := service.NewDevicePairingService(pairingRepo, userRepo, signatureVerifier)
+	skillSettingsRepo := repository.NewSkillSettingsRepo(db)
+	skillSettingsSvc := service.NewSkillSettingsService(skillSettingsRepo, syncSvc)
 
 	// Handlers
 	identityH := handler.NewIdentityHandler(identitySvc)
@@ -45,6 +47,7 @@ func Setup(
 	convH := handler.NewConversationHandler(convSvc, msgSvc)
 	syncH := handler.NewSyncHandler(syncSvc)
 	pairingH := handler.NewDevicePairingHandler(pairingSvc)
+	skillSettingsH := handler.NewSkillSettingsHandler(skillSettingsSvc)
 
 	// WebSocket dispatcher
 	dispatcher := ws.NewDispatcher(hub, msgSvc, convSvc, convRepo)
@@ -114,6 +117,11 @@ func Setup(
 
 			protected.GET("/sync/events", syncH.GetEvents)
 			protected.POST("/sync/ack", syncH.AckEvents)
+
+			protected.GET("/skills/settings", skillSettingsH.List)
+			protected.PUT("/skills/settings/:skill_id", skillSettingsH.Update)
+			protected.POST("/skills/settings/:skill_id/enable", skillSettingsH.Enable)
+			protected.POST("/skills/settings/:skill_id/disable", skillSettingsH.Disable)
 		}
 
 		// Admin routes
