@@ -32,7 +32,8 @@ func Setup(
 
 	// Services (using injected repos)
 	identitySvc := service.NewIdentityServiceWithVerifier(userRepo, cfg.JWT, signatureVerifier)
-	admissionSvc := service.NewAdmissionService(userRepo, cfg.Admission)
+	admissionRepo := repository.NewAdmissionRepo(db)
+	admissionSvc := service.NewAdmissionServiceWithRepo(userRepo, admissionRepo, cfg.Admission)
 	convSvc := service.NewConversationService(convRepo, userRepo)
 
 	// Handlers
@@ -112,6 +113,9 @@ func Setup(
 		admin.Use(middleware.JWTAuth(cfg.JWT.Secret))
 		admin.Use(middleware.AdminMiddleware(userRepo))
 		{
+			admin.GET("/admission/policy", admissionH.GetPolicy)
+			admin.PUT("/admission/policy", admissionH.UpdatePolicy)
+			admin.PUT("/admission/invitation-code", admissionH.UpdateInvitationCode)
 			admin.GET("/admission/requests", admissionH.GetPending)
 			admin.POST("/admission/requests/:id/approve", admissionH.Approve)
 			admin.POST("/admission/requests/:id/reject", admissionH.Reject)

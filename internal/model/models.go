@@ -57,6 +57,15 @@ type AdmissionRequest struct {
 	Reason     string `json:"reason"`
 }
 
+type ServerAdmission struct {
+	Base
+	ServerID              string     `gorm:"uniqueIndex;not null" json:"server_id"`
+	PolicyType            string     `gorm:"not null" json:"policy_type"`
+	InvitationCodeHash    string     `json:"-"`
+	AdminApprovalRequired bool       `gorm:"default:false" json:"admin_approval_required"`
+	UpdatedBy             *uuid.UUID `gorm:"type:uuid" json:"updated_by"`
+}
+
 type Conversation struct {
 	Base
 	Type      string    `gorm:"index;not null" json:"type"`
@@ -211,5 +220,5 @@ type ContributorEarning struct {
 }
 
 func AllModels() []any {
-	return []any{&User{}, &Device{}, &AuthChallenge{}, &AdmissionRequest{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBUsageRecord{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}}
+	return []any{&User{}, &Device{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBUsageRecord{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}}
 }

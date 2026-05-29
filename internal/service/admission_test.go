@@ -160,6 +160,90 @@ func TestAdmissionServiceUnknownPolicyReturnsError(t *testing.T) {
 	}
 }
 
+func TestAdmissionServiceGetPolicyCreatesDefaultPersistentPolicy(t *testing.T) {
+	svc, _ := newAdmissionTestService(t, config.AdmissionConfig{PolicyType: "protocol"})
+
+	policy, err := svc.GetPolicy("default")
+	if err != nil {
+		t.Fatalf("get policy: %v", err)
+	}
+	if policy.ServerID != "default" || policy.PolicyType != "protocol" {
+		t.Fatalf("unexpected default policy: %+v", policy)
+	}
+	if policy.InvitationCodeHash != "" {
+		t.Fatalf("default protocol policy should not have invitation hash")
+	}
+}
+
+func TestAdmissionServiceUpdatePolicyPersistsValidPolicy(t *testing.T) {
+	svc, _ := newAdmissionTestService(t, config.AdmissionConfig{PolicyType: "protocol"})
+	adminID := uuid.New()
+
+	policy, err := svc.UpdatePolicy("default", "approval", adminID)
+	if err != nil {
+		t.Fatalf("update policy: %v", err)
+	}
+	if policy.PolicyType != "approval" || !policy.AdminApprovalRequired {
+		t.Fatalf("expected approval policy with admin approval required, got %+v", policy)
+	}
+	if policy.UpdatedBy == nil || *policy.UpdatedBy != adminID {
+		t.Fatalf("expected updated_by %s, got %+v", adminID, policy.UpdatedBy)
+	}
+
+	loaded, err := svc.GetPolicy("default")
+	if err != nil {
+		t.Fatalf("reload policy: %v", err)
+	}
+	if loaded.PolicyType != "approval" || !loaded.AdminApprovalRequired {
+		t.Fatalf("policy was not persisted: %+v", loaded)
+	}
+}
+
+func TestAdmissionServiceUpdatePolicyRejectsInvalidPolicy(t *testing.T) {
+	svc, _ := newAdmissionTestService(t, config.AdmissionConfig{PolicyType: "protocol"})
+
+	_, err := svc.UpdatePolicy("default", "invalid", uuid.New())
+	if err == nil || !strings.Contains(err.Error(), "unsupported admission policy") {
+		t.Fatalf("expected unsupported policy error, got %v", err)
+	}
+}
+
+func TestAdmissionServiceUpdateInvitationCodeStoresHashOnly(t *testing.T) {
+	svc, _ := newAdmissionTestService(t, config.AdmissionConfig{PolicyType: "protocol"})
+	adminID := uuid.New()
+
+	policy, err := svc.UpdateInvitationCode("default", "secret-code", adminID)
+	if err != nil {
+		t.Fatalf("update invitation code: %v", err)
+	}
+	if policy.InvitationCodeHash == "" {
+		t.Fatal("expected invitation code hash")
+	}
+	if policy.InvitationCodeHash == "secret-code" || strings.Contains(policy.InvitationCodeHash, "secret-code") {
+		t.Fatalf("invitation code stored in plaintext: %q", policy.InvitationCodeHash)
+	}
+	if policy.UpdatedBy == nil || *policy.UpdatedBy != adminID {
+		t.Fatalf("expected updated_by %s, got %+v", adminID, policy.UpdatedBy)
+	}
+
+	loaded, err := svc.GetPolicy("default")
+	if err != nil {
+		t.Fatalf("reload policy: %v", err)
+	}
+	if loaded.InvitationCodeHash != policy.InvitationCodeHash {
+		t.Fatalf("invitation hash was not persisted")
+	}
+}
+
+func TestAdmissionServiceUpdateInvitationCodeRejectsEmptyCode(t *testing.T) {
+	svc, _ := newAdmissionTestService(t, config.AdmissionConfig{PolicyType: "protocol"})
+
+	_, err := svc.UpdateInvitationCode("default", "", uuid.New())
+	if err == nil || !strings.Contains(err.Error(), "invitation code is required") {
+		t.Fatalf("expected required invitation code error, got %v", err)
+	}
+}
+
 func TestAdmissionServiceApproveUnknownRequestReturnsError(t *testing.T) {
 	svc, _ := newAdmissionTestService(t, config.AdmissionConfig{PolicyType: "approval"})
 
@@ -174,9 +258,10 @@ func newAdmissionTestService(t *testing.T, cfg config.AdmissionConfig) (*Admissi
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.AdmissionRequest{}); err != nil {
+	if err := db.AutoMigrate(&model.AdmissionRequest{}, &model.ServerAdmission{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	repo := repository.NewUserRepo(db)
-	return NewAdmissionService(repo, cfg), repo
+	admissionRepo := repository.NewAdmissionRepo(db)
+	return NewAdmissionServiceWithRepo(repo, admissionRepo, cfg), repo
 }
