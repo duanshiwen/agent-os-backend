@@ -90,7 +90,16 @@ go run ./cmd/server
 | GET | `/api/v1/agents/settings` | 获取当前用户的 Agent 设置 |
 | PUT | `/api/v1/agents/settings/:agent_id` | 更新 Agent 设置，并产生 `agent.updated` 同步事件 |
 
-Skill / Agent 变更接口支持可选 `client_event_id`，用于同步写入幂等。
+#### 服务器列表
+
+| 方法 | 路径 | 描述 |
+|------|------|------|
+| GET | `/api/v1/servers` | 获取当前用户的服务器连接列表 |
+| POST | `/api/v1/servers` | 添加服务器连接，并产生 `server.added` 同步事件 |
+| PUT | `/api/v1/servers/:id` | 更新服务器连接，并产生 `server.updated` 同步事件 |
+| DELETE | `/api/v1/servers/:id` | 移除服务器连接，并产生 `server.removed` 同步事件 |
+
+Skill / Agent / Server 变更接口支持可选 `client_event_id`，用于同步写入幂等。
 
 #### 跨设备同步
 

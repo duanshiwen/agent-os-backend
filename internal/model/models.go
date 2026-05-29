@@ -157,6 +157,17 @@ type UserAgentSetting struct {
 	UpdatedByDeviceID string            `gorm:"index" json:"updated_by_device_id"`
 }
 
+type UserServerConnection struct {
+	Base
+	UserID            uuid.UUID         `gorm:"type:uuid;index;not null;uniqueIndex:idx_user_server_connection" json:"user_id"`
+	ServerID          string            `gorm:"not null;uniqueIndex:idx_user_server_connection" json:"server_id"`
+	Name              string            `json:"name"`
+	BaseURL           string            `json:"base_url"`
+	Status            string            `gorm:"default:active" json:"status"`
+	Config            datatypes.JSONMap `gorm:"type:jsonb" json:"config"`
+	UpdatedByDeviceID string            `gorm:"index" json:"updated_by_device_id"`
+}
+
 type KBCollection struct {
 	Base
 	OwnerID          uuid.UUID `gorm:"type:uuid;index" json:"owner_id"`
@@ -262,5 +273,5 @@ type ContributorEarning struct {
 }
 
 func AllModels() []any {
-	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &UserAgentSetting{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBUsageRecord{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}}
+	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &UserAgentSetting{}, &UserServerConnection{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBUsageRecord{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}}
 }

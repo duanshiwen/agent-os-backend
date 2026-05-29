@@ -296,7 +296,62 @@ Minimum payload:
 
 The source device is recorded in `source_device_id`; other devices can pull the event through `/sync/events` and receive real-time `sync.event` notification when connected.
 
-## 13. Error Semantics
+## 13. Server List Sync
+
+Server list settings use a baseline + incremental model.
+
+### Baseline
+
+Clients load the current user's server connections through:
+
+- `GET /api/v1/servers`
+
+### Incremental changes
+
+Server connection writes emit these events:
+
+| Endpoint | Event |
+|---|---|
+| `POST /api/v1/servers` | `server.added` |
+| `PUT /api/v1/servers/:id` | `server.updated` |
+| `DELETE /api/v1/servers/:id` | `server.removed` |
+
+Mutating requests accept optional `client_event_id` for idempotency.
+
+Minimum add/update payload:
+
+```json
+{
+  "object_id": "connection uuid",
+  "connection_id": "connection uuid",
+  "server_id": "primary",
+  "name": "Primary",
+  "base_url": "https://agent.example",
+  "status": "active",
+  "config": {},
+  "updated_by_device_id": "device-a",
+  "updated_at": "..."
+}
+```
+
+Minimum remove payload:
+
+```json
+{
+  "object_id": "connection uuid",
+  "connection_id": "connection uuid",
+  "server_id": "primary",
+  "removed": true,
+  "updated_by_device_id": "device-a",
+  "updated_at": "..."
+}
+```
+
+The source device is recorded in `source_device_id`; other devices can pull the event through `/sync/events` and receive real-time `sync.event` notification when connected.
+
+This sync object only covers a user's server list configuration. It does not implement federation or cross-server data sync.
+
+## 14. Error Semantics
 
 | Condition | HTTP status / behavior |
 |---|---:|
@@ -309,7 +364,7 @@ The source device is recorded in `source_device_id`; other devices can pull the 
 | authenticated but not allowed | 403 |
 | database / internal failure | 500 |
 
-## 14. Compatibility Rules
+## 15. Compatibility Rules
 
 - `schema_version` must increase for breaking payload changes.
 - Existing fields should remain additive whenever possible.
