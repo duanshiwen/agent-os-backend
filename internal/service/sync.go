@@ -26,58 +26,6 @@ func NewSyncService(syncRepo *repository.SyncRepo, hub HubNotifier) *SyncService
 	return &SyncService{syncRepo: syncRepo, hub: hub}
 }
 
-const (
-	SyncEventMessage   = "message"
-	SyncEventKnowledge = "knowledge"
-	SyncEventSkill     = "skill"
-	SyncEventAgent     = "agent"
-	SyncEventServer    = "server"
-	SyncEventPlugin    = "plugin"
-	SyncEventProfile   = "profile"
-
-	SyncActionCreated  = "created"
-	SyncActionUpdated  = "updated"
-	SyncActionDeleted  = "deleted"
-	SyncActionAdded    = "added"
-	SyncActionRemoved  = "removed"
-	SyncActionEnabled  = "enabled"
-	SyncActionDisabled = "disabled"
-)
-
-var supportedSyncActions = map[string]map[string]bool{
-	SyncEventMessage: {
-		SyncActionCreated: true,
-		SyncActionUpdated: true,
-		SyncActionDeleted: true,
-	},
-	SyncEventKnowledge: {
-		SyncActionCreated: true,
-		SyncActionUpdated: true,
-		SyncActionDeleted: true,
-	},
-	SyncEventSkill: {
-		SyncActionEnabled:  true,
-		SyncActionDisabled: true,
-		SyncActionUpdated:  true,
-	},
-	SyncEventAgent: {
-		SyncActionUpdated: true,
-	},
-	SyncEventServer: {
-		SyncActionAdded:   true,
-		SyncActionUpdated: true,
-		SyncActionRemoved: true,
-	},
-	SyncEventPlugin: {
-		SyncActionAdded:   true,
-		SyncActionUpdated: true,
-		SyncActionRemoved: true,
-	},
-	SyncEventProfile: {
-		SyncActionUpdated: true,
-	},
-}
-
 type SyncEventMsg struct {
 	EventType      string `json:"event_type"`
 	SchemaVersion  int    `json:"schema_version"`
@@ -101,7 +49,7 @@ type SyncEnvelope struct {
 	Payload        datatypes.JSONMap
 }
 
-func (s *SyncService) RecordEvent(userID uuid.UUID, deviceID, eventType string, action string, payload datatypes.JSONMap) error {
+func (s *SyncService) RecordEvent(userID uuid.UUID, deviceID, eventType string, action string, payload datatypes.JSONMap) (*model.SyncEvent, error) {
 	objectID := ""
 	if payload != nil {
 		if value, ok := payload["object_id"].(string); ok {
@@ -118,27 +66,28 @@ func (s *SyncService) RecordEvent(userID uuid.UUID, deviceID, eventType string, 
 	})
 }
 
-func (s *SyncService) RecordEnvelope(envelope SyncEnvelope) error {
-	if err := validateSyncEvent(envelope.ObjectType, envelope.Operation); err != nil {
-		return err
+func (s *SyncService) RecordEnvelope(envelope SyncEnvelope) (*model.SyncEvent, error) {
+	eventType, err := BuildSyncEventType(envelope.ObjectType, envelope.Operation)
+	if err != nil {
+		return nil, err
 	}
 	if envelope.ClientEventID != "" {
 		existing, err := s.syncRepo.GetEventByClientEventID(envelope.UserID, envelope.ClientEventID)
 		if err == nil {
-			return s.validateIdempotentReplay(existing, envelope)
+			return existing, s.validateIdempotentReplay(existing, envelope)
 		}
 	}
 
 	seq, err := s.syncRepo.GetNextSequence(envelope.UserID)
 	if err != nil {
-		return fmt.Errorf("get next sequence: %w", err)
+		return nil, fmt.Errorf("get next sequence: %w", err)
 	}
 
 	event := &model.SyncEvent{
 		UserID:         envelope.UserID,
 		DeviceID:       envelope.SourceDeviceID,
-		EventType:      envelope.ObjectType + "." + envelope.Operation,
-		SchemaVersion:  1,
+		EventType:      eventType,
+		SchemaVersion:  SyncSchemaVersion,
 		ObjectType:     envelope.ObjectType,
 		ObjectID:       envelope.ObjectID,
 		Operation:      envelope.Operation,
@@ -150,11 +99,11 @@ func (s *SyncService) RecordEnvelope(envelope SyncEnvelope) error {
 	}
 
 	if err := s.syncRepo.CreateEvent(event); err != nil {
-		return fmt.Errorf("create sync event: %w", err)
+		return nil, fmt.Errorf("create sync event: %w", err)
 	}
 
 	s.notifyDevices(envelope.UserID, envelope.SourceDeviceID, event)
-	return nil
+	return event, nil
 }
 
 func (s *SyncService) GetEvents(userID uuid.UUID, deviceID string, limit int) ([]model.SyncEvent, error) {
@@ -200,18 +149,7 @@ func (s *SyncService) notifyDevices(userID uuid.UUID, sourceDeviceID string, eve
 
 func (s *SyncService) validateIdempotentReplay(existing *model.SyncEvent, envelope SyncEnvelope) error {
 	if existing.ObjectType != envelope.ObjectType || existing.ObjectID != envelope.ObjectID || existing.Operation != envelope.Operation || existing.SourceDeviceID != envelope.SourceDeviceID {
-		return fmt.Errorf("client_event_id already used for different sync event")
-	}
-	return nil
-}
-
-func validateSyncEvent(eventType, action string) error {
-	allowedActions, ok := supportedSyncActions[eventType]
-	if !ok {
-		return fmt.Errorf("unsupported sync event type: %s", eventType)
-	}
-	if !allowedActions[action] {
-		return fmt.Errorf("unsupported sync action %s for event type %s", action, eventType)
+		return fmt.Errorf("%w: client_event_id already used for different sync event", ErrSyncIdempotencyConflict)
 	}
 	return nil
 }

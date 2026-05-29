@@ -76,14 +76,20 @@ func TestSyncEventsResponseIncludesStableEnvelopeFields(t *testing.T) {
 	env.updateProfile(t, alice.AccessToken, "Contract Alice")
 
 	res := env.doRawJSON(t, http.MethodGet, "/api/v1/sync/events?after_sequence=0&limit=100", alice.AccessToken, nil, http.StatusOK)
-	var events []map[string]any
-	if err := json.Unmarshal(res.Data, &events); err != nil {
-		t.Fatalf("decode raw sync events: %v data=%s", err, string(res.Data))
+	var pull struct {
+		Events            []map[string]any `json:"events"`
+		NextAfterSequence float64          `json:"next_after_sequence"`
+		HasMore           bool             `json:"has_more"`
+		ServerTime        float64          `json:"server_time"`
+		SchemaVersion     float64          `json:"schema_version"`
 	}
-	if len(events) != 1 {
-		t.Fatalf("expected one sync event, got %+v", events)
+	if err := json.Unmarshal(res.Data, &pull); err != nil {
+		t.Fatalf("decode raw sync pull envelope: %v data=%s", err, string(res.Data))
 	}
-	event := events[0]
+	if len(pull.Events) != 1 || pull.NextAfterSequence != 1 || pull.HasMore || pull.ServerTime <= 0 || pull.SchemaVersion != service.SyncSchemaVersion {
+		t.Fatalf("unexpected sync pull envelope: %+v", pull)
+	}
+	event := pull.Events[0]
 	for _, field := range []string{"id", "user_id", "device_id", "event_type", "schema_version", "object_type", "object_id", "operation", "source_device_id", "client_event_id", "payload", "timestamp", "sequence", "created_at", "updated_at"} {
 		if _, ok := event[field]; !ok {
 			t.Fatalf("expected sync event JSON field %q in %+v", field, event)
@@ -118,12 +124,13 @@ func TestSyncEventsLimitQueryContract(t *testing.T) {
 		env.updateProfile(t, alice.AccessToken, name)
 	}
 
-	limited := env.getSyncEventsAfter(t, alice.AccessToken, 0, 2)
+	limitedPull := env.getSyncPull(t, "/api/v1/sync/events?after_sequence=0&limit=2", alice.AccessToken)
+	limited := limitedPull.Events
 	if len(limited) != 2 {
 		t.Fatalf("expected limit=2 to return 2 events, got %+v", limited)
 	}
-	if limited[0].Sequence != 1 || limited[1].Sequence != 2 {
-		t.Fatalf("expected first two events ordered by sequence, got %+v", limited)
+	if limited[0].Sequence != 1 || limited[1].Sequence != 2 || !limitedPull.HasMore || limitedPull.NextAfterSequence != 2 {
+		t.Fatalf("expected first two events ordered by sequence with has_more, got events=%+v pull=%+v", limited, limitedPull)
 	}
 
 	fallbackZero := env.getSyncEventsAfter(t, alice.AccessToken, 0, 0)
@@ -169,6 +176,14 @@ type authResult struct {
 	User        model.User   `json:"user"`
 	Device      model.Device `json:"device"`
 	IsNewUser   bool         `json:"is_new_user"`
+}
+
+type syncPullResult struct {
+	Events            []model.SyncEvent `json:"events"`
+	NextAfterSequence uint64            `json:"next_after_sequence"`
+	HasMore           bool              `json:"has_more"`
+	ServerTime        int64             `json:"server_time"`
+	SchemaVersion     int               `json:"schema_version"`
 }
 
 func newPhase1RouterSmokeEnv(t *testing.T) *phase1RouterSmokeEnv {
@@ -247,16 +262,19 @@ func (e *phase1RouterSmokeEnv) updateProfile(t *testing.T, token string, display
 
 func (e *phase1RouterSmokeEnv) getSyncEvents(t *testing.T, token string, limit int) []model.SyncEvent {
 	t.Helper()
-	var events []model.SyncEvent
-	e.doJSON(t, http.MethodGet, fmt.Sprintf("/api/v1/sync/events?limit=%d", limit), token, nil, http.StatusOK, &events)
-	return events
+	return e.getSyncPull(t, fmt.Sprintf("/api/v1/sync/events?limit=%d", limit), token).Events
 }
 
 func (e *phase1RouterSmokeEnv) getSyncEventsAfter(t *testing.T, token string, afterSequence uint64, limit int) []model.SyncEvent {
 	t.Helper()
-	var events []model.SyncEvent
-	e.doJSON(t, http.MethodGet, fmt.Sprintf("/api/v1/sync/events?after_sequence=%d&limit=%d", afterSequence, limit), token, nil, http.StatusOK, &events)
-	return events
+	return e.getSyncPull(t, fmt.Sprintf("/api/v1/sync/events?after_sequence=%d&limit=%d", afterSequence, limit), token).Events
+}
+
+func (e *phase1RouterSmokeEnv) getSyncPull(t *testing.T, path string, token string) syncPullResult {
+	t.Helper()
+	var pull syncPullResult
+	e.doJSON(t, http.MethodGet, path, token, nil, http.StatusOK, &pull)
+	return pull
 }
 
 func (e *phase1RouterSmokeEnv) ackSyncEvents(t *testing.T, token string, sequence uint64) {

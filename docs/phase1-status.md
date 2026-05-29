@@ -64,8 +64,13 @@ Phase 1 is now a deployability-hardening milestone for the AgentOS backend found
 - `POST /api/v1/sync/ack`
 - Monotonic per-user sequence assignment.
 - Cursor-based pull/ack.
+- Explicit `after_sequence` pull support.
+- Stable M2 pull response envelope documented in `docs/sync-contract.md`.
+- Centralized sync object / operation constants and validation.
+- Optional `client_event_id` idempotency with non-empty `(user_id, client_event_id)` uniqueness.
 - Real-time notification envelope via `sync.event`.
 - `message.created` events are recorded for every conversation participant, including sender cross-device sync.
+- `profile.updated` is the first non-message sync event and is emitted by `PUT /api/v1/users/me`.
 
 ### Production Migrations
 
@@ -99,7 +104,7 @@ go test ./...
 Latest verified result:
 
 ```text
-59 passed in 10 packages
+70 passed in 10 packages
 ```
 
 Run Rust FFI integration test:
@@ -169,28 +174,27 @@ curl http://localhost:8080/health
 
 Phase 1 intentionally does **not** include:
 
-- full Phase 2 cross-device sync contract;
-- explicit sync event schema versioning;
-- client event idempotency;
-- `after_sequence` pull API;
-- full conversation history sync reconstruction contract;
+- complete Phase 2 object coverage for knowledge, skill, agent settings, server list, and plugin state;
+- a full client-side merge engine;
+- full conversation history reconstruction solely from sync events;
 - KB Hub service routes;
 - plugin marketplace / SAGE service routes;
 - billing business logic;
 - multi-server connection management;
 - production observability stack.
 
+The M2 sync contract foundation is now being hardened on top of Phase 1. Current remaining sync hardening work includes broader end-to-end client contract coverage, richer error mapping for future external event write endpoints, and additional non-message object families.
+
 Model structs for KB, plugin, and billing already exist, but they should be treated as future-phase placeholders until the corresponding service, repository, handler, and migration work is designed.
 
 ## Recommended Next Milestone
 
-Proceed to M2: Sync Contract Foundation.
+Proceed from M2 Sync Contract Foundation to broader Phase 2 object coverage.
 
 Suggested next tasks:
 
-1. define a stable sync event envelope;
-2. centralize sync event type constants;
-3. add event validation before write;
-4. add optional client event idempotency;
-5. add explicit `after_sequence` pull support;
-6. use `profile.updated` as the first non-message sync event.
+1. add sync coverage for skill settings;
+2. add sync coverage for agent settings;
+3. add sync coverage for server list changes;
+4. add knowledge entry sync once local knowledge object semantics are finalized;
+5. keep KB Hub service design blocked until sync contract is stable enough for knowledge and subscription state.

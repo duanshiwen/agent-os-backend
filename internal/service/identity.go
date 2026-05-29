@@ -295,8 +295,9 @@ func (s *IdentityService) UpdateProfile(userID uuid.UUID, sourceDeviceID string,
 			"user_id":      user.ID.String(),
 			"display_name": user.DisplayName,
 			"avatar_url":   user.AvatarURL,
+			"updated_at":   user.UpdatedAt,
 		}
-		_ = s.syncSvc.RecordEnvelope(SyncEnvelope{
+		_, _ = s.syncSvc.RecordEnvelope(SyncEnvelope{
 			UserID:         user.ID,
 			SourceDeviceID: sourceDeviceID,
 			ObjectType:     SyncEventProfile,
