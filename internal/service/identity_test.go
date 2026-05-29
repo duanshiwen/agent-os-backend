@@ -17,14 +17,20 @@ import (
 )
 
 type stubVerifier struct {
-	valid bool
-	err   error
-	calls int
+	valid         bool
+	err           error
+	calls         int
+	lastChallenge string
+	lastSignature string
+	lastPublicKey string
 }
 
 func (s *stubVerifier) VerifyEd25519Challenge(ctx context.Context, challenge, signatureHex, publicKeyHex string) (bool, error) {
 	_ = ctx
 	s.calls++
+	s.lastChallenge = challenge
+	s.lastSignature = signatureHex
+	s.lastPublicKey = publicKeyHex
 	return s.valid, s.err
 }
 

@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"net/http"
+
 	"github.com/agent-os/backend/internal/middleware"
 	"github.com/agent-os/backend/internal/pkg/response"
 	"github.com/agent-os/backend/internal/service"
@@ -56,19 +58,9 @@ func (h *IdentityHandler) Verify(c *gin.Context) {
 }
 
 // POST /api/v1/auth/register
+// Deprecated: user creation must go through challenge-response verification and admission policy checks.
 func (h *IdentityHandler) Register(c *gin.Context) {
-	var req service.RegisterRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, err.Error())
-		return
-	}
-
-	user, err := h.svc.Register(&req)
-	if err != nil {
-		response.Conflict(c, err.Error())
-		return
-	}
-	response.Created(c, user)
+	response.Error(c, http.StatusGone, "direct registration is disabled; use /api/v1/auth/challenge followed by /api/v1/auth/verify")
 }
 
 // GET /api/v1/users/me
@@ -107,19 +99,7 @@ func (h *IdentityHandler) UpdateProfile(c *gin.Context) {
 func (h *IdentityHandler) PairDevice(c *gin.Context) {
 	c.Header("Deprecation", "true")
 	c.Header("Link", "</api/v1/devices/pairing/start>; rel=\"successor-version\"")
-	userID := middleware.MustGetUserID(c)
-	var req service.PairDeviceRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, err.Error())
-		return
-	}
-
-	device, err := h.svc.PairDevice(userID, &req)
-	if err != nil {
-		response.Conflict(c, err.Error())
-		return
-	}
-	response.Created(c, device)
+	response.Error(c, http.StatusGone, "direct device pairing is disabled; use QR-only pairing endpoints")
 }
 
 // GET /api/v1/users/me/devices

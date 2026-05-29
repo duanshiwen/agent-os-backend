@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -20,6 +21,7 @@ const defaultPairingTTL = 2 * time.Minute
 type DevicePairingService struct {
 	pairingRepo *repository.DevicePairingRepo
 	userRepo    *repository.UserRepo
+	verifier    SignatureVerifier
 	serverID    string
 	ttl         time.Duration
 }
@@ -43,10 +45,11 @@ type ClaimPairingRequest struct {
 	NewDeviceID     string `json:"new_device_id" binding:"required"`
 	NewDeviceName   string `json:"new_device_name"`
 	NewDevicePubKey string `json:"new_device_pubkey" binding:"required"`
+	Signature       string `json:"signature" binding:"required"`
 }
 
-func NewDevicePairingService(pairingRepo *repository.DevicePairingRepo, userRepo *repository.UserRepo) *DevicePairingService {
-	return &DevicePairingService{pairingRepo: pairingRepo, userRepo: userRepo, serverID: "default", ttl: defaultPairingTTL}
+func NewDevicePairingService(pairingRepo *repository.DevicePairingRepo, userRepo *repository.UserRepo, verifier SignatureVerifier) *DevicePairingService {
+	return &DevicePairingService{pairingRepo: pairingRepo, userRepo: userRepo, verifier: verifier, serverID: "default", ttl: defaultPairingTTL}
 }
 
 func (s *DevicePairingService) StartPairing(userID uuid.UUID, createdByDeviceID string) (*StartPairingResponse, error) {
@@ -131,6 +134,17 @@ func (s *DevicePairingService) ClaimPairing(req *ClaimPairingRequest) (*model.De
 	if _, err := s.userRepo.GetDevice(req.NewDeviceID); err == nil {
 		return nil, fmt.Errorf("device id already exists")
 	}
+	if s.verifier == nil {
+		return nil, fmt.Errorf("new device signature verifier unavailable")
+	}
+	claimChallenge := s.canonicalClaimChallenge(payload, req)
+	valid, err := s.verifier.VerifyEd25519Challenge(context.Background(), claimChallenge, req.Signature, req.NewDevicePubKey)
+	if err != nil {
+		return nil, fmt.Errorf("verify new device signature: %w", err)
+	}
+	if !valid {
+		return nil, fmt.Errorf("new device signature verification failed")
+	}
 
 	deviceName := req.NewDeviceName
 	if deviceName == "" {
@@ -153,6 +167,20 @@ func (s *DevicePairingService) ClaimPairing(req *ClaimPairingRequest) (*model.De
 		return nil, fmt.Errorf("mark pairing session used: %w", err)
 	}
 	return device, nil
+}
+
+func (s *DevicePairingService) canonicalClaimChallenge(payload *DevicePairingQRPayload, req *ClaimPairingRequest) string {
+	claim := map[string]any{
+		"purpose":            "agentos.device_pairing.claim",
+		"version":            payload.Version,
+		"server_id":          payload.ServerID,
+		"pairing_session_id": payload.PairingSessionID.String(),
+		"new_device_id":      req.NewDeviceID,
+		"new_device_pubkey":  req.NewDevicePubKey,
+		"expires_at":         payload.ExpiresAt,
+	}
+	data, _ := json.Marshal(claim)
+	return string(data)
 }
 
 func encodeQRPayload(payload DevicePairingQRPayload) (string, error) {

@@ -36,7 +36,7 @@ func Setup(
 	identitySvc := service.NewIdentityServiceWithAdmission(userRepo, cfg.JWT, signatureVerifier, admissionSvc)
 	convSvc := service.NewConversationService(convRepo, userRepo)
 	pairingRepo := repository.NewDevicePairingRepo(db)
-	pairingSvc := service.NewDevicePairingService(pairingRepo, userRepo)
+	pairingSvc := service.NewDevicePairingService(pairingRepo, userRepo, signatureVerifier)
 
 	// Handlers
 	identityH := handler.NewIdentityHandler(identitySvc)
