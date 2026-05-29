@@ -376,3 +376,113 @@ This sync object only covers a user's server list configuration. It does not imp
 - New object types and operations must be added to the central sync contract and covered by tests.
 - Clients should ignore unknown payload fields.
 - Clients should not assume global sequence ordering across users; sequences are per-user.
+## 14. Knowledge Entry Sync
+
+M2.2 adds personal knowledge entry sync. This is not KB Hub publishing, marketplace search, subscription state, billing, or semantic indexing. It only defines how one user's own knowledge entries converge across that user's devices.
+
+### Baseline
+
+Clients load the current user's knowledge entries through:
+
+- `GET /api/v1/knowledge/entries` — active entries only;
+- `GET /api/v1/knowledge/entries?include_deleted=true` — active entries plus tombstones;
+- `GET /api/v1/knowledge/entries/:entry_id` — one active entry;
+- `GET /api/v1/knowledge/entries/:entry_id?include_deleted=true` — one entry or tombstone.
+
+### Mutations
+
+Knowledge entry writes are domain-specific APIs:
+
+| Endpoint | Event |
+|---|---|
+| `POST /api/v1/knowledge/entries` | `knowledge.created` |
+| `PUT /api/v1/knowledge/entries/:entry_id` | `knowledge.updated` |
+| `DELETE /api/v1/knowledge/entries/:entry_id` | `knowledge.deleted` |
+
+All mutating requests accept optional `client_event_id` for idempotency. `PUT` and `DELETE` also accept optional `base_version` for optimistic concurrency control.
+
+Example update request with version guard:
+
+```json
+{
+  "title": "Alpha v2",
+  "content_markdown": "# Alpha v2",
+  "summary": "second revision",
+  "tags": ["agentos"],
+  "metadata": {"category": "notes"},
+  "source_uri": "file://alpha.md",
+  "client_event_id": "knowledge-update-1",
+  "base_version": 1
+}
+```
+
+Example delete request with version guard:
+
+```json
+{
+  "client_event_id": "knowledge-delete-1",
+  "base_version": 2
+}
+```
+
+### Object identity
+
+`entry_id` is the stable cross-device object identity. Entry IDs may contain `/` (for example `notes/alpha`). HTTP clients must URL-encode path segments when needed; the server accepts slash-containing IDs through the knowledge routes. The sync event uses:
+
+- `object_type = knowledge`
+- `object_id = entry_id`
+- `operation = created | updated | deleted`
+
+### Payloads
+
+M2.2 uses full snapshot payloads for `created` and `updated` events. This keeps client reducers simple and leaves patch/CRDT semantics for a future schema version.
+
+Minimum `knowledge.created` / `knowledge.updated` payload:
+
+```json
+{
+  "object_id": "notes/alpha",
+  "entry_id": "notes/alpha",
+  "title": "Alpha",
+  "content_markdown": "# Alpha",
+  "summary": "...",
+  "tags": [],
+  "metadata": {},
+  "source_uri": "file://alpha.md",
+  "status": "active",
+  "version": 1,
+  "content_hash": "sha256...",
+  "updated_by_device_id": "device-a",
+  "updated_at": "..."
+}
+```
+
+Minimum `knowledge.deleted` payload:
+
+```json
+{
+  "object_id": "notes/alpha",
+  "entry_id": "notes/alpha",
+  "status": "deleted",
+  "version": 3,
+  "content_hash": "sha256...",
+  "updated_by_device_id": "device-a",
+  "deleted_at": "...",
+  "updated_at": "..."
+}
+```
+
+### Tombstones and conflicts
+
+Deletes create tombstones rather than physically removing entries. Active baseline APIs hide tombstones by default; tombstone-aware baseline APIs can include them.
+
+M2.2 conflict policy is server-sequenced Last Write Wins with tombstone protection and optional version guards:
+
+- each successful mutation increments that entry's server-side `version`;
+- clients may send `base_version` on `PUT` / `DELETE` when they want optimistic concurrency control;
+- if `base_version` is present and does not equal the current server version, the server returns `409 conflict` and does not mutate the entry or record a sync event;
+- if `base_version` is omitted, the request remains LWW-compatible and applies against the latest active server version;
+- a deleted entry cannot be updated by normal `PUT`;
+- restore, if needed, must be a future explicit operation rather than an accidental update;
+- idempotent retry with the same `client_event_id` returns the existing sync event and must not allocate another sequence.
+

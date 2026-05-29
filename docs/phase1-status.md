@@ -1,13 +1,13 @@
-# AgentOS Backend Phase 1 / M2.1 Status
+# AgentOS Backend Phase 1 / M2.2 Status
 
-Updated: 2026-05-29
-Branch: `feat/skill-settings-sync`
+Updated: 2026-05-30
+Branch: `feat/knowledge-sync-m2-2`
 
 ## Summary
 
 Phase 1 is the deployability-hardened AgentOS backend foundation. It includes identity, admission, QR-only device pairing, conversation, offline message, WebSocket, and the stable sync foundation.
 
-M2.1 Sync Object Coverage is now implemented for the low-risk configuration objects that sit on top of that foundation:
+M2.1 Sync Object Coverage is implemented for the low-risk configuration objects that sit on top of that foundation:
 
 - profile
 - message
@@ -15,7 +15,7 @@ M2.1 Sync Object Coverage is now implemented for the low-risk configuration obje
 - agent settings
 - server list
 
-This means a device can mutate these object families through domain-specific APIs, and another device for the same user can catch up through `/api/v1/sync/events`.
+M2.2 Knowledge Sync Semantics is now implemented for a user's personal knowledge entries. This is intentionally scoped to cross-device sync of the user's own local knowledge objects. It does not implement KB Hub publishing, marketplace discovery, subscription state, billing, semantic indexing, or Rust knowledge FFI.
 
 ## Implemented and Verified
 
@@ -95,6 +95,34 @@ This means a device can mutate these object families through domain-specific API
 
 M2.1 intentionally uses domain-specific write APIs. It does not expose a generic external sync write endpoint.
 
+### M2.2 Knowledge Sync Semantics
+
+Personal knowledge entry sync is implemented through domain-specific APIs:
+
+| Object family | Baseline API | Mutating APIs | Events |
+|---|---|---|---|
+| `knowledge` | `GET /api/v1/knowledge/entries`, `GET /api/v1/knowledge/entries?include_deleted=true`, `GET /api/v1/knowledge/entries/*entry_id` | `POST /api/v1/knowledge/entries`, `PUT /api/v1/knowledge/entries/*entry_id`, `DELETE /api/v1/knowledge/entries/*entry_id` | `knowledge.created`, `knowledge.updated`, `knowledge.deleted` |
+
+Implemented semantics:
+
+- stable cross-device `entry_id` object identity;
+- slash-containing entry IDs such as `notes/alpha` through wildcard knowledge routes;
+- full snapshot payloads for create/update/delete sync events;
+- server-side `version` increments for every successful mutation;
+- SHA-256 `content_hash` in stored entries and sync payloads;
+- tombstone deletes through `status = deleted` and `deleted_at`, not physical deletion;
+- active baseline APIs hide tombstones by default;
+- `include_deleted=true` exposes tombstones for reconciliation;
+- deleted entries cannot be updated by normal `PUT`;
+- optional `client_event_id` idempotency for create/update/delete;
+- idempotency conflict detection when a reused `client_event_id` refers to another sync event;
+- knowledge domain writes and sync event creation occur in one database transaction;
+- WebSocket sync notification is sent after commit;
+- optional `base_version` optimistic concurrency for `PUT` / `DELETE`;
+- stale `base_version` returns `409 conflict`, leaves the entry unchanged, and records no sync event.
+
+The contract is documented in `docs/sync-contract.md` under **Knowledge Entry Sync**.
+
 ### Production Migrations
 
 Current migrations:
@@ -109,6 +137,7 @@ Current migrations:
 - `008_user_skill_settings.sql` — user skill settings.
 - `009_user_agent_settings.sql` — user agent settings.
 - `010_user_server_connections.sql` — user server connections.
+- `011_user_knowledge_entries.sql` — user-owned personal knowledge entries and tombstone metadata.
 
 ## Verification Commands
 
@@ -116,6 +145,12 @@ Run the M2.1 sync settings smoke suite:
 
 ```bash
 ./scripts/smoke-sync-settings.sh
+```
+
+Run the M2.2 knowledge sync smoke suite:
+
+```bash
+./scripts/smoke-knowledge-sync.sh
 ```
 
 Run all Go tests:
@@ -127,7 +162,8 @@ go test ./...
 Latest verified result:
 
 ```text
-94 passed in 10 packages
+M2.2 knowledge sync smoke passed.
+Go test: 107 passed in 10 packages
 ```
 
 Run Rust FFI integration test:
@@ -136,7 +172,7 @@ Run Rust FFI integration test:
 ./scripts/test-ffi-integration.sh
 ```
 
-Latest verified result:
+Latest previously verified result:
 
 ```text
 === RUN   TestFFIVerifierIntegration
@@ -164,7 +200,10 @@ They verify real Gin router wiring for:
 7. QR pairing claim;
 8. skill setting mutation and cross-device sync pull;
 9. agent setting mutation and cross-device sync pull;
-10. server list mutation and cross-device sync pull.
+10. server list mutation and cross-device sync pull;
+11. knowledge create/update/delete and cross-device sync pull;
+12. knowledge tombstone baseline behavior;
+13. knowledge stale `base_version` conflicts returning `409` without sync events.
 
 The service-level smoke and focused sync tests are in:
 
@@ -173,6 +212,7 @@ internal/service/phase1_smoke_test.go
 internal/service/skill_settings_test.go
 internal/service/agent_settings_test.go
 internal/service/server_connections_test.go
+internal/service/knowledge_entries_test.go
 internal/service/sync_contract_test.go
 ```
 
@@ -180,6 +220,12 @@ Use this script for focused M2.1 verification:
 
 ```bash
 ./scripts/smoke-sync-settings.sh
+```
+
+Use this script for focused M2.2 verification:
+
+```bash
+./scripts/smoke-knowledge-sync.sh
 ```
 
 ## Run Locally
@@ -212,10 +258,12 @@ TOKEN="<jwt>" ./scripts/smoke-sync.sh
 
 ## Current Known Limitations
 
-Phase 1 / M2.1 intentionally does **not** include:
+Phase 1 / M2.2 intentionally does **not** include:
 
-- knowledge entry sync semantics;
 - KB Hub service routes;
+- KB publishing / snapshot / subscription semantics;
+- semantic indexing, embeddings, or content storage pipeline;
+- Rust FFI knowledge operations beyond identity verification;
 - plugin marketplace / SAGE service routes;
 - billing business logic;
 - multi-server federation or remote server authentication;
@@ -226,14 +274,14 @@ Phase 1 / M2.1 intentionally does **not** include:
 
 Model structs for KB, plugin, and billing already exist, but they should be treated as future-phase placeholders until the corresponding service, repository, handler, migration, and sync semantics are designed.
 
+Local Postgres migration smoke is still pending on this machine because Docker Desktop was not running during verification.
+
 ## Recommended Next Milestone
 
-Proceed from M2.1 Sync Object Coverage to M2.2 Knowledge Sync Semantics Design.
+M2.2 personal knowledge sync is ready for review. Recommended next steps:
 
-Suggested next tasks:
-
-1. define local knowledge object identity and tombstone semantics;
-2. define baseline APIs and incremental sync events for knowledge entries;
-3. decide how KB sync relates to future KB Hub subscription state;
-4. add knowledge sync only after these semantics are documented;
-5. keep KB Hub service implementation blocked until sync contract is stable enough for knowledge and subscription state.
+1. run Postgres migration smoke once Docker Desktop is available;
+2. review and merge `feat/knowledge-sync-m2-2`;
+3. update SDK/client code to consume the knowledge baseline APIs and sync events;
+4. keep KB Hub service implementation blocked until personal knowledge sync is integrated by clients;
+5. after client integration feedback, design the separate KB Hub contract for publishing, snapshots, subscriptions, and marketplace behavior.

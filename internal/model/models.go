@@ -168,6 +168,23 @@ type UserServerConnection struct {
 	UpdatedByDeviceID string            `gorm:"index" json:"updated_by_device_id"`
 }
 
+type UserKnowledgeEntry struct {
+	Base
+	UserID            uuid.UUID                   `gorm:"type:uuid;index;not null;uniqueIndex:idx_user_knowledge_entry" json:"user_id"`
+	EntryID           string                      `gorm:"not null;uniqueIndex:idx_user_knowledge_entry" json:"entry_id"`
+	Title             string                      `gorm:"not null" json:"title"`
+	ContentMarkdown   string                      `gorm:"type:text;not null" json:"content_markdown"`
+	Summary           string                      `json:"summary"`
+	Tags              datatypes.JSONSlice[string] `gorm:"type:jsonb" json:"tags"`
+	Metadata          datatypes.JSONMap           `gorm:"type:jsonb" json:"metadata"`
+	SourceURI         string                      `json:"source_uri"`
+	Status            string                      `gorm:"default:active;index" json:"status"`
+	Version           uint64                      `gorm:"not null;default:1" json:"version"`
+	ContentHash       string                      `gorm:"index" json:"content_hash"`
+	DeletedAt         *time.Time                  `json:"deleted_at"`
+	UpdatedByDeviceID string                      `gorm:"index" json:"updated_by_device_id"`
+}
+
 type KBCollection struct {
 	Base
 	OwnerID          uuid.UUID `gorm:"type:uuid;index" json:"owner_id"`
@@ -273,5 +290,5 @@ type ContributorEarning struct {
 }
 
 func AllModels() []any {
-	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &UserAgentSetting{}, &UserServerConnection{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBUsageRecord{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}}
+	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &UserAgentSetting{}, &UserServerConnection{}, &UserKnowledgeEntry{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBUsageRecord{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}}
 }

@@ -17,6 +17,10 @@ func NewSyncRepo(db *gorm.DB) *SyncRepo {
 	return &SyncRepo{db: db}
 }
 
+func (r *SyncRepo) WithTx(tx *gorm.DB) *SyncRepo {
+	return &SyncRepo{db: tx}
+}
+
 // === SyncEvent ===
 
 func (r *SyncRepo) CreateEvent(event *model.SyncEvent) error {
