@@ -376,3 +376,86 @@ This sync object only covers a user's server list configuration. It does not imp
 - New object types and operations must be added to the central sync contract and covered by tests.
 - Clients should ignore unknown payload fields.
 - Clients should not assume global sequence ordering across users; sequences are per-user.
+## 14. Knowledge Entry Sync
+
+M2.2 adds personal knowledge entry sync. This is not KB Hub publishing, marketplace search, subscription state, billing, or semantic indexing. It only defines how one user's own knowledge entries converge across that user's devices.
+
+### Baseline
+
+Clients load the current user's knowledge entries through:
+
+- `GET /api/v1/knowledge/entries` — active entries only;
+- `GET /api/v1/knowledge/entries?include_deleted=true` — active entries plus tombstones;
+- `GET /api/v1/knowledge/entries/:entry_id` — one active entry;
+- `GET /api/v1/knowledge/entries/:entry_id?include_deleted=true` — one entry or tombstone.
+
+### Mutations
+
+Knowledge entry writes are domain-specific APIs:
+
+| Endpoint | Event |
+|---|---|
+| `POST /api/v1/knowledge/entries` | `knowledge.created` |
+| `PUT /api/v1/knowledge/entries/:entry_id` | `knowledge.updated` |
+| `DELETE /api/v1/knowledge/entries/:entry_id` | `knowledge.deleted` |
+
+All mutating requests accept optional `client_event_id` for idempotency.
+
+### Object identity
+
+`entry_id` is the stable cross-device object identity. The sync event uses:
+
+- `object_type = knowledge`
+- `object_id = entry_id`
+- `operation = created | updated | deleted`
+
+### Payloads
+
+M2.2 uses full snapshot payloads for `created` and `updated` events. This keeps client reducers simple and leaves patch/CRDT semantics for a future schema version.
+
+Minimum `knowledge.created` / `knowledge.updated` payload:
+
+```json
+{
+  "object_id": "notes/alpha",
+  "entry_id": "notes/alpha",
+  "title": "Alpha",
+  "content_markdown": "# Alpha",
+  "summary": "...",
+  "tags": [],
+  "metadata": {},
+  "source_uri": "file://alpha.md",
+  "status": "active",
+  "version": 1,
+  "content_hash": "sha256...",
+  "updated_by_device_id": "device-a",
+  "updated_at": "..."
+}
+```
+
+Minimum `knowledge.deleted` payload:
+
+```json
+{
+  "object_id": "notes/alpha",
+  "entry_id": "notes/alpha",
+  "status": "deleted",
+  "version": 3,
+  "content_hash": "sha256...",
+  "updated_by_device_id": "device-a",
+  "deleted_at": "...",
+  "updated_at": "..."
+}
+```
+
+### Tombstones and conflicts
+
+Deletes create tombstones rather than physically removing entries. Active baseline APIs hide tombstones by default; tombstone-aware baseline APIs can include them.
+
+M2.2 conflict policy is server-sequenced Last Write Wins with tombstone protection:
+
+- each successful mutation increments that entry's server-side `version`;
+- a deleted entry cannot be updated by normal `PUT`;
+- restore, if needed, must be a future explicit operation rather than an accidental update;
+- idempotent retry with the same `client_event_id` returns the existing sync event and must not allocate another sequence.
+

@@ -228,12 +228,12 @@ Model structs for KB, plugin, and billing already exist, but they should be trea
 
 ## Recommended Next Milestone
 
-Proceed from M2.1 Sync Object Coverage to M2.2 Knowledge Sync Semantics Design.
+Proceed from M2.1 Sync Object Coverage to M2.2 Knowledge Sync Semantics implementation. The first implementation slice adds personal knowledge entry baseline APIs, tombstone-safe mutations, and `knowledge.created` / `knowledge.updated` / `knowledge.deleted` sync events.
 
 Suggested next tasks:
 
-1. define local knowledge object identity and tombstone semantics;
-2. define baseline APIs and incremental sync events for knowledge entries;
+1. implement local knowledge object identity and tombstone semantics;
+2. implement baseline APIs and incremental sync events for knowledge entries;
 3. decide how KB sync relates to future KB Hub subscription state;
-4. add knowledge sync only after these semantics are documented;
+4. keep knowledge sync aligned with the documented contract;
 5. keep KB Hub service implementation blocked until sync contract is stable enough for knowledge and subscription state.

@@ -151,6 +151,81 @@ func TestServerConnectionsAddEmitsPullableSyncEvent(t *testing.T) {
 	}
 }
 
+func TestKnowledgeEntriesMutationsEmitPullableSyncEvents(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	env := newPhase1RouterSmokeEnv(t)
+
+	aliceA := env.verifyNewUser(t, "knowledge-device-a", "knowledge-pubkey")
+	start := env.startPairing(t, aliceA.AccessToken)
+	env.claimPairing(t, start.QRPayload, "knowledge-device-b", "knowledge-device-b-pubkey")
+	aliceB := env.verifyExistingUser(t, "knowledge-device-b", "knowledge-pubkey")
+
+	var created model.UserKnowledgeEntry
+	env.doJSON(t, http.MethodPost, "/api/v1/knowledge/entries", aliceA.AccessToken, map[string]any{
+		"entry_id":         "notes/alpha",
+		"title":            "Alpha",
+		"content_markdown": "# Alpha",
+		"summary":          "first",
+		"tags":             []string{"agentos"},
+		"metadata":         map[string]any{"category": "notes"},
+		"client_event_id":  "knowledge-router-create-1",
+	}, http.StatusCreated, &created)
+	if created.EntryID != "notes/alpha" || created.Status != "active" || created.Version != 1 || created.UpdatedByDeviceID != "knowledge-device-a" {
+		t.Fatalf("unexpected created knowledge entry: %+v", created)
+	}
+
+	createEvents := env.getSyncEvents(t, aliceB.AccessToken, 100)
+	if len(createEvents) != 1 || createEvents[0].EventType != "knowledge.created" || createEvents[0].ObjectType != service.SyncObjectKnowledge || createEvents[0].ObjectID != "notes/alpha" || createEvents[0].Operation != service.SyncOperationCreated || createEvents[0].SourceDeviceID != "knowledge-device-a" || createEvents[0].ClientEventID != "knowledge-router-create-1" {
+		t.Fatalf("expected device B to pull knowledge.created event, got %+v", createEvents)
+	}
+	if createEvents[0].Payload["entry_id"] != "notes/alpha" || createEvents[0].Payload["status"] != "active" {
+		t.Fatalf("unexpected knowledge created payload: %+v", createEvents[0].Payload)
+	}
+	env.ackSyncEvents(t, aliceB.AccessToken, createEvents[0].Sequence)
+
+	var updated model.UserKnowledgeEntry
+	env.doJSON(t, http.MethodPut, "/api/v1/knowledge/entries/notes/alpha", aliceA.AccessToken, map[string]any{
+		"title":            "Alpha v2",
+		"content_markdown": "# Alpha v2",
+		"summary":          "second",
+		"client_event_id":  "knowledge-router-update-1",
+	}, http.StatusOK, &updated)
+	if updated.Title != "Alpha v2" || updated.Version != 2 {
+		t.Fatalf("unexpected updated knowledge entry: %+v", updated)
+	}
+	updateEvents := env.getSyncEvents(t, aliceB.AccessToken, 100)
+	if len(updateEvents) != 1 || updateEvents[0].EventType != "knowledge.updated" || updateEvents[0].ObjectID != "notes/alpha" || updateEvents[0].Operation != service.SyncOperationUpdated {
+		t.Fatalf("expected device B to pull knowledge.updated event, got %+v", updateEvents)
+	}
+	env.ackSyncEvents(t, aliceB.AccessToken, updateEvents[0].Sequence)
+
+	var deleted model.UserKnowledgeEntry
+	env.doJSON(t, http.MethodDelete, "/api/v1/knowledge/entries/notes/alpha", aliceA.AccessToken, map[string]any{
+		"client_event_id": "knowledge-router-delete-1",
+	}, http.StatusOK, &deleted)
+	if deleted.Status != "deleted" || deleted.DeletedAt == nil || deleted.Version != 3 {
+		t.Fatalf("unexpected deleted knowledge entry: %+v", deleted)
+	}
+	deleteEvents := env.getSyncEvents(t, aliceB.AccessToken, 100)
+	if len(deleteEvents) != 1 || deleteEvents[0].EventType != "knowledge.deleted" || deleteEvents[0].ObjectID != "notes/alpha" || deleteEvents[0].Operation != service.SyncOperationDeleted {
+		t.Fatalf("expected device B to pull knowledge.deleted event, got %+v", deleteEvents)
+	}
+	if deleteEvents[0].Payload["status"] != "deleted" || deleteEvents[0].Payload["deleted_at"] == nil {
+		t.Fatalf("unexpected knowledge deleted payload: %+v", deleteEvents[0].Payload)
+	}
+
+	var activeEntries []model.UserKnowledgeEntry
+	env.doJSON(t, http.MethodGet, "/api/v1/knowledge/entries", aliceA.AccessToken, nil, http.StatusOK, &activeEntries)
+	if len(activeEntries) != 0 {
+		t.Fatalf("expected no active knowledge entries after delete, got %+v", activeEntries)
+	}
+	var allEntries []model.UserKnowledgeEntry
+	env.doJSON(t, http.MethodGet, "/api/v1/knowledge/entries?include_deleted=true", aliceA.AccessToken, nil, http.StatusOK, &allEntries)
+	if len(allEntries) != 1 || allEntries[0].Status != "deleted" {
+		t.Fatalf("expected tombstone in include_deleted list, got %+v", allEntries)
+	}
+}
+
 func TestSyncEventsResponseIncludesStableEnvelopeFields(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	env := newPhase1RouterSmokeEnv(t)
@@ -275,7 +350,7 @@ func newPhase1RouterSmokeEnv(t *testing.T) *phase1RouterSmokeEnv {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.Device{}, &model.AuthChallenge{}, &model.AdmissionRequest{}, &model.ServerAdmission{}, &model.DevicePairingSession{}, &model.Conversation{}, &model.ConversationParticipant{}, &model.Message{}, &model.OfflineMessage{}, &model.SyncEvent{}, &model.SyncCursor{}, &model.SyncSequence{}, &model.UserSkillSetting{}, &model.UserAgentSetting{}, &model.UserServerConnection{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Device{}, &model.AuthChallenge{}, &model.AdmissionRequest{}, &model.ServerAdmission{}, &model.DevicePairingSession{}, &model.Conversation{}, &model.ConversationParticipant{}, &model.Message{}, &model.OfflineMessage{}, &model.SyncEvent{}, &model.SyncCursor{}, &model.SyncSequence{}, &model.UserSkillSetting{}, &model.UserAgentSetting{}, &model.UserServerConnection{}, &model.UserKnowledgeEntry{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 

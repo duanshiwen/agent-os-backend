@@ -44,6 +44,8 @@ func Setup(
 	agentSettingsSvc := service.NewAgentSettingsService(agentSettingsRepo, syncSvc)
 	serverConnectionsRepo := repository.NewServerConnectionsRepo(db)
 	serverConnectionsSvc := service.NewServerConnectionsService(serverConnectionsRepo, syncSvc)
+	knowledgeEntriesRepo := repository.NewKnowledgeEntriesRepo(db)
+	knowledgeEntriesSvc := service.NewKnowledgeEntriesService(knowledgeEntriesRepo, syncSvc)
 
 	// Handlers
 	identityH := handler.NewIdentityHandler(identitySvc)
@@ -54,6 +56,7 @@ func Setup(
 	skillSettingsH := handler.NewSkillSettingsHandler(skillSettingsSvc)
 	agentSettingsH := handler.NewAgentSettingsHandler(agentSettingsSvc)
 	serverConnectionsH := handler.NewServerConnectionsHandler(serverConnectionsSvc)
+	knowledgeEntriesH := handler.NewKnowledgeEntriesHandler(knowledgeEntriesSvc)
 
 	// WebSocket dispatcher
 	dispatcher := ws.NewDispatcher(hub, msgSvc, convSvc, convRepo)
@@ -136,6 +139,12 @@ func Setup(
 			protected.POST("/servers", serverConnectionsH.Create)
 			protected.PUT("/servers/:id", serverConnectionsH.Update)
 			protected.DELETE("/servers/:id", serverConnectionsH.Delete)
+
+			protected.GET("/knowledge/entries", knowledgeEntriesH.List)
+			protected.POST("/knowledge/entries", knowledgeEntriesH.Create)
+			protected.GET("/knowledge/entries/*entry_id", knowledgeEntriesH.Get)
+			protected.PUT("/knowledge/entries/*entry_id", knowledgeEntriesH.Update)
+			protected.DELETE("/knowledge/entries/*entry_id", knowledgeEntriesH.Delete)
 		}
 
 		// Admin routes
