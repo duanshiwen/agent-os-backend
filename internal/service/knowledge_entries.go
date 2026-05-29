@@ -104,6 +104,9 @@ func (s *KnowledgeEntriesService) UpdateEntry(userID uuid.UUID, sourceDeviceID, 
 	if err := validateKnowledgeInput(input, false); err != nil {
 		return nil, nil, err
 	}
+	if existingEvent, entry, err := s.idempotentKnowledgeReplay(userID, sourceDeviceID, entryID, SyncOperationUpdated, input.ClientEventID); existingEvent != nil || err != nil {
+		return entry, existingEvent, err
+	}
 	existing, err := s.repo.GetByEntryID(userID, entryID, true)
 	if err != nil {
 		if repository.IsNotFound(err) {
@@ -148,6 +151,9 @@ func (s *KnowledgeEntriesService) DeleteEntry(userID uuid.UUID, sourceDeviceID, 
 	entryID = strings.TrimSpace(entryID)
 	if entryID == "" {
 		return nil, nil, fmt.Errorf("entry_id is required")
+	}
+	if existingEvent, entry, err := s.idempotentKnowledgeReplay(userID, sourceDeviceID, entryID, SyncOperationDeleted, clientEventID); existingEvent != nil || err != nil {
+		return entry, existingEvent, err
 	}
 	existing, err := s.repo.GetByEntryID(userID, entryID, true)
 	if err != nil {

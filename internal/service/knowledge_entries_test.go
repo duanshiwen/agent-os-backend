@@ -146,6 +146,70 @@ func TestKnowledgeEntriesClientEventIDIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestKnowledgeEntriesUpdateClientEventIDIsIdempotent(t *testing.T) {
+	svc, syncRepo, user := newKnowledgeEntriesTestService(t)
+	_, _, err := svc.CreateEntry(user.ID, "device-a", KnowledgeEntryInput{EntryID: "notes/alpha", Title: "Alpha", ContentMarkdown: "v1", ClientEventID: "create-before-update-idempotent"})
+	if err != nil {
+		t.Fatalf("create entry: %v", err)
+	}
+	_, first, err := svc.UpdateEntry(user.ID, "device-a", "notes/alpha", KnowledgeEntryInput{Title: "Alpha v2", ContentMarkdown: "v2", ClientEventID: "knowledge-update-idempotent-1"})
+	if err != nil {
+		t.Fatalf("first update: %v", err)
+	}
+	entry, second, err := svc.UpdateEntry(user.ID, "device-a", "notes/alpha", KnowledgeEntryInput{Title: "Alpha v2", ContentMarkdown: "v2", ClientEventID: "knowledge-update-idempotent-1"})
+	if err != nil {
+		t.Fatalf("second update idempotent replay: %v", err)
+	}
+	if first.ID != second.ID || first.Sequence != second.Sequence || entry.Version != 2 {
+		t.Fatalf("expected same update event and unchanged version, entry=%+v first=%+v second=%+v", entry, first, second)
+	}
+	events, err := syncRepo.GetEventsSince(user.ID, "", 0, 100)
+	if err != nil {
+		t.Fatalf("get events: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected create + one update event, got %+v", events)
+	}
+}
+
+func TestKnowledgeEntriesDeleteClientEventIDIsIdempotent(t *testing.T) {
+	svc, syncRepo, user := newKnowledgeEntriesTestService(t)
+	_, _, err := svc.CreateEntry(user.ID, "device-a", KnowledgeEntryInput{EntryID: "notes/alpha", Title: "Alpha", ContentMarkdown: "v1", ClientEventID: "create-before-delete-idempotent"})
+	if err != nil {
+		t.Fatalf("create entry: %v", err)
+	}
+	_, first, err := svc.DeleteEntry(user.ID, "device-a", "notes/alpha", "knowledge-delete-idempotent-1")
+	if err != nil {
+		t.Fatalf("first delete: %v", err)
+	}
+	entry, second, err := svc.DeleteEntry(user.ID, "device-a", "notes/alpha", "knowledge-delete-idempotent-1")
+	if err != nil {
+		t.Fatalf("second delete idempotent replay: %v", err)
+	}
+	if first.ID != second.ID || first.Sequence != second.Sequence || entry.Version != 2 || entry.Status != repository.KnowledgeEntryStatusDeleted {
+		t.Fatalf("expected same delete event and unchanged tombstone, entry=%+v first=%+v second=%+v", entry, first, second)
+	}
+	events, err := syncRepo.GetEventsSince(user.ID, "", 0, 100)
+	if err != nil {
+		t.Fatalf("get events: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected create + one delete event, got %+v", events)
+	}
+}
+
+func TestKnowledgeEntriesClientEventIDConflictIsRejected(t *testing.T) {
+	svc, _, user := newKnowledgeEntriesTestService(t)
+	_, _, err := svc.CreateEntry(user.ID, "device-a", KnowledgeEntryInput{EntryID: "notes/alpha", Title: "Alpha", ContentMarkdown: "v1", ClientEventID: "knowledge-conflict-1"})
+	if err != nil {
+		t.Fatalf("create entry: %v", err)
+	}
+	_, _, err = svc.UpdateEntry(user.ID, "device-a", "notes/alpha", KnowledgeEntryInput{Title: "Alpha v2", ContentMarkdown: "v2", ClientEventID: "knowledge-conflict-1"})
+	if !errors.Is(err, ErrSyncIdempotencyConflict) {
+		t.Fatalf("expected ErrSyncIdempotencyConflict, got %v", err)
+	}
+}
+
 func assertKnowledgeSyncEvent(t *testing.T, event *model.SyncEvent, userID uuid.UUID, sourceDeviceID, entryID, operation, clientEventID string) {
 	t.Helper()
 	if event == nil {
