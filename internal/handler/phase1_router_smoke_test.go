@@ -136,6 +136,17 @@ func TestSyncEventsLimitQueryContract(t *testing.T) {
 	}
 }
 
+func TestSyncAckRequiresLastSequence(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	env := newPhase1RouterSmokeEnv(t)
+
+	alice := env.verifyNewUser(t, "ack-device-1", "ack-pubkey")
+	res := env.doRawJSON(t, http.MethodPost, "/api/v1/sync/ack", alice.AccessToken, map[string]any{}, http.StatusBadRequest)
+	if res.Code != http.StatusBadRequest || res.Message == "" {
+		t.Fatalf("expected bad request response for missing last_sequence, got %+v", res)
+	}
+}
+
 type phase1RouterSmokeVerifier struct{}
 
 func (v *phase1RouterSmokeVerifier) VerifyEd25519Challenge(_ context.Context, _, _, _ string) (bool, error) {
