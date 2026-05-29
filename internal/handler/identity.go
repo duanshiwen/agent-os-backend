@@ -103,7 +103,10 @@ func (h *IdentityHandler) UpdateProfile(c *gin.Context) {
 }
 
 // POST /api/v1/users/me/devices
+// Deprecated: use POST /api/v1/devices/pairing/start and POST /api/v1/devices/pairing/claim for QR-only pairing.
 func (h *IdentityHandler) PairDevice(c *gin.Context) {
+	c.Header("Deprecation", "true")
+	c.Header("Link", "</api/v1/devices/pairing/start>; rel=\"successor-version\"")
 	userID := middleware.MustGetUserID(c)
 	var req service.PairDeviceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
