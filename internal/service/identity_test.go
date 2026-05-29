@@ -238,6 +238,36 @@ func TestIdentityServiceVerifySignatureApprovalCreatesPendingWithoutUser(t *test
 	}
 }
 
+func TestIdentityServiceVerifySignatureRejectsRejectedAdmissionRequest(t *testing.T) {
+	verifier := &stubVerifier{valid: true}
+	svc, admissionSvc, repo := newIdentityAdmissionTestService(t, verifier)
+	if _, err := admissionSvc.UpdatePolicy("default", "approval", mustUUIDForTest(t)); err != nil {
+		t.Fatalf("update policy: %v", err)
+	}
+	pubKey := hex.EncodeToString(make([]byte, ed25519.PublicKeySize))
+	req := &model.AdmissionRequest{UserPubKey: pubKey, Status: "rejected", Reason: "not allowed"}
+	if err := repo.CreateAdmissionRequest(req); err != nil {
+		t.Fatalf("create rejected request: %v", err)
+	}
+	challenge, err := svc.InitiateChallenge("device-rejected", pubKey)
+	if err != nil {
+		t.Fatalf("initiate challenge: %v", err)
+	}
+
+	_, err = svc.VerifySignature(&VerifyRequest{
+		DeviceID:   "device-rejected",
+		UserPubKey: pubKey,
+		Nonce:      challenge.Nonce,
+		Signature:  "ignored-by-stub",
+	})
+	if err == nil || err.Error() != "admission denied: admission_rejected" {
+		t.Fatalf("expected rejected admission denial, got %v", err)
+	}
+	if _, err := repo.GetByPubKey(pubKey); err == nil {
+		t.Fatal("expected rejected user not to be created")
+	}
+}
+
 func TestIdentityServiceVerifySignatureAllowsApprovedAdmissionRequest(t *testing.T) {
 	verifier := &stubVerifier{valid: true}
 	svc, admissionSvc, repo := newIdentityAdmissionTestService(t, verifier)

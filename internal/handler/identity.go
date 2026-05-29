@@ -48,6 +48,10 @@ func (h *IdentityHandler) Verify(c *gin.Context) {
 		response.Unauthorized(c, err.Error())
 		return
 	}
+	if result.AdmissionStatus == "pending_approval" {
+		response.Accepted(c, result)
+		return
+	}
 	response.OK(c, result)
 }
 
