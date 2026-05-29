@@ -25,7 +25,8 @@ func (h *SyncHandler) GetEvents(c *gin.Context) {
 		AfterSequence *uint64 `form:"after_sequence"`
 	}
 	if err := c.ShouldBindQuery(&req); err != nil {
-		req.Limit = 100
+		response.BadRequest(c, err.Error())
+		return
 	}
 
 	var events any

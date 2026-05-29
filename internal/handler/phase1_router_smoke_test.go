@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -48,10 +49,101 @@ func TestPhase1RouterSmokeAuthConversationSyncAndQRPairing(t *testing.T) {
 		t.Fatalf("expected no bob sync events after ack, got %+v", bobEvents)
 	}
 
+	aliceProfile := env.updateProfile(t, alice.AccessToken, "Alice Router Smoke")
+	if aliceProfile.ID != alice.User.ID || aliceProfile.DisplayName != "Alice Router Smoke" {
+		t.Fatalf("unexpected updated profile: %+v", aliceProfile)
+	}
+	aliceEvents := env.getSyncEventsAfter(t, alice.AccessToken, 1, 100)
+	if len(aliceEvents) != 1 || aliceEvents[0].EventType != "profile.updated" || aliceEvents[0].ObjectType != service.SyncEventProfile || aliceEvents[0].ObjectID != alice.User.ID.String() || aliceEvents[0].Operation != service.SyncActionUpdated || aliceEvents[0].SourceDeviceID != alice.Device.DeviceID {
+		t.Fatalf("expected alice profile.updated sync event, got %+v", aliceEvents)
+	}
+	if aliceEvents[0].Payload["display_name"] != "Alice Router Smoke" {
+		t.Fatalf("unexpected profile sync payload: %+v", aliceEvents[0].Payload)
+	}
+
 	start := env.startPairing(t, alice.AccessToken)
 	paired := env.claimPairing(t, start.QRPayload, "alice-device-2", "alice-device-2-pubkey")
 	if paired.UserID != alice.User.ID || paired.DeviceID != "alice-device-2" {
 		t.Fatalf("unexpected paired device: %+v", paired)
+	}
+}
+
+func TestSyncEventsResponseIncludesStableEnvelopeFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	env := newPhase1RouterSmokeEnv(t)
+
+	alice := env.verifyNewUser(t, "contract-device-1", "contract-pubkey")
+	env.updateProfile(t, alice.AccessToken, "Contract Alice")
+
+	res := env.doRawJSON(t, http.MethodGet, "/api/v1/sync/events?after_sequence=0&limit=100", alice.AccessToken, nil, http.StatusOK)
+	var events []map[string]any
+	if err := json.Unmarshal(res.Data, &events); err != nil {
+		t.Fatalf("decode raw sync events: %v data=%s", err, string(res.Data))
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected one sync event, got %+v", events)
+	}
+	event := events[0]
+	for _, field := range []string{"id", "user_id", "device_id", "event_type", "schema_version", "object_type", "object_id", "operation", "source_device_id", "client_event_id", "payload", "timestamp", "sequence", "created_at", "updated_at"} {
+		if _, ok := event[field]; !ok {
+			t.Fatalf("expected sync event JSON field %q in %+v", field, event)
+		}
+	}
+	if event["event_type"] != "profile.updated" || event["object_type"] != service.SyncEventProfile || event["operation"] != service.SyncActionUpdated || event["object_id"] != alice.User.ID.String() || event["source_device_id"] != alice.Device.DeviceID {
+		t.Fatalf("unexpected sync event contract values: %+v", event)
+	}
+	payload, ok := event["payload"].(map[string]any)
+	if !ok || payload["display_name"] != "Contract Alice" {
+		t.Fatalf("unexpected sync payload contract: %+v", event["payload"])
+	}
+}
+
+func TestSyncEventsRejectsInvalidAfterSequenceQuery(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	env := newPhase1RouterSmokeEnv(t)
+
+	alice := env.verifyNewUser(t, "bad-query-device-1", "bad-query-pubkey")
+	res := env.doRawJSON(t, http.MethodGet, "/api/v1/sync/events?after_sequence=not-a-number", alice.AccessToken, nil, http.StatusBadRequest)
+	if res.Code != http.StatusBadRequest || res.Message == "" {
+		t.Fatalf("expected bad request response for invalid after_sequence, got %+v", res)
+	}
+}
+
+func TestSyncEventsLimitQueryContract(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	env := newPhase1RouterSmokeEnv(t)
+
+	alice := env.verifyNewUser(t, "limit-device-1", "limit-pubkey")
+	for _, name := range []string{"Limit Alice 1", "Limit Alice 2", "Limit Alice 3"} {
+		env.updateProfile(t, alice.AccessToken, name)
+	}
+
+	limited := env.getSyncEventsAfter(t, alice.AccessToken, 0, 2)
+	if len(limited) != 2 {
+		t.Fatalf("expected limit=2 to return 2 events, got %+v", limited)
+	}
+	if limited[0].Sequence != 1 || limited[1].Sequence != 2 {
+		t.Fatalf("expected first two events ordered by sequence, got %+v", limited)
+	}
+
+	fallbackZero := env.getSyncEventsAfter(t, alice.AccessToken, 0, 0)
+	if len(fallbackZero) != 3 {
+		t.Fatalf("expected limit=0 to fallback to default and return all 3 events, got %+v", fallbackZero)
+	}
+	fallbackTooLarge := env.getSyncEventsAfter(t, alice.AccessToken, 0, 501)
+	if len(fallbackTooLarge) != 3 {
+		t.Fatalf("expected limit>500 to fallback to default and return all 3 events, got %+v", fallbackTooLarge)
+	}
+}
+
+func TestSyncAckRequiresLastSequence(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	env := newPhase1RouterSmokeEnv(t)
+
+	alice := env.verifyNewUser(t, "ack-device-1", "ack-pubkey")
+	res := env.doRawJSON(t, http.MethodPost, "/api/v1/sync/ack", alice.AccessToken, map[string]any{}, http.StatusBadRequest)
+	if res.Code != http.StatusBadRequest || res.Message == "" {
+		t.Fatalf("expected bad request response for missing last_sequence, got %+v", res)
 	}
 }
 
@@ -85,7 +177,7 @@ func newPhase1RouterSmokeEnv(t *testing.T) *phase1RouterSmokeEnv {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.Device{}, &model.AuthChallenge{}, &model.AdmissionRequest{}, &model.ServerAdmission{}, &model.DevicePairingSession{}, &model.Conversation{}, &model.ConversationParticipant{}, &model.Message{}, &model.OfflineMessage{}, &model.SyncEvent{}, &model.SyncCursor{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Device{}, &model.AuthChallenge{}, &model.AdmissionRequest{}, &model.ServerAdmission{}, &model.DevicePairingSession{}, &model.Conversation{}, &model.ConversationParticipant{}, &model.Message{}, &model.OfflineMessage{}, &model.SyncEvent{}, &model.SyncCursor{}, &model.SyncSequence{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
@@ -146,10 +238,24 @@ func (e *phase1RouterSmokeEnv) createPrivateConversation(t *testing.T, token str
 	return conv
 }
 
+func (e *phase1RouterSmokeEnv) updateProfile(t *testing.T, token string, displayName string) model.User {
+	t.Helper()
+	var user model.User
+	e.doJSON(t, http.MethodPut, "/api/v1/users/me", token, map[string]any{"display_name": displayName}, http.StatusOK, &user)
+	return user
+}
+
 func (e *phase1RouterSmokeEnv) getSyncEvents(t *testing.T, token string, limit int) []model.SyncEvent {
 	t.Helper()
 	var events []model.SyncEvent
-	e.doJSON(t, http.MethodGet, "/api/v1/sync/events?limit=100", token, nil, http.StatusOK, &events)
+	e.doJSON(t, http.MethodGet, fmt.Sprintf("/api/v1/sync/events?limit=%d", limit), token, nil, http.StatusOK, &events)
+	return events
+}
+
+func (e *phase1RouterSmokeEnv) getSyncEventsAfter(t *testing.T, token string, afterSequence uint64, limit int) []model.SyncEvent {
+	t.Helper()
+	var events []model.SyncEvent
+	e.doJSON(t, http.MethodGet, fmt.Sprintf("/api/v1/sync/events?after_sequence=%d&limit=%d", afterSequence, limit), token, nil, http.StatusOK, &events)
 	return events
 }
 
@@ -187,6 +293,16 @@ func (e *phase1RouterSmokeEnv) claimPairing(t *testing.T, qrPayload, newDeviceID
 
 func (e *phase1RouterSmokeEnv) doJSON(t *testing.T, method, path, token string, body any, expectedStatus int, out any) {
 	t.Helper()
+	res := e.doRawJSON(t, method, path, token, body, expectedStatus)
+	if out != nil {
+		if err := json.Unmarshal(res.Data, out); err != nil {
+			t.Fatalf("decode response data: %v data=%s", err, string(res.Data))
+		}
+	}
+}
+
+func (e *phase1RouterSmokeEnv) doRawJSON(t *testing.T, method, path, token string, body any, expectedStatus int) apiResponse {
+	t.Helper()
 	var payload []byte
 	var err error
 	if body != nil {
@@ -211,12 +327,11 @@ func (e *phase1RouterSmokeEnv) doJSON(t *testing.T, method, path, token string, 
 	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
 		t.Fatalf("decode api response: %v body=%s", err, rec.Body.String())
 	}
-	if res.Code != 0 {
+	if expectedStatus < http.StatusBadRequest && res.Code != 0 {
 		t.Fatalf("expected api code 0, got response %+v", res)
 	}
-	if out != nil {
-		if err := json.Unmarshal(res.Data, out); err != nil {
-			t.Fatalf("decode response data: %v data=%s", err, string(res.Data))
-		}
+	if expectedStatus >= http.StatusBadRequest && res.Code != expectedStatus {
+		t.Fatalf("expected api error code %d, got response %+v", expectedStatus, res)
 	}
+	return res
 }

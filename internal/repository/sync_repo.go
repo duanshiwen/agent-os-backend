@@ -6,6 +6,7 @@ import (
 	"github.com/agent-os/backend/internal/model"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type SyncRepo struct {
@@ -56,16 +57,32 @@ func (r *SyncRepo) GetEventsByType(userID uuid.UUID, eventType string, since tim
 	return events, err
 }
 
-// GetNextSequence returns the next sequence number for a user.
+// GetNextSequence atomically reserves the next sequence number for a user.
 func (r *SyncRepo) GetNextSequence(userID uuid.UUID) (uint64, error) {
-	var maxSeq struct {
-		Max uint64
-	}
-	err := r.db.Model(&model.SyncEvent{}).
-		Where("user_id = ?", userID).
-		Select("COALESCE(MAX(sequence), 0) as max").
-		Scan(&maxSeq).Error
-	return maxSeq.Max + 1, err
+	var reserved uint64
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		now := time.Now()
+		seed := model.SyncSequence{UserID: userID, NextSequence: 1, UpdatedAt: now}
+		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&seed).Error; err != nil {
+			return err
+		}
+
+		var seq model.SyncSequence
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("user_id = ?", userID).
+			First(&seq).Error; err != nil {
+			return err
+		}
+
+		reserved = seq.NextSequence
+		return tx.Model(&model.SyncSequence{}).
+			Where("user_id = ?", userID).
+			Updates(map[string]any{
+				"next_sequence": seq.NextSequence + 1,
+				"updated_at":    now,
+			}).Error
+	})
+	return reserved, err
 }
 
 // === SyncCursor ===
@@ -89,12 +106,15 @@ func (r *SyncRepo) GetCursor(userID uuid.UUID, deviceID string) (*model.SyncCurs
 }
 
 func (r *SyncRepo) UpdateCursor(userID uuid.UUID, deviceID string, sequence uint64) error {
-	cursor := &model.SyncCursor{
-		UserID:             userID,
-		DeviceID:           deviceID,
-		LastSyncedSequence: sequence,
-		UpdatedAt:          time.Now(),
+	cursor, err := r.GetCursor(userID, deviceID)
+	if err != nil {
+		return err
 	}
+	if sequence < cursor.LastSyncedSequence {
+		sequence = cursor.LastSyncedSequence
+	}
+	cursor.LastSyncedSequence = sequence
+	cursor.UpdatedAt = time.Now()
 	return r.db.Save(cursor).Error
 }
 

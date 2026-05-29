@@ -275,7 +275,7 @@ func (s *IdentityService) GetProfile(userID uuid.UUID) (*model.User, error) {
 }
 
 // UpdateProfile updates the current user's profile.
-func (s *IdentityService) UpdateProfile(userID uuid.UUID, displayName, avatarURL *string) (*model.User, error) {
+func (s *IdentityService) UpdateProfile(userID uuid.UUID, sourceDeviceID string, displayName, avatarURL *string) (*model.User, error) {
 	user, err := s.userRepo.GetByID(userID)
 	if err != nil {
 		return nil, err
@@ -297,11 +297,12 @@ func (s *IdentityService) UpdateProfile(userID uuid.UUID, displayName, avatarURL
 			"avatar_url":   user.AvatarURL,
 		}
 		_ = s.syncSvc.RecordEnvelope(SyncEnvelope{
-			UserID:     user.ID,
-			ObjectType: SyncEventProfile,
-			ObjectID:   user.ID.String(),
-			Operation:  SyncActionUpdated,
-			Payload:    payload,
+			UserID:         user.ID,
+			SourceDeviceID: sourceDeviceID,
+			ObjectType:     SyncEventProfile,
+			ObjectID:       user.ID.String(),
+			Operation:      SyncActionUpdated,
+			Payload:        payload,
 		})
 	}
 	return user, nil

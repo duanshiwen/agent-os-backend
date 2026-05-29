@@ -77,6 +77,7 @@ func (h *IdentityHandler) GetProfile(c *gin.Context) {
 // PUT /api/v1/users/me
 func (h *IdentityHandler) UpdateProfile(c *gin.Context) {
 	userID := middleware.MustGetUserID(c)
+	deviceID := middleware.MustGetDeviceID(c)
 	var req struct {
 		DisplayName *string `json:"display_name"`
 		AvatarURL   *string `json:"avatar_url"`
@@ -86,7 +87,7 @@ func (h *IdentityHandler) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	user, err := h.svc.UpdateProfile(userID, req.DisplayName, req.AvatarURL)
+	user, err := h.svc.UpdateProfile(userID, deviceID, req.DisplayName, req.AvatarURL)
 	if err != nil {
 		response.InternalError(c, err.Error())
 		return
