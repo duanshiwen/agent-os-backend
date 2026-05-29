@@ -49,6 +49,12 @@ func TestSyncServiceRecordEventAssignsMonotonicSequencesAndNotifiesOtherDevices(
 	if events[0].EventType != "message.created" || events[1].EventType != "profile.updated" {
 		t.Fatalf("unexpected event types: %q %q", events[0].EventType, events[1].EventType)
 	}
+	if events[0].SchemaVersion != 1 || events[0].ObjectType != SyncEventMessage || events[0].Operation != SyncActionCreated || events[0].SourceDeviceID != "device-a" {
+		t.Fatalf("unexpected message envelope fields: %+v", events[0])
+	}
+	if events[1].SchemaVersion != 1 || events[1].ObjectType != SyncEventProfile || events[1].Operation != SyncActionUpdated || events[1].SourceDeviceID != "device-a" {
+		t.Fatalf("unexpected profile envelope fields: %+v", events[1])
+	}
 
 	hub := svc.hub.(*captureHub)
 	if hub.userID != userID || hub.excludeDeviceID != "device-a" || len(hub.messages) != 2 {
@@ -60,6 +66,35 @@ func TestSyncServiceRecordEventAssignsMonotonicSequencesAndNotifiesOtherDevices(
 	}
 	if envelope["type"] != "sync.event" {
 		t.Fatalf("unexpected notification type: %v", envelope["type"])
+	}
+}
+
+func TestSyncServiceRecordEnvelopePersistsStableContractFields(t *testing.T) {
+	svc, _ := newSyncTestService(t)
+	userID := uuid.New()
+	objectID := uuid.New().String()
+
+	if err := svc.RecordEnvelope(SyncEnvelope{
+		UserID:         userID,
+		SourceDeviceID: "device-a",
+		ObjectType:     SyncEventProfile,
+		ObjectID:       objectID,
+		Operation:      SyncActionUpdated,
+		Payload:        datatypes.JSONMap{"display_name": "Alice"},
+	}); err != nil {
+		t.Fatalf("record envelope: %v", err)
+	}
+
+	events, err := svc.GetEventsAfter(userID, 0, 100)
+	if err != nil {
+		t.Fatalf("get events: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected one event, got %+v", events)
+	}
+	event := events[0]
+	if event.EventType != "profile.updated" || event.SchemaVersion != 1 || event.ObjectType != SyncEventProfile || event.ObjectID != objectID || event.Operation != SyncActionUpdated || event.SourceDeviceID != "device-a" {
+		t.Fatalf("unexpected persisted envelope: %+v", event)
 	}
 }
 

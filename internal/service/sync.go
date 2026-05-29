@@ -79,36 +79,72 @@ var supportedSyncActions = map[string]map[string]bool{
 }
 
 type SyncEventMsg struct {
-	EventType string `json:"event_type"`
-	Sequence  uint64 `json:"sequence"`
-	Timestamp int64  `json:"timestamp"`
-	Payload   any    `json:"payload,omitempty"`
+	EventType      string `json:"event_type"`
+	SchemaVersion  int    `json:"schema_version"`
+	ObjectType     string `json:"object_type"`
+	ObjectID       string `json:"object_id"`
+	Operation      string `json:"operation"`
+	SourceDeviceID string `json:"source_device_id"`
+	Sequence       uint64 `json:"sequence"`
+	Timestamp      int64  `json:"timestamp"`
+	Payload        any    `json:"payload,omitempty"`
+}
+
+type SyncEnvelope struct {
+	UserID         uuid.UUID
+	SourceDeviceID string
+	ObjectType     string
+	ObjectID       string
+	Operation      string
+	Payload        datatypes.JSONMap
 }
 
 func (s *SyncService) RecordEvent(userID uuid.UUID, deviceID, eventType string, action string, payload datatypes.JSONMap) error {
-	if err := validateSyncEvent(eventType, action); err != nil {
+	objectID := ""
+	if payload != nil {
+		if value, ok := payload["object_id"].(string); ok {
+			objectID = value
+		}
+	}
+	return s.RecordEnvelope(SyncEnvelope{
+		UserID:         userID,
+		SourceDeviceID: deviceID,
+		ObjectType:     eventType,
+		ObjectID:       objectID,
+		Operation:      action,
+		Payload:        payload,
+	})
+}
+
+func (s *SyncService) RecordEnvelope(envelope SyncEnvelope) error {
+	if err := validateSyncEvent(envelope.ObjectType, envelope.Operation); err != nil {
 		return err
 	}
 
-	seq, err := s.syncRepo.GetNextSequence(userID)
+	seq, err := s.syncRepo.GetNextSequence(envelope.UserID)
 	if err != nil {
 		return fmt.Errorf("get next sequence: %w", err)
 	}
 
 	event := &model.SyncEvent{
-		UserID:    userID,
-		DeviceID:  deviceID,
-		EventType: eventType + "." + action,
-		Payload:   payload,
-		Timestamp: time.Now(),
-		Sequence:  seq,
+		UserID:         envelope.UserID,
+		DeviceID:       envelope.SourceDeviceID,
+		EventType:      envelope.ObjectType + "." + envelope.Operation,
+		SchemaVersion:  1,
+		ObjectType:     envelope.ObjectType,
+		ObjectID:       envelope.ObjectID,
+		Operation:      envelope.Operation,
+		SourceDeviceID: envelope.SourceDeviceID,
+		Payload:        envelope.Payload,
+		Timestamp:      time.Now(),
+		Sequence:       seq,
 	}
 
 	if err := s.syncRepo.CreateEvent(event); err != nil {
 		return fmt.Errorf("create sync event: %w", err)
 	}
 
-	s.notifyDevices(userID, deviceID, event)
+	s.notifyDevices(envelope.UserID, envelope.SourceDeviceID, event)
 	return nil
 }
 
@@ -136,10 +172,15 @@ func (s *SyncService) AckEvents(userID uuid.UUID, deviceID string, lastSequence 
 
 func (s *SyncService) notifyDevices(userID uuid.UUID, sourceDeviceID string, event *model.SyncEvent) {
 	msg := SyncEventMsg{
-		EventType: event.EventType,
-		Sequence:  event.Sequence,
-		Timestamp: event.Timestamp.UnixMilli(),
-		Payload:   event.Payload,
+		EventType:      event.EventType,
+		SchemaVersion:  event.SchemaVersion,
+		ObjectType:     event.ObjectType,
+		ObjectID:       event.ObjectID,
+		Operation:      event.Operation,
+		SourceDeviceID: event.SourceDeviceID,
+		Sequence:       event.Sequence,
+		Timestamp:      event.Timestamp.UnixMilli(),
+		Payload:        event.Payload,
 	}
 
 	env := map[string]any{"type": "sync.event", "payload": msg}
