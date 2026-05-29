@@ -169,7 +169,7 @@ func (e *phase1RouterSmokeEnv) updateProfile(t *testing.T, token string, display
 func (e *phase1RouterSmokeEnv) getSyncEvents(t *testing.T, token string, limit int) []model.SyncEvent {
 	t.Helper()
 	var events []model.SyncEvent
-	e.doJSON(t, http.MethodGet, "/api/v1/sync/events?limit=100", token, nil, http.StatusOK, &events)
+	e.doJSON(t, http.MethodGet, fmt.Sprintf("/api/v1/sync/events?limit=%d", limit), token, nil, http.StatusOK, &events)
 	return events
 }
 
