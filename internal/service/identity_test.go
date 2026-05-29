@@ -315,7 +315,8 @@ func mustUUIDForTest(t *testing.T) uuid.UUID {
 
 func TestIdentityServiceUpdateProfileRecordsProfileUpdatedSyncEvent(t *testing.T) {
 	svc, _, repo := newIdentityAdmissionTestService(t, &stubVerifier{valid: true})
-	syncSvc, _ := newSyncTestService(t)
+	capture := &captureHub{}
+	syncSvc, _ := newSyncTestServiceWithHub(t, capture)
 	svc.SetSyncService(syncSvc)
 	user := &model.User{PubKeyEd25519: "profile-sync-pubkey", DisplayName: "Old"}
 	if err := repo.Create(user); err != nil {
@@ -342,7 +343,10 @@ func TestIdentityServiceUpdateProfileRecordsProfileUpdatedSyncEvent(t *testing.T
 	if event.EventType != "profile.updated" || event.ObjectType != SyncEventProfile || event.ObjectID != user.ID.String() || event.Operation != SyncActionUpdated || event.SourceDeviceID != "profile-device-1" {
 		t.Fatalf("unexpected profile sync event: %+v", event)
 	}
-	if event.Payload["display_name"] != newName {
+	if event.Payload["display_name"] != newName || event.Payload["user_id"] != user.ID.String() || event.Payload["object_id"] != user.ID.String() || event.Payload["avatar_url"] == nil || event.Payload["updated_at"] == nil {
 		t.Fatalf("unexpected profile sync payload: %+v", event.Payload)
+	}
+	if capture.userID != user.ID || capture.excludeDeviceID != "profile-device-1" || len(capture.messages) != 1 {
+		t.Fatalf("expected profile sync notification to exclude source device, got hub=%+v", capture)
 	}
 }

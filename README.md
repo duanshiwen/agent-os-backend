@@ -74,6 +74,50 @@ go run ./cmd/server
 | POST | `/api/v1/conversations/:id/participants` | 添加参与者 |
 | DELETE | `/api/v1/conversations/:id/participants/me` | 退出会话 |
 
+#### 跨设备同步
+
+| 方法 | 路径 | 描述 |
+|------|------|------|
+| GET | `/api/v1/sync/events` | 从设备 cursor 或显式 `after_sequence` 拉取同步事件 |
+| POST | `/api/v1/sync/ack` | 设备确认已持久化应用到的最后 sequence |
+
+拉取示例：
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8080/api/v1/sync/events?after_sequence=0&limit=100"
+```
+
+响应 `data` 为稳定 pull envelope：
+
+```json
+{
+  "events": [],
+  "next_after_sequence": 123,
+  "has_more": false,
+  "server_time": 1780054321000,
+  "schema_version": 1
+}
+```
+
+确认示例：
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"last_sequence": 123}' \
+  http://localhost:8080/api/v1/sync/ack
+```
+
+也可以使用脚本做手动 smoke 验证：
+
+```bash
+TOKEN="<jwt>" ./scripts/smoke-sync.sh
+ACK_SEQUENCE=123 TOKEN="<jwt>" ./scripts/smoke-sync.sh
+```
+
+完整契约见 `docs/sync-contract.md`。
+
 #### WebSocket
 
 ```
@@ -91,6 +135,7 @@ ws://localhost:8080/api/v1/ws?token=<jwt>
 - `message.ack` — 消息发送确认
 - `offline.batch` — 离线消息批量推送
 - `presence.update` — 在线状态变更
+- `sync.event` — 跨设备同步事件通知
 - `pong` — 心跳响应
 - `error` — 错误
 
