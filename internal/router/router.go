@@ -35,12 +35,15 @@ func Setup(
 	admissionSvc := service.NewAdmissionServiceWithRepo(userRepo, admissionRepo, cfg.Admission)
 	identitySvc := service.NewIdentityServiceWithAdmission(userRepo, cfg.JWT, signatureVerifier, admissionSvc)
 	convSvc := service.NewConversationService(convRepo, userRepo)
+	pairingRepo := repository.NewDevicePairingRepo(db)
+	pairingSvc := service.NewDevicePairingService(pairingRepo, userRepo)
 
 	// Handlers
 	identityH := handler.NewIdentityHandler(identitySvc)
 	admissionH := handler.NewAdmissionHandler(admissionSvc)
 	convH := handler.NewConversationHandler(convSvc, msgSvc)
 	syncH := handler.NewSyncHandler(syncSvc)
+	pairingH := handler.NewDevicePairingHandler(pairingSvc)
 
 	// WebSocket dispatcher
 	dispatcher := ws.NewDispatcher(hub, msgSvc, convSvc, convRepo)
@@ -88,10 +91,14 @@ func Setup(
 		// WebSocket
 		v1.GET("/ws", wsH.HandleWS)
 
+		// Public QR pairing claim route. The qr_payload itself carries the one-time pairing proof.
+		v1.POST("/devices/pairing/claim", pairingH.Claim)
+
 		// Protected routes
 		protected := v1.Group("")
 		protected.Use(middleware.JWTAuth(cfg.JWT.Secret))
 		{
+			protected.POST("/devices/pairing/start", pairingH.Start)
 			protected.GET("/users/me", identityH.GetProfile)
 			protected.PUT("/users/me", identityH.UpdateProfile)
 			protected.POST("/users/me/devices", identityH.PairDevice)
