@@ -109,6 +109,33 @@ func TestSyncEventsRejectsInvalidAfterSequenceQuery(t *testing.T) {
 	}
 }
 
+func TestSyncEventsLimitQueryContract(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	env := newPhase1RouterSmokeEnv(t)
+
+	alice := env.verifyNewUser(t, "limit-device-1", "limit-pubkey")
+	for _, name := range []string{"Limit Alice 1", "Limit Alice 2", "Limit Alice 3"} {
+		env.updateProfile(t, alice.AccessToken, name)
+	}
+
+	limited := env.getSyncEventsAfter(t, alice.AccessToken, 0, 2)
+	if len(limited) != 2 {
+		t.Fatalf("expected limit=2 to return 2 events, got %+v", limited)
+	}
+	if limited[0].Sequence != 1 || limited[1].Sequence != 2 {
+		t.Fatalf("expected first two events ordered by sequence, got %+v", limited)
+	}
+
+	fallbackZero := env.getSyncEventsAfter(t, alice.AccessToken, 0, 0)
+	if len(fallbackZero) != 3 {
+		t.Fatalf("expected limit=0 to fallback to default and return all 3 events, got %+v", fallbackZero)
+	}
+	fallbackTooLarge := env.getSyncEventsAfter(t, alice.AccessToken, 0, 501)
+	if len(fallbackTooLarge) != 3 {
+		t.Fatalf("expected limit>500 to fallback to default and return all 3 events, got %+v", fallbackTooLarge)
+	}
+}
+
 type phase1RouterSmokeVerifier struct{}
 
 func (v *phase1RouterSmokeVerifier) VerifyEd25519Challenge(_ context.Context, _, _, _ string) (bool, error) {
