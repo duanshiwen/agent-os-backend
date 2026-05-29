@@ -1,11 +1,21 @@
-# AgentOS Backend Phase 1 Status
+# AgentOS Backend Phase 1 / M2.1 Status
 
 Updated: 2026-05-29
-Branch: `harden-phase1-deployability`
+Branch: `feat/skill-settings-sync`
 
 ## Summary
 
-Phase 1 is now a deployability-hardening milestone for the AgentOS backend foundation. The current backend has a working identity, admission, QR-only device pairing, conversation, offline message, WebSocket, and minimal sync foundation. Phase 1 should be treated as a stable base for Phase 2 sync contract work, not as a complete product surface.
+Phase 1 is the deployability-hardened AgentOS backend foundation. It includes identity, admission, QR-only device pairing, conversation, offline message, WebSocket, and the stable sync foundation.
+
+M2.1 Sync Object Coverage is now implemented for the low-risk configuration objects that sit on top of that foundation:
+
+- profile
+- message
+- skill settings
+- agent settings
+- server list
+
+This means a device can mutate these object families through domain-specific APIs, and another device for the same user can catch up through `/api/v1/sync/events`.
 
 ## Implemented and Verified
 
@@ -60,6 +70,7 @@ Phase 1 is now a deployability-hardening milestone for the AgentOS backend found
 
 - `sync_events`
 - `sync_cursors`
+- `sync_sequences`
 - `GET /api/v1/sync/events`
 - `POST /api/v1/sync/ack`
 - Monotonic per-user sequence assignment.
@@ -70,7 +81,19 @@ Phase 1 is now a deployability-hardening milestone for the AgentOS backend found
 - Optional `client_event_id` idempotency with non-empty `(user_id, client_event_id)` uniqueness.
 - Real-time notification envelope via `sync.event`.
 - `message.created` events are recorded for every conversation participant, including sender cross-device sync.
-- `profile.updated` is the first non-message sync event and is emitted by `PUT /api/v1/users/me`.
+- `profile.updated` is emitted by `PUT /api/v1/users/me`.
+
+### M2.1 Sync Object Coverage
+
+| Object family | Baseline API | Mutating APIs | Events |
+|---|---|---|---|
+| `profile` | `GET /api/v1/users/me` | `PUT /api/v1/users/me` | `profile.updated` |
+| `message` | `GET /api/v1/conversations`, `GET /api/v1/conversations/:id/messages` | conversation message send paths | `message.created` |
+| `skill` | `GET /api/v1/skills/settings` | `PUT /api/v1/skills/settings/:skill_id`, `POST /api/v1/skills/settings/:skill_id/enable`, `POST /api/v1/skills/settings/:skill_id/disable` | `skill.updated`, `skill.enabled`, `skill.disabled` |
+| `agent` | `GET /api/v1/agents/settings` | `PUT /api/v1/agents/settings/:agent_id` | `agent.updated` |
+| `server` | `GET /api/v1/servers` | `POST /api/v1/servers`, `PUT /api/v1/servers/:id`, `DELETE /api/v1/servers/:id` | `server.added`, `server.updated`, `server.removed` |
+
+M2.1 intentionally uses domain-specific write APIs. It does not expose a generic external sync write endpoint.
 
 ### Production Migrations
 
@@ -80,20 +103,20 @@ Current migrations:
 - `002_server_admission.sql` — persistent server admission policy.
 - `003_device_pairing_sessions.sql` — QR-only device pairing sessions.
 - `004_phase1_hardening.sql` — sync events/cursors and Phase 1 DB safeguards.
-
-`004_phase1_hardening.sql` adds:
-
-- `sync_events`
-- `sync_cursors`
-- `idx_sync_events_user_sequence`
-- `idx_sync_events_user_device`
-- `idx_sync_events_user_event_type`
-- `idx_sync_events_timestamp`
-- unique `devices(device_id)`
-- unique `device_pairing_sessions(qr_payload_hash)`
-- `auth_challenges(device_id, nonce)` index
+- `005_sync_sequence_foundation.sql` — sync sequence foundation.
+- `006_profile_sync.sql` — profile sync support.
+- `007_sync_sequences.sql` — per-user monotonic sync sequence storage.
+- `008_user_skill_settings.sql` — user skill settings.
+- `009_user_agent_settings.sql` — user agent settings.
+- `010_user_server_connections.sql` — user server connections.
 
 ## Verification Commands
+
+Run the M2.1 sync settings smoke suite:
+
+```bash
+./scripts/smoke-sync-settings.sh
+```
 
 Run all Go tests:
 
@@ -104,7 +127,7 @@ go test ./...
 Latest verified result:
 
 ```text
-70 passed in 10 packages
+94 passed in 10 packages
 ```
 
 Run Rust FFI integration test:
@@ -124,13 +147,13 @@ ok  github.com/agent-os/backend/internal/service
 
 ## Smoke Coverage
 
-The router-level Phase 1 smoke test is:
+The router-level smoke tests are in:
 
 ```text
 internal/handler/phase1_router_smoke_test.go
 ```
 
-It verifies the real Gin router wiring for:
+They verify real Gin router wiring for:
 
 1. auth challenge;
 2. auth verify;
@@ -138,15 +161,26 @@ It verifies the real Gin router wiring for:
 4. message-created sync event pull;
 5. sync event ack;
 6. QR pairing start;
-7. QR pairing claim.
+7. QR pairing claim;
+8. skill setting mutation and cross-device sync pull;
+9. agent setting mutation and cross-device sync pull;
+10. server list mutation and cross-device sync pull.
 
-The service-level Phase 1 smoke test is:
+The service-level smoke and focused sync tests are in:
 
 ```text
 internal/service/phase1_smoke_test.go
+internal/service/skill_settings_test.go
+internal/service/agent_settings_test.go
+internal/service/server_connections_test.go
+internal/service/sync_contract_test.go
 ```
 
-It verifies service-level auth, conversation, offline message, QR pairing, and sync behavior.
+Use this script for focused M2.1 verification:
+
+```bash
+./scripts/smoke-sync-settings.sh
+```
 
 ## Run Locally
 
@@ -170,31 +204,36 @@ curl http://localhost:8080/health
 
 `/health` includes the identity verifier backend and version. The server is expected to fail startup if the configured FFI verifier cannot be loaded.
 
+For live sync pull smoke against a running server, use:
+
+```bash
+TOKEN="<jwt>" ./scripts/smoke-sync.sh
+```
+
 ## Current Known Limitations
 
-Phase 1 intentionally does **not** include:
+Phase 1 / M2.1 intentionally does **not** include:
 
-- complete Phase 2 object coverage for knowledge, skill, agent settings, server list, and plugin state;
-- a full client-side merge engine;
-- full conversation history reconstruction solely from sync events;
+- knowledge entry sync semantics;
 - KB Hub service routes;
 - plugin marketplace / SAGE service routes;
 - billing business logic;
-- multi-server connection management;
-- production observability stack.
+- multi-server federation or remote server authentication;
+- a full client-side merge engine;
+- full conversation history reconstruction solely from sync events;
+- production observability stack;
+- generic external sync write APIs.
 
-The M2 sync contract foundation is now being hardened on top of Phase 1. Current remaining sync hardening work includes broader end-to-end client contract coverage, richer error mapping for future external event write endpoints, and additional non-message object families.
-
-Model structs for KB, plugin, and billing already exist, but they should be treated as future-phase placeholders until the corresponding service, repository, handler, and migration work is designed.
+Model structs for KB, plugin, and billing already exist, but they should be treated as future-phase placeholders until the corresponding service, repository, handler, migration, and sync semantics are designed.
 
 ## Recommended Next Milestone
 
-Proceed from M2 Sync Contract Foundation to broader Phase 2 object coverage.
+Proceed from M2.1 Sync Object Coverage to M2.2 Knowledge Sync Semantics Design.
 
 Suggested next tasks:
 
-1. add sync coverage for skill settings;
-2. add sync coverage for agent settings;
-3. add sync coverage for server list changes;
-4. add knowledge entry sync once local knowledge object semantics are finalized;
-5. keep KB Hub service design blocked until sync contract is stable enough for knowledge and subscription state.
+1. define local knowledge object identity and tombstone semantics;
+2. define baseline APIs and incremental sync events for knowledge entries;
+3. decide how KB sync relates to future KB Hub subscription state;
+4. add knowledge sync only after these semantics are documented;
+5. keep KB Hub service implementation blocked until sync contract is stable enough for knowledge and subscription state.

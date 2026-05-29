@@ -74,6 +74,33 @@ go run ./cmd/server
 | POST | `/api/v1/conversations/:id/participants` | 添加参与者 |
 | DELETE | `/api/v1/conversations/:id/participants/me` | 退出会话 |
 
+#### Skill 设置
+
+| 方法 | 路径 | 描述 |
+|------|------|------|
+| GET | `/api/v1/skills/settings` | 获取当前用户的 Skill 设置 |
+| PUT | `/api/v1/skills/settings/:skill_id` | 更新 Skill 配置，并产生 `skill.updated` 同步事件 |
+| POST | `/api/v1/skills/settings/:skill_id/enable` | 启用 Skill，并产生 `skill.enabled` 同步事件 |
+| POST | `/api/v1/skills/settings/:skill_id/disable` | 禁用 Skill，并产生 `skill.disabled` 同步事件 |
+
+#### Agent 设置
+
+| 方法 | 路径 | 描述 |
+|------|------|------|
+| GET | `/api/v1/agents/settings` | 获取当前用户的 Agent 设置 |
+| PUT | `/api/v1/agents/settings/:agent_id` | 更新 Agent 设置，并产生 `agent.updated` 同步事件 |
+
+#### 服务器列表
+
+| 方法 | 路径 | 描述 |
+|------|------|------|
+| GET | `/api/v1/servers` | 获取当前用户的服务器连接列表 |
+| POST | `/api/v1/servers` | 添加服务器连接，并产生 `server.added` 同步事件 |
+| PUT | `/api/v1/servers/:id` | 更新服务器连接，并产生 `server.updated` 同步事件 |
+| DELETE | `/api/v1/servers/:id` | 移除服务器连接，并产生 `server.removed` 同步事件 |
+
+Skill / Agent / Server 变更接口支持可选 `client_event_id`，用于同步写入幂等。
+
 #### 跨设备同步
 
 | 方法 | 路径 | 描述 |
@@ -114,6 +141,12 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
 ```bash
 TOKEN="<jwt>" ./scripts/smoke-sync.sh
 ACK_SEQUENCE=123 TOKEN="<jwt>" ./scripts/smoke-sync.sh
+```
+
+M2.1 配置对象同步的本地 smoke 验证：
+
+```bash
+./scripts/smoke-sync-settings.sh
 ```
 
 完整契约见 `docs/sync-contract.md`。

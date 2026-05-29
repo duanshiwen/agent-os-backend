@@ -17,9 +17,14 @@ M2 covers the stable contract for:
 - client event idempotency;
 - conversation incremental sync;
 - profile sync;
+- skill settings sync;
+- agent settings sync;
+- server list sync;
 - compatibility and error semantics.
 
-M2 does not implement KB Hub, Plugin Marketplace, Billing, multi-server federation, or a full merge engine.
+M2.1 currently has implemented and verified domain-specific write coverage for `profile`, `message`, `skill`, `agent`, and `server` object families.
+
+M2 does not implement KB Hub, Plugin Marketplace, Billing, multi-server federation, generic external sync writes, or a full merge engine.
 
 ## 2. Event Envelope
 
@@ -224,7 +229,134 @@ Minimum payload:
 
 This event is emitted by `PUT /api/v1/users/me`.
 
-## 11. Error Semantics
+## 11. Skill Settings Sync
+
+Skill settings use a baseline + incremental model.
+
+### Baseline
+
+Clients load the current user's skill settings through:
+
+- `GET /api/v1/skills/settings`
+
+### Incremental changes
+
+Skill setting writes emit these events:
+
+| Endpoint | Event |
+|---|---|
+| `POST /api/v1/skills/settings/:skill_id/enable` | `skill.enabled` |
+| `POST /api/v1/skills/settings/:skill_id/disable` | `skill.disabled` |
+| `PUT /api/v1/skills/settings/:skill_id` | `skill.updated` |
+
+Mutating requests accept optional `client_event_id` for idempotency.
+
+Minimum payload:
+
+```json
+{
+  "object_id": "skill id",
+  "skill_id": "skill id",
+  "enabled": true,
+  "config": {},
+  "updated_by_device_id": "device-a",
+  "updated_at": "..."
+}
+```
+
+The source device is recorded in `source_device_id`; other devices can pull the event through `/sync/events` and receive real-time `sync.event` notification when connected.
+
+## 12. Agent Settings Sync
+
+Agent settings use a baseline + incremental model.
+
+### Baseline
+
+Clients load the current user's agent settings through:
+
+- `GET /api/v1/agents/settings`
+
+### Incremental changes
+
+Agent setting writes emit:
+
+| Endpoint | Event |
+|---|---|
+| `PUT /api/v1/agents/settings/:agent_id` | `agent.updated` |
+
+Mutating requests accept optional `client_event_id` for idempotency.
+
+Minimum payload:
+
+```json
+{
+  "object_id": "agent id",
+  "agent_id": "agent id",
+  "display_name": "Assistant",
+  "config": {},
+  "updated_by_device_id": "device-a",
+  "updated_at": "..."
+}
+```
+
+The source device is recorded in `source_device_id`; other devices can pull the event through `/sync/events` and receive real-time `sync.event` notification when connected.
+
+## 13. Server List Sync
+
+Server list settings use a baseline + incremental model.
+
+### Baseline
+
+Clients load the current user's server connections through:
+
+- `GET /api/v1/servers`
+
+### Incremental changes
+
+Server connection writes emit these events:
+
+| Endpoint | Event |
+|---|---|
+| `POST /api/v1/servers` | `server.added` |
+| `PUT /api/v1/servers/:id` | `server.updated` |
+| `DELETE /api/v1/servers/:id` | `server.removed` |
+
+Mutating requests accept optional `client_event_id` for idempotency.
+
+Minimum add/update payload:
+
+```json
+{
+  "object_id": "connection uuid",
+  "connection_id": "connection uuid",
+  "server_id": "primary",
+  "name": "Primary",
+  "base_url": "https://agent.example",
+  "status": "active",
+  "config": {},
+  "updated_by_device_id": "device-a",
+  "updated_at": "..."
+}
+```
+
+Minimum remove payload:
+
+```json
+{
+  "object_id": "connection uuid",
+  "connection_id": "connection uuid",
+  "server_id": "primary",
+  "removed": true,
+  "updated_by_device_id": "device-a",
+  "updated_at": "..."
+}
+```
+
+The source device is recorded in `source_device_id`; other devices can pull the event through `/sync/events` and receive real-time `sync.event` notification when connected.
+
+This sync object only covers a user's server list configuration. It does not implement federation or cross-server data sync.
+
+## 14. Error Semantics
 
 | Condition | HTTP status / behavior |
 |---|---:|
@@ -237,7 +369,7 @@ This event is emitted by `PUT /api/v1/users/me`.
 | authenticated but not allowed | 403 |
 | database / internal failure | 500 |
 
-## 12. Compatibility Rules
+## 15. Compatibility Rules
 
 - `schema_version` must increase for breaking payload changes.
 - Existing fields should remain additive whenever possible.

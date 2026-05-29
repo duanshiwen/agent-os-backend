@@ -139,6 +139,35 @@ type SyncSequence struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
+type UserSkillSetting struct {
+	Base
+	UserID            uuid.UUID         `gorm:"type:uuid;index;not null;uniqueIndex:idx_user_skill_setting" json:"user_id"`
+	SkillID           string            `gorm:"not null;uniqueIndex:idx_user_skill_setting" json:"skill_id"`
+	Enabled           bool              `gorm:"default:false" json:"enabled"`
+	Config            datatypes.JSONMap `gorm:"type:jsonb" json:"config"`
+	UpdatedByDeviceID string            `gorm:"index" json:"updated_by_device_id"`
+}
+
+type UserAgentSetting struct {
+	Base
+	UserID            uuid.UUID         `gorm:"type:uuid;index;not null;uniqueIndex:idx_user_agent_setting" json:"user_id"`
+	AgentID           string            `gorm:"not null;uniqueIndex:idx_user_agent_setting" json:"agent_id"`
+	DisplayName       string            `json:"display_name"`
+	Config            datatypes.JSONMap `gorm:"type:jsonb" json:"config"`
+	UpdatedByDeviceID string            `gorm:"index" json:"updated_by_device_id"`
+}
+
+type UserServerConnection struct {
+	Base
+	UserID            uuid.UUID         `gorm:"type:uuid;index;not null;uniqueIndex:idx_user_server_connection" json:"user_id"`
+	ServerID          string            `gorm:"not null;uniqueIndex:idx_user_server_connection" json:"server_id"`
+	Name              string            `json:"name"`
+	BaseURL           string            `json:"base_url"`
+	Status            string            `gorm:"default:active" json:"status"`
+	Config            datatypes.JSONMap `gorm:"type:jsonb" json:"config"`
+	UpdatedByDeviceID string            `gorm:"index" json:"updated_by_device_id"`
+}
+
 type KBCollection struct {
 	Base
 	OwnerID          uuid.UUID `gorm:"type:uuid;index" json:"owner_id"`
@@ -244,5 +273,5 @@ type ContributorEarning struct {
 }
 
 func AllModels() []any {
-	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBUsageRecord{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}}
+	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &UserAgentSetting{}, &UserServerConnection{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBUsageRecord{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}}
 }

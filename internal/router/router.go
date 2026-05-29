@@ -38,6 +38,12 @@ func Setup(
 	convSvc := service.NewConversationService(convRepo, userRepo)
 	pairingRepo := repository.NewDevicePairingRepo(db)
 	pairingSvc := service.NewDevicePairingService(pairingRepo, userRepo, signatureVerifier)
+	skillSettingsRepo := repository.NewSkillSettingsRepo(db)
+	skillSettingsSvc := service.NewSkillSettingsService(skillSettingsRepo, syncSvc)
+	agentSettingsRepo := repository.NewAgentSettingsRepo(db)
+	agentSettingsSvc := service.NewAgentSettingsService(agentSettingsRepo, syncSvc)
+	serverConnectionsRepo := repository.NewServerConnectionsRepo(db)
+	serverConnectionsSvc := service.NewServerConnectionsService(serverConnectionsRepo, syncSvc)
 
 	// Handlers
 	identityH := handler.NewIdentityHandler(identitySvc)
@@ -45,6 +51,9 @@ func Setup(
 	convH := handler.NewConversationHandler(convSvc, msgSvc)
 	syncH := handler.NewSyncHandler(syncSvc)
 	pairingH := handler.NewDevicePairingHandler(pairingSvc)
+	skillSettingsH := handler.NewSkillSettingsHandler(skillSettingsSvc)
+	agentSettingsH := handler.NewAgentSettingsHandler(agentSettingsSvc)
+	serverConnectionsH := handler.NewServerConnectionsHandler(serverConnectionsSvc)
 
 	// WebSocket dispatcher
 	dispatcher := ws.NewDispatcher(hub, msgSvc, convSvc, convRepo)
@@ -114,6 +123,19 @@ func Setup(
 
 			protected.GET("/sync/events", syncH.GetEvents)
 			protected.POST("/sync/ack", syncH.AckEvents)
+
+			protected.GET("/skills/settings", skillSettingsH.List)
+			protected.PUT("/skills/settings/:skill_id", skillSettingsH.Update)
+			protected.POST("/skills/settings/:skill_id/enable", skillSettingsH.Enable)
+			protected.POST("/skills/settings/:skill_id/disable", skillSettingsH.Disable)
+
+			protected.GET("/agents/settings", agentSettingsH.List)
+			protected.PUT("/agents/settings/:agent_id", agentSettingsH.Update)
+
+			protected.GET("/servers", serverConnectionsH.List)
+			protected.POST("/servers", serverConnectionsH.Create)
+			protected.PUT("/servers/:id", serverConnectionsH.Update)
+			protected.DELETE("/servers/:id", serverConnectionsH.Delete)
 		}
 
 		// Admin routes
