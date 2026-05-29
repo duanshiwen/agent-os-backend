@@ -73,6 +73,10 @@ func (s *MessageService) SendMessage(senderID uuid.UUID, req *SendMessageRequest
 	// other devices can converge through the sync cursor. Offline message delivery remains
 	// recipient-only and is handled separately by SaveOfflineMessages.
 	if s.syncSvc != nil {
+		metadata := msg.Metadata
+		if metadata == nil {
+			metadata = datatypes.JSONMap{}
+		}
 		for _, p := range participants {
 			syncPayload := datatypes.JSONMap{
 				"object_id":       msg.ID.String(),
@@ -81,7 +85,7 @@ func (s *MessageService) SendMessage(senderID uuid.UUID, req *SendMessageRequest
 				"sender_id":       senderID.String(),
 				"type":            msgType,
 				"content":         msg.Content,
-				"metadata":        msg.Metadata,
+				"metadata":        metadata,
 				"created_at":      msg.CreatedAt,
 			}
 			_, _ = s.syncSvc.RecordEvent(p.UserID, "", SyncEventMessage, SyncActionCreated, syncPayload)

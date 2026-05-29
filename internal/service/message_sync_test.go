@@ -45,6 +45,42 @@ func TestMessageServiceSendMessageRecordsSyncEventForEveryParticipant(t *testing
 	assertMessageCreatedSyncEvent(t, recipientEvents[0], delivery.Message, senderID)
 }
 
+func TestMessageCreatedSyncSequenceCanBeAcked(t *testing.T) {
+	svc, convRepo, _, syncSvc := newMessageSyncTestService(t)
+	convID := uuid.New()
+	senderID := uuid.New()
+	recipientID := uuid.New()
+	seedMessageConversation(t, convRepo, convID, senderID, recipientID)
+
+	delivery, err := svc.SendMessage(senderID, &SendMessageRequest{
+		ConversationID: convID,
+		Content:        "ackable sync message",
+	})
+	if err != nil {
+		t.Fatalf("send message: %v", err)
+	}
+
+	recipientEvents, err := syncSvc.GetEvents(recipientID, "recipient-device", 100)
+	if err != nil {
+		t.Fatalf("get recipient events: %v", err)
+	}
+	if len(recipientEvents) != 1 {
+		t.Fatalf("expected one recipient event, got %+v", recipientEvents)
+	}
+	assertMessageCreatedSyncEvent(t, recipientEvents[0], delivery.Message, senderID)
+
+	if err := syncSvc.AckEvents(recipientID, "recipient-device", recipientEvents[0].Sequence); err != nil {
+		t.Fatalf("ack recipient event: %v", err)
+	}
+	afterAck, err := syncSvc.GetEvents(recipientID, "recipient-device", 100)
+	if err != nil {
+		t.Fatalf("get recipient events after ack: %v", err)
+	}
+	if len(afterAck) != 0 {
+		t.Fatalf("expected no cursor-path duplicate after ack, got %+v", afterAck)
+	}
+}
+
 func TestMessageServiceSyncEventsComplementButDoNotReplaceOfflineDelivery(t *testing.T) {
 	svc, convRepo, userRepo, syncSvc := newMessageSyncTestService(t)
 	convID := uuid.New()
@@ -95,11 +131,14 @@ func assertMessageCreatedSyncEvent(t *testing.T, event model.SyncEvent, msg *mod
 	if event.EventType != "message.created" {
 		t.Fatalf("expected message.created event, got %q", event.EventType)
 	}
-	if event.Payload["conversation_id"] != msg.ConversationID.String() || event.Payload["message_id"] != msg.ID.String() {
-		t.Fatalf("unexpected sync payload: %+v", event.Payload)
+	if event.Payload["object_id"] != msg.ID.String() || event.Payload["conversation_id"] != msg.ConversationID.String() || event.Payload["message_id"] != msg.ID.String() {
+		t.Fatalf("unexpected sync payload IDs: %+v", event.Payload)
 	}
 	if event.Payload["sender_id"] != senderID.String() {
 		t.Fatalf("expected sender_id %s in sync payload, got %+v", senderID, event.Payload)
+	}
+	if event.Payload["type"] != msg.Type || event.Payload["content"] != msg.Content || event.Payload["metadata"] == nil || event.Payload["created_at"] == nil {
+		t.Fatalf("expected message reconstruction fields in sync payload, got %+v", event.Payload)
 	}
 }
 

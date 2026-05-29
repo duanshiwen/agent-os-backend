@@ -292,6 +292,11 @@ func TestSyncServiceRejectsUnsupportedEventTypesAndActions(t *testing.T) {
 
 func newSyncTestService(t *testing.T) (*SyncService, *repository.SyncRepo) {
 	t.Helper()
+	return newSyncTestServiceWithHub(t, &captureHub{})
+}
+
+func newSyncTestServiceWithHub(t *testing.T, hub HubNotifier) (*SyncService, *repository.SyncRepo) {
+	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+url.PathEscape(t.Name())+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
@@ -300,5 +305,5 @@ func newSyncTestService(t *testing.T) (*SyncService, *repository.SyncRepo) {
 		t.Fatalf("migrate: %v", err)
 	}
 	repo := repository.NewSyncRepo(db)
-	return NewSyncService(repo, &captureHub{}), repo
+	return NewSyncService(repo, hub), repo
 }
