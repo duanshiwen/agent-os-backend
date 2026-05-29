@@ -124,6 +124,76 @@ func TestKnowledgeEntriesDeletedEntryCannotBeUpdated(t *testing.T) {
 	}
 }
 
+func TestKnowledgeEntriesUpdateRejectsStaleBaseVersion(t *testing.T) {
+	svc, syncRepo, user := newKnowledgeEntriesTestService(t)
+	_, _, err := svc.CreateEntry(user.ID, "device-a", KnowledgeEntryInput{EntryID: "notes/alpha", Title: "Alpha", ContentMarkdown: "v1", ClientEventID: "create-before-stale-update"})
+	if err != nil {
+		t.Fatalf("create entry: %v", err)
+	}
+	stale := uint64(0)
+	_, _, err = svc.UpdateEntry(user.ID, "device-b", "notes/alpha", KnowledgeEntryInput{Title: "Alpha stale", ContentMarkdown: "stale", ClientEventID: "stale-update-1", BaseVersion: &stale})
+	if !errors.Is(err, ErrKnowledgeEntryConflict) {
+		t.Fatalf("expected ErrKnowledgeEntryConflict, got %v", err)
+	}
+	entry, err := svc.GetEntry(user.ID, "notes/alpha", false)
+	if err != nil {
+		t.Fatalf("get entry: %v", err)
+	}
+	if entry.Version != 1 || entry.Title != "Alpha" {
+		t.Fatalf("expected stale update to leave entry unchanged, got %+v", entry)
+	}
+	events, err := syncRepo.GetEventsSince(user.ID, "", 0, 100)
+	if err != nil {
+		t.Fatalf("get events: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected only create event after stale update, got %+v", events)
+	}
+}
+
+func TestKnowledgeEntriesDeleteRejectsStaleBaseVersion(t *testing.T) {
+	svc, syncRepo, user := newKnowledgeEntriesTestService(t)
+	_, _, err := svc.CreateEntry(user.ID, "device-a", KnowledgeEntryInput{EntryID: "notes/alpha", Title: "Alpha", ContentMarkdown: "v1", ClientEventID: "create-before-stale-delete"})
+	if err != nil {
+		t.Fatalf("create entry: %v", err)
+	}
+	stale := uint64(0)
+	_, _, err = svc.DeleteEntry(user.ID, "device-b", "notes/alpha", "stale-delete-1", stale)
+	if !errors.Is(err, ErrKnowledgeEntryConflict) {
+		t.Fatalf("expected ErrKnowledgeEntryConflict, got %v", err)
+	}
+	entry, err := svc.GetEntry(user.ID, "notes/alpha", true)
+	if err != nil {
+		t.Fatalf("get entry: %v", err)
+	}
+	if entry.Status != repository.KnowledgeEntryStatusActive || entry.Version != 1 {
+		t.Fatalf("expected stale delete to leave entry active, got %+v", entry)
+	}
+	events, err := syncRepo.GetEventsSince(user.ID, "", 0, 100)
+	if err != nil {
+		t.Fatalf("get events: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected only create event after stale delete, got %+v", events)
+	}
+}
+
+func TestKnowledgeEntriesUpdateAcceptsMatchingBaseVersion(t *testing.T) {
+	svc, _, user := newKnowledgeEntriesTestService(t)
+	created, _, err := svc.CreateEntry(user.ID, "device-a", KnowledgeEntryInput{EntryID: "notes/alpha", Title: "Alpha", ContentMarkdown: "v1", ClientEventID: "create-before-versioned-update"})
+	if err != nil {
+		t.Fatalf("create entry: %v", err)
+	}
+	base := created.Version
+	entry, _, err := svc.UpdateEntry(user.ID, "device-b", "notes/alpha", KnowledgeEntryInput{Title: "Alpha v2", ContentMarkdown: "v2", ClientEventID: "versioned-update-1", BaseVersion: &base})
+	if err != nil {
+		t.Fatalf("versioned update: %v", err)
+	}
+	if entry.Version != 2 || entry.Title != "Alpha v2" {
+		t.Fatalf("unexpected versioned update entry: %+v", entry)
+	}
+}
+
 func TestKnowledgeEntriesClientEventIDIsIdempotent(t *testing.T) {
 	svc, syncRepo, user := newKnowledgeEntriesTestService(t)
 	_, first, err := svc.CreateEntry(user.ID, "device-a", KnowledgeEntryInput{EntryID: "notes/alpha", Title: "Alpha", ContentMarkdown: "v1", ClientEventID: "knowledge-idempotent-1"})

@@ -77,13 +77,23 @@ func (h *KnowledgeEntriesHandler) Delete(c *gin.Context) {
 	userID := middleware.MustGetUserID(c)
 	deviceID := middleware.MustGetDeviceID(c)
 	var req struct {
-		ClientEventID string `json:"client_event_id"`
+		ClientEventID string  `json:"client_event_id"`
+		BaseVersion   *uint64 `json:"base_version"`
 	}
 	if c.Request.Body != nil && c.Request.ContentLength != 0 {
 		if err := c.ShouldBindJSON(&req); err != nil {
 			response.BadRequest(c, err.Error())
 			return
 		}
+	}
+	if req.BaseVersion != nil {
+		entry, _, err := h.svc.DeleteEntry(userID, deviceID, knowledgeEntryIDParam(c), req.ClientEventID, *req.BaseVersion)
+		if err != nil {
+			h.handleError(c, err)
+			return
+		}
+		response.OK(c, entry)
+		return
 	}
 	entry, _, err := h.svc.DeleteEntry(userID, deviceID, knowledgeEntryIDParam(c), req.ClientEventID)
 	if err != nil {

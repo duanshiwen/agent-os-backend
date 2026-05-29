@@ -399,7 +399,7 @@ Knowledge entry writes are domain-specific APIs:
 | `PUT /api/v1/knowledge/entries/:entry_id` | `knowledge.updated` |
 | `DELETE /api/v1/knowledge/entries/:entry_id` | `knowledge.deleted` |
 
-All mutating requests accept optional `client_event_id` for idempotency.
+All mutating requests accept optional `client_event_id` for idempotency. `PUT` and `DELETE` also accept optional `base_version` for optimistic concurrency control.
 
 ### Object identity
 
@@ -452,9 +452,12 @@ Minimum `knowledge.deleted` payload:
 
 Deletes create tombstones rather than physically removing entries. Active baseline APIs hide tombstones by default; tombstone-aware baseline APIs can include them.
 
-M2.2 conflict policy is server-sequenced Last Write Wins with tombstone protection:
+M2.2 conflict policy is server-sequenced Last Write Wins with tombstone protection and optional version guards:
 
 - each successful mutation increments that entry's server-side `version`;
+- clients may send `base_version` on `PUT` / `DELETE` when they want optimistic concurrency control;
+- if `base_version` is present and does not equal the current server version, the server returns `409 conflict` and does not mutate the entry or record a sync event;
+- if `base_version` is omitted, the request remains LWW-compatible and applies against the latest active server version;
 - a deleted entry cannot be updated by normal `PUT`;
 - restore, if needed, must be a future explicit operation rather than an accidental update;
 - idempotent retry with the same `client_event_id` returns the existing sync event and must not allocate another sequence.

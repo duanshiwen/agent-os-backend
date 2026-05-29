@@ -35,6 +35,7 @@ type KnowledgeEntryInput struct {
 	Metadata        datatypes.JSONMap           `json:"metadata"`
 	SourceURI       string                      `json:"source_uri"`
 	ClientEventID   string                      `json:"client_event_id"`
+	BaseVersion     *uint64                     `json:"base_version"`
 }
 
 func NewKnowledgeEntriesService(repo *repository.KnowledgeEntriesRepo, syncSvc *SyncService) *KnowledgeEntriesService {
@@ -127,6 +128,9 @@ func (s *KnowledgeEntriesService) UpdateEntry(userID uuid.UUID, sourceDeviceID, 
 	if existing.Status == repository.KnowledgeEntryStatusDeleted {
 		return nil, nil, ErrKnowledgeEntryDeleted
 	}
+	if err := validateKnowledgeBaseVersion(input.BaseVersion, existing.Version); err != nil {
+		return nil, nil, err
+	}
 	metadata := input.Metadata
 	if metadata == nil {
 		metadata = datatypes.JSONMap{}
@@ -167,10 +171,14 @@ func (s *KnowledgeEntriesService) UpdateEntry(userID uuid.UUID, sourceDeviceID, 
 	return persisted, event, nil
 }
 
-func (s *KnowledgeEntriesService) DeleteEntry(userID uuid.UUID, sourceDeviceID, entryID, clientEventID string) (*model.UserKnowledgeEntry, *model.SyncEvent, error) {
+func (s *KnowledgeEntriesService) DeleteEntry(userID uuid.UUID, sourceDeviceID, entryID, clientEventID string, baseVersion ...uint64) (*model.UserKnowledgeEntry, *model.SyncEvent, error) {
 	entryID = strings.TrimSpace(entryID)
 	if entryID == "" {
 		return nil, nil, fmt.Errorf("entry_id is required")
+	}
+	var expectedBaseVersion *uint64
+	if len(baseVersion) > 0 {
+		expectedBaseVersion = &baseVersion[0]
 	}
 	if existingEvent, entry, err := s.idempotentKnowledgeReplay(userID, sourceDeviceID, entryID, SyncOperationDeleted, clientEventID); existingEvent != nil || err != nil {
 		return entry, existingEvent, err
@@ -184,6 +192,9 @@ func (s *KnowledgeEntriesService) DeleteEntry(userID uuid.UUID, sourceDeviceID, 
 	}
 	if existing.Status == repository.KnowledgeEntryStatusDeleted {
 		return nil, nil, ErrKnowledgeEntryDeleted
+	}
+	if err := validateKnowledgeBaseVersion(expectedBaseVersion, existing.Version); err != nil {
+		return nil, nil, err
 	}
 	deletedAt := time.Now()
 	var persisted *model.UserKnowledgeEntry
@@ -255,6 +266,16 @@ func (s *KnowledgeEntriesService) idempotentKnowledgeReplay(userID uuid.UUID, so
 		return existing, nil, err
 	}
 	return existing, entry, nil
+}
+
+func validateKnowledgeBaseVersion(baseVersion *uint64, currentVersion uint64) error {
+	if baseVersion == nil {
+		return nil
+	}
+	if *baseVersion != currentVersion {
+		return fmt.Errorf("%w: base_version %d does not match current version %d", ErrKnowledgeEntryConflict, *baseVersion, currentVersion)
+	}
+	return nil
 }
 
 func knowledgeEntryPayload(entry *model.UserKnowledgeEntry) datatypes.JSONMap {
