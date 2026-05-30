@@ -57,7 +57,13 @@ func Setup(
 	}
 	objectSvc := service.NewObjectService(objectRecordsRepo, objectStorageBackend, objectStorageCfg)
 	kbHubRepo := repository.NewKBHubRepo(db)
+	billingRepo := repository.NewBillingRepo(db)
+	billingSvc := service.NewKBBillingService(billingRepo)
+	kbSearchRepo := repository.NewKBSearchRepo(db)
+	kbSearchSvc := service.NewKBSearchService(kbSearchRepo, kbHubRepo, billingSvc)
 	kbHubSvc := service.NewKBHubService(kbHubRepo, knowledgeEntriesRepo, objectSvc)
+	kbHubSvc.SetBillingService(billingSvc)
+	kbHubSvc.SetSearchService(kbSearchSvc)
 
 	// Handlers
 	identityH := handler.NewIdentityHandler(identitySvc)
@@ -71,6 +77,8 @@ func Setup(
 	knowledgeEntriesH := handler.NewKnowledgeEntriesHandler(knowledgeEntriesSvc)
 	objectH := handler.NewObjectHandler(objectSvc)
 	kbHubH := handler.NewKBHubHandler(kbHubSvc)
+	kbHubH.SetSearchService(kbSearchSvc)
+	kbHubH.SetBillingService(billingSvc)
 
 	// WebSocket dispatcher
 	dispatcher := ws.NewDispatcher(hub, msgSvc, convSvc, convRepo)
@@ -123,6 +131,7 @@ func Setup(
 
 		// Public KB Hub read routes
 		v1.GET("/kb/public/collections", kbHubH.ListPublicCollections)
+		v1.GET("/kb/public/search", kbHubH.Search)
 		v1.GET("/kb/public/collections/:id", kbHubH.GetPublicCollection)
 		v1.GET("/kb/public/collections/:id/snapshots/:snapshot_id", kbHubH.GetPublicSnapshot)
 		v1.POST("/kb/public/collections/:id/snapshots/:snapshot_id/manifest-download-url", kbHubH.CreateManifestDownloadURL)
@@ -172,9 +181,14 @@ func Setup(
 			protected.POST("/objects/:id/download-url", objectH.CreateDownloadURL)
 			protected.DELETE("/objects/:id", objectH.Delete)
 
+			protected.GET("/billing/account", kbHubH.GetBillingAccount)
+			protected.GET("/billing/transactions", kbHubH.ListBillingTransactions)
+
 			protected.POST("/kb/collections", kbHubH.CreateCollection)
 			protected.GET("/kb/collections", kbHubH.ListCollections)
-			protected.GET("/kb/collections/:id", kbHubH.GetCollection)
+			protected.PUT("/kb/collections/:id/pricing", kbHubH.UpdateCollectionPricing)
+			protected.GET("/kb/collections/:id/stats", kbHubH.GetCollectionStats)
+			protected.GET("/kb/collections/:id/earnings", kbHubH.ListContributorEarnings)
 			protected.POST("/kb/collections/:id/snapshots", kbHubH.PublishSnapshot)
 			protected.GET("/kb/collections/:id/snapshots", kbHubH.ListSnapshots)
 			protected.GET("/kb/collections/:id/snapshots/:snapshot_id", kbHubH.GetSnapshot)
@@ -182,6 +196,8 @@ func Setup(
 			protected.DELETE("/kb/collections/:id/install", kbHubH.CancelSubscription)
 			protected.POST("/kb/collections/:id/snapshots/:snapshot_id/manifest-download-url", kbHubH.CreateInstalledManifestDownloadURL)
 			protected.POST("/kb/collections/:id/snapshots/:snapshot_id/entries/:entry_id/content-download-url", kbHubH.CreateInstalledEntryContentDownloadURL)
+			protected.POST("/kb/collections/:id/snapshots/:snapshot_id/entries/:entry_id/fulltext", kbHubH.FetchInstalledEntryFullText)
+			protected.GET("/kb/collections/:id", kbHubH.GetCollection)
 			protected.GET("/kb/subscriptions", kbHubH.ListSubscriptions)
 		}
 

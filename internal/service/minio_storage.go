@@ -82,6 +82,15 @@ func (s *MinIOStorageService) HeadObject(ctx context.Context, bucket, key string
 	}, nil
 }
 
+func (s *MinIOStorageService) ReadObject(ctx context.Context, bucket, key string, maxBytes int64) ([]byte, error) {
+	object, err := s.client.GetObject(ctx, bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, err
+	}
+	defer object.Close()
+	return io.ReadAll(io.LimitReader(object, maxBytes+1))
+}
+
 func (s *MinIOStorageService) rewritePublicEndpoint(u *url.URL) *url.URL {
 	if strings.TrimSpace(s.publicEndpoint) == "" {
 		return u

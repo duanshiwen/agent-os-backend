@@ -253,12 +253,33 @@ type KBSubscription struct {
 }
 type KBUsageRecord struct {
 	Base
-	UserID        uuid.UUID `gorm:"type:uuid;index" json:"user_id"`
-	CollectionID  uuid.UUID `gorm:"type:uuid;index" json:"collection_id"`
-	SnapshotID    uuid.UUID `gorm:"type:uuid;index" json:"snapshot_id"`
-	OperationType string    `json:"operation_type"`
-	TokensUsed    int       `json:"tokens_used"`
-	BilledAt      time.Time `json:"billed_at"`
+	UserID          uuid.UUID  `gorm:"type:uuid;index" json:"user_id"`
+	CollectionID    uuid.UUID  `gorm:"type:uuid;index;not null" json:"collection_id"`
+	SnapshotID      uuid.UUID  `gorm:"type:uuid;index;not null" json:"snapshot_id"`
+	SnapshotEntryID *uuid.UUID `gorm:"type:uuid;index" json:"snapshot_entry_id"`
+	OperationType   string     `gorm:"index;not null" json:"operation_type"`
+	TokensUsed      int        `json:"tokens_used"`
+	UnitPrice       int64      `json:"unit_price"`
+	Amount          int64      `json:"amount"`
+	Currency        string     `gorm:"default:CNY" json:"currency"`
+	BilledAt        time.Time  `gorm:"index" json:"billed_at"`
+}
+
+type KBSearchDocument struct {
+	Base
+	CollectionID    uuid.UUID                   `gorm:"type:uuid;index;not null" json:"collection_id"`
+	SnapshotID      uuid.UUID                   `gorm:"type:uuid;index;not null" json:"snapshot_id"`
+	SnapshotEntryID uuid.UUID                   `gorm:"type:uuid;index;not null" json:"snapshot_entry_id"`
+	EntryID         string                      `gorm:"index;not null" json:"entry_id"`
+	Title           string                      `gorm:"index" json:"title"`
+	Summary         string                      `json:"summary"`
+	Tags            datatypes.JSONSlice[string] `gorm:"type:jsonb" json:"tags"`
+	Metadata        datatypes.JSONMap           `gorm:"type:jsonb" json:"metadata"`
+	ContentText     string                      `gorm:"type:text" json:"content_text"`
+	ContentHash     string                      `gorm:"index" json:"content_hash"`
+	Tokens          int                         `json:"tokens"`
+	Status          string                      `gorm:"index;not null;default:active" json:"status"`
+	IndexedAt       time.Time                   `gorm:"index" json:"indexed_at"`
 }
 
 type Plugin struct {
@@ -315,5 +336,5 @@ type ContributorEarning struct {
 }
 
 func AllModels() []any {
-	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &UserAgentSetting{}, &UserServerConnection{}, &UserKnowledgeEntry{}, &ObjectRecord{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBUsageRecord{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}}
+	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &UserAgentSetting{}, &UserServerConnection{}, &UserKnowledgeEntry{}, &ObjectRecord{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBUsageRecord{}, &KBSearchDocument{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}}
 }

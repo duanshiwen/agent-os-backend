@@ -176,3 +176,11 @@ func (f *fakeObjectStorageBackend) HeadObject(ctx context.Context, bucket, key s
 	_ = key
 	return f.head, nil
 }
+
+func (f *fakeObjectStorageBackend) ReadObject(ctx context.Context, bucket, key string, maxBytes int64) ([]byte, error) {
+	_ = ctx
+	_ = bucket
+	_ = key
+	_ = maxBytes
+	return nil, nil
+}
