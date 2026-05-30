@@ -29,6 +29,7 @@ func Setup(
 	r := gin.Default()
 
 	// Middleware
+	r.Use(middleware.RequestID())
 	r.Use(middleware.CORS(cfg.CORS.AllowOrigins))
 	r.Use(middleware.RateLimiter(10, 50))
 
@@ -76,6 +77,7 @@ func Setup(
 	kbHubSvc.SetSearchService(kbSearchSvc)
 
 	// Handlers
+	readinessH := handler.NewReadinessHandler(db)
 	identityH := handler.NewIdentityHandler(identitySvc)
 	identityH.SetAuditService(auditSvc)
 	identityH.SetSensitiveOperationService(sensitiveOperationSvc)
@@ -100,7 +102,8 @@ func Setup(
 	dispatcher := ws.NewDispatcher(hub, msgSvc, convSvc, convRepo)
 	wsH := handler.NewWebSocketHandler(hub, dispatcher, cfg.JWT.Secret)
 
-	// Health check
+	// Health and readiness checks
+	r.GET("/ready", readinessH.Ready)
 	r.GET("/health", func(c *gin.Context) {
 		dbOK := true
 		if sqlDB, err := db.DB(); err != nil || sqlDB.Ping() != nil {
