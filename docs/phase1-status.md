@@ -1,4 +1,4 @@
-# AgentOS Backend Phase 1 / M3.2 Status
+# AgentOS Backend Phase 1 / M3.3 Status
 
 Updated: 2026-05-30
 Branch: `m2-4-sync-integration-gate`
@@ -481,9 +481,42 @@ Snapshot ID:   83377496-b9d6-4124-a811-b6d870d03c72
 Consumer:      kb-consumer-1780125366
 ```
 
+## M3.3 KB Hub Access/Download Consumer Slice
+
+The installed-consumer access slice is now implemented:
+
+- authenticated installed snapshot manifest download URL endpoint;
+- authenticated installed snapshot entry content download URL endpoint;
+- active subscription gate for private content URLs;
+- public metadata remains readable without installation;
+- non-installed users receive `403` for installed content endpoints;
+- subscription cancel endpoint;
+- cancelled users lose installed content access;
+- unit tests covering installed access, stranger denial, content URL retrieval, cancel, and post-cancel denial;
+- live smoke script:
+
+```text
+scripts/smoke-kb-access.sh
+```
+
+Authenticated installed access APIs:
+
+- `POST /api/v1/kb/collections/:id/snapshots/:snapshot_id/manifest-download-url`
+- `POST /api/v1/kb/collections/:id/snapshots/:snapshot_id/entries/:entry_id/content-download-url`
+- `DELETE /api/v1/kb/collections/:id/install`
+
+Latest verified result:
+
+```text
+KB access smoke passed.
+Collection ID: 167ec914-285f-4fb8-bb2d-22acc5e9f77d
+Snapshot ID:   48d8ceaa-fbe5-449e-91e8-72e9a1b128d3
+Entry Record:  1b2b0c10-816f-468f-a7a2-f07f38ed9ea3
+```
+
 ## Current Known Limitations
 
-Phase 1 / M3.2 intentionally does **not** include:
+Phase 1 / M3.3 intentionally does **not** include:
 
 - marketplace ranking/search beyond basic public discovery;
 - KB publishing / snapshot / subscription semantics;
@@ -504,7 +537,8 @@ Local live Postgres/Redis/MinIO verification has now passed on this machine.
 Latest verification set:
 
 ```text
-go test ./...: 117 passed in 10 packages
+go test ./...: 118 passed in 10 packages
+scripts/smoke-kb-access.sh: KB access smoke passed
 scripts/smoke-kb-install.sh: KB install smoke passed
 scripts/smoke-kb-snapshot.sh: KB snapshot smoke passed
 scripts/smoke-object-storage.sh: Object storage smoke passed
@@ -513,11 +547,11 @@ scripts/smoke-live-two-device-knowledge-sync.sh: Live two-device knowledge sync 
 
 ## Recommended Next Milestone
 
-M3.3 KB Hub Access/Download Consumer Slice is now the recommended next milestone. Recommended next steps:
+M3.4 KB Hub Search/Marketplace Metadata Slice is now the recommended next milestone. Recommended next steps:
 
-1. add installed snapshot manifest/content access endpoints gated by active subscription;
-2. add content object download URLs for installed snapshot entries;
-3. ensure non-installed users can see public metadata but cannot fetch private content objects directly through consumer APIs;
-4. add subscription update/cancel behavior;
-5. add consumer access smoke covering public metadata, install, content URL retrieval, and cancel/denied access;
-6. keep billing, ranking, semantic search, and revenue share out of this slice.
+1. add basic public search/filter over published collections (`q`, owner, tags later if modeled);
+2. add safe collection metadata fields needed for marketplace cards;
+3. add lightweight usage event recording for manifest/content download URL issuance;
+4. add owner-facing subscription count / install count summary;
+5. add smoke for search and usage metrics;
+6. keep billing settlement, semantic vector search, ranking algorithms, and revenue share out of this slice.

@@ -107,6 +107,12 @@ func (r *KBHubRepo) ListSnapshotEntries(snapshotID uuid.UUID) ([]model.KBSnapsho
 	return entries, err
 }
 
+func (r *KBHubRepo) GetSnapshotEntry(snapshotID, entryRecordID uuid.UUID) (*model.KBSnapshotEntry, error) {
+	var entry model.KBSnapshotEntry
+	err := r.db.First(&entry, "id = ? AND snapshot_id = ?", entryRecordID, snapshotID).Error
+	return &entry, err
+}
+
 func (r *KBHubRepo) MarkCollectionPublished(collectionID uuid.UUID) error {
 	return r.db.Model(&model.KBCollection{}).Where("id = ?", collectionID).Update("status", KBCollectionStatusPublished).Error
 }
@@ -130,8 +136,27 @@ func (r *KBHubRepo) UpsertSubscription(subscription *model.KBSubscription) error
 	}).Error
 }
 
+func (r *KBHubRepo) GetActiveSubscription(userID, collectionID uuid.UUID) (*model.KBSubscription, error) {
+	var subscription model.KBSubscription
+	err := r.db.First(&subscription, "user_id = ? AND collection_id = ? AND status = ?", userID, collectionID, "active").Error
+	return &subscription, err
+}
+
 func (r *KBHubRepo) ListSubscriptionsByUser(userID uuid.UUID) ([]model.KBSubscription, error) {
 	var subscriptions []model.KBSubscription
 	err := r.db.Where("user_id = ?", userID).Order("updated_at DESC").Find(&subscriptions).Error
 	return subscriptions, err
+}
+
+func (r *KBHubRepo) CancelSubscription(userID, collectionID uuid.UUID) error {
+	res := r.db.Model(&model.KBSubscription{}).
+		Where("user_id = ? AND collection_id = ? AND status = ?", userID, collectionID, "active").
+		Update("status", "cancelled")
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }

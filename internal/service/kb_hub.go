@@ -21,6 +21,7 @@ import (
 var (
 	ErrKBCollectionNotFound = errors.New("kb collection not found")
 	ErrKBSnapshotNotFound   = errors.New("kb snapshot not found")
+	ErrKBSubscriptionNeeded = errors.New("active kb subscription required")
 	ErrKBInvalid            = errors.New("kb request invalid")
 	ErrKBNoEntries          = errors.New("kb snapshot requires at least one active knowledge entry")
 )
@@ -346,6 +347,93 @@ func (s *KBHubService) InstallCollection(userID, collectionID uuid.UUID, input I
 
 func (s *KBHubService) ListSubscriptions(userID uuid.UUID) ([]model.KBSubscription, error) {
 	return s.kbRepo.ListSubscriptionsByUser(userID)
+}
+
+func (s *KBHubService) CancelSubscription(userID, collectionID uuid.UUID) (*model.KBSubscription, error) {
+	if err := s.kbRepo.CancelSubscription(userID, collectionID); err != nil {
+		if repository.IsNotFound(err) {
+			return nil, ErrKBSubscriptionNeeded
+		}
+		return nil, err
+	}
+	subs, err := s.kbRepo.ListSubscriptionsByUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range subs {
+		if subs[i].CollectionID == collectionID {
+			return &subs[i], nil
+		}
+	}
+	return nil, ErrKBSubscriptionNeeded
+}
+
+func (s *KBHubService) CreateInstalledManifestDownloadURL(ctx context.Context, userID, collectionID, snapshotID uuid.UUID) (*DownloadURLResponse, error) {
+	if _, err := s.authorizeSnapshotAccess(userID, collectionID, snapshotID); err != nil {
+		return nil, err
+	}
+	snapshot, err := s.kbRepo.GetSnapshot(collectionID, snapshotID)
+	if err != nil {
+		if repository.IsNotFound(err) {
+			return nil, ErrKBSnapshotNotFound
+		}
+		return nil, err
+	}
+	return s.objectSvc.CreateDownloadURLByObjectURI(ctx, snapshot.ManifestObjectURI, CreateDownloadURLInput{Disposition: "attachment"})
+}
+
+func (s *KBHubService) CreateInstalledEntryContentDownloadURL(ctx context.Context, userID, collectionID, snapshotID, entryRecordID uuid.UUID) (*DownloadURLResponse, error) {
+	if _, err := s.authorizeSnapshotAccess(userID, collectionID, snapshotID); err != nil {
+		return nil, err
+	}
+	entry, err := s.kbRepo.GetSnapshotEntry(snapshotID, entryRecordID)
+	if err != nil {
+		if repository.IsNotFound(err) {
+			return nil, ErrKBSnapshotNotFound
+		}
+		return nil, err
+	}
+	return s.objectSvc.CreateDownloadURLByObjectURI(ctx, entry.ContentObjectURI, CreateDownloadURLInput{Disposition: "attachment"})
+}
+
+func (s *KBHubService) authorizeSnapshotAccess(userID, collectionID, snapshotID uuid.UUID) (*model.KBSubscription, error) {
+	if userID == uuid.Nil {
+		return nil, ErrKBSubscriptionNeeded
+	}
+	snapshot, err := s.kbRepo.GetSnapshot(collectionID, snapshotID)
+	if err != nil {
+		if repository.IsNotFound(err) {
+			return nil, ErrKBSnapshotNotFound
+		}
+		return nil, err
+	}
+	subscription, err := s.kbRepo.GetActiveSubscription(userID, collectionID)
+	if err != nil {
+		if repository.IsNotFound(err) {
+			return nil, ErrKBSubscriptionNeeded
+		}
+		return nil, err
+	}
+	if subscription.TrackMode == "pinned" {
+		if subscription.PinnedVersion == nil || *subscription.PinnedVersion != snapshot.Version {
+			return nil, ErrKBSubscriptionNeeded
+		}
+		return subscription, nil
+	}
+	if subscription.TrackMode == "latest" {
+		latest, err := s.kbRepo.GetLatestSnapshot(collectionID)
+		if err != nil {
+			if repository.IsNotFound(err) {
+				return nil, ErrKBSnapshotNotFound
+			}
+			return nil, err
+		}
+		if latest.ID != snapshotID {
+			return nil, ErrKBSubscriptionNeeded
+		}
+		return subscription, nil
+	}
+	return nil, ErrKBSubscriptionNeeded
 }
 
 func (s *KBHubService) getSnapshotDetail(collectionID, snapshotID uuid.UUID) (*KBSnapshotDetail, error) {

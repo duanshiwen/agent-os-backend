@@ -179,6 +179,9 @@ func Setup(
 			protected.GET("/kb/collections/:id/snapshots", kbHubH.ListSnapshots)
 			protected.GET("/kb/collections/:id/snapshots/:snapshot_id", kbHubH.GetSnapshot)
 			protected.POST("/kb/collections/:id/install", kbHubH.InstallCollection)
+			protected.DELETE("/kb/collections/:id/install", kbHubH.CancelSubscription)
+			protected.POST("/kb/collections/:id/snapshots/:snapshot_id/manifest-download-url", kbHubH.CreateInstalledManifestDownloadURL)
+			protected.POST("/kb/collections/:id/snapshots/:snapshot_id/entries/:entry_id/content-download-url", kbHubH.CreateInstalledEntryContentDownloadURL)
 			protected.GET("/kb/subscriptions", kbHubH.ListSubscriptions)
 		}
 

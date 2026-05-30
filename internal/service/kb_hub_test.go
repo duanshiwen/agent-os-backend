@@ -145,6 +145,54 @@ func TestKBHubServicePublicReadManifestAndInstall(t *testing.T) {
 	}
 }
 
+func TestKBHubServiceInstalledAccessAndCancel(t *testing.T) {
+	svc, knowledgeRepo, _, ownerID := newKBHubServiceTestEnv(t)
+	consumerID := uuid.New()
+	strangerID := uuid.New()
+	if err := knowledgeRepo.Create(&model.UserKnowledgeEntry{UserID: ownerID, EntryID: "notes/access", Title: "Access", ContentMarkdown: "# Access", Summary: "access", Status: repository.KnowledgeEntryStatusActive, Version: 1, ContentHash: strings.Repeat("d", 64)}); err != nil {
+		t.Fatalf("create knowledge entry: %v", err)
+	}
+	collection, err := svc.CreateCollection(ownerID, CreateKBCollectionInput{Name: "Access KB"})
+	if err != nil {
+		t.Fatalf("create collection: %v", err)
+	}
+	detail, err := svc.PublishSnapshot(context.Background(), ownerID, collection.ID, PublishKBSnapshotInput{})
+	if err != nil {
+		t.Fatalf("publish snapshot: %v", err)
+	}
+	entryRecordID := detail.Entries[0].ID
+	if _, err := svc.CreateInstalledManifestDownloadURL(context.Background(), strangerID, collection.ID, detail.Snapshot.ID); err == nil || !strings.Contains(err.Error(), ErrKBSubscriptionNeeded.Error()) {
+		t.Fatalf("expected stranger manifest access denial, got %v", err)
+	}
+	if _, err := svc.InstallCollection(consumerID, collection.ID, InstallKBCollectionInput{}); err != nil {
+		t.Fatalf("install latest: %v", err)
+	}
+	manifestURL, err := svc.CreateInstalledManifestDownloadURL(context.Background(), consumerID, collection.ID, detail.Snapshot.ID)
+	if err != nil {
+		t.Fatalf("installed manifest url: %v", err)
+	}
+	if manifestURL.DownloadURL == "" {
+		t.Fatal("expected manifest download URL")
+	}
+	contentURL, err := svc.CreateInstalledEntryContentDownloadURL(context.Background(), consumerID, collection.ID, detail.Snapshot.ID, entryRecordID)
+	if err != nil {
+		t.Fatalf("installed content url: %v", err)
+	}
+	if contentURL.DownloadURL == "" || contentURL.Object.ObjectURI != detail.Entries[0].ContentObjectURI {
+		t.Fatalf("unexpected content url response: %+v", contentURL)
+	}
+	cancelled, err := svc.CancelSubscription(consumerID, collection.ID)
+	if err != nil {
+		t.Fatalf("cancel subscription: %v", err)
+	}
+	if cancelled.Status != "cancelled" {
+		t.Fatalf("expected cancelled subscription, got %+v", cancelled)
+	}
+	if _, err := svc.CreateInstalledEntryContentDownloadURL(context.Background(), consumerID, collection.ID, detail.Snapshot.ID, entryRecordID); err == nil || !strings.Contains(err.Error(), ErrKBSubscriptionNeeded.Error()) {
+		t.Fatalf("expected access denial after cancel, got %v", err)
+	}
+}
+
 func newKBHubServiceTestEnv(t *testing.T) (*KBHubService, *repository.KnowledgeEntriesRepo, *recordingObjectStorageBackend, uuid.UUID) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+strings.ReplaceAll(t.Name(), "/", "_")+"?mode=memory&cache=shared"), &gorm.Config{})

@@ -8,6 +8,7 @@ import (
 	"github.com/agent-os/backend/internal/pkg/response"
 	"github.com/agent-os/backend/internal/service"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type KBHubHandler struct {
@@ -197,10 +198,70 @@ func (h *KBHubHandler) ListSubscriptions(c *gin.Context) {
 	response.OK(c, subscriptions)
 }
 
+func (h *KBHubHandler) CancelSubscription(c *gin.Context) {
+	userID := middleware.MustGetUserID(c)
+	collectionID, ok := parseUUIDParam(c, "id")
+	if !ok {
+		return
+	}
+	subscription, err := h.svc.CancelSubscription(userID, collectionID)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	response.OK(c, subscription)
+}
+
+func (h *KBHubHandler) CreateInstalledManifestDownloadURL(c *gin.Context) {
+	userID := middleware.MustGetUserID(c)
+	collectionID, snapshotID, ok := parseAccessSnapshotParams(c)
+	if !ok {
+		return
+	}
+	result, err := h.svc.CreateInstalledManifestDownloadURL(c.Request.Context(), userID, collectionID, snapshotID)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	response.OK(c, result)
+}
+
+func (h *KBHubHandler) CreateInstalledEntryContentDownloadURL(c *gin.Context) {
+	userID := middleware.MustGetUserID(c)
+	collectionID, snapshotID, ok := parseAccessSnapshotParams(c)
+	if !ok {
+		return
+	}
+	entryRecordID, ok := parseUUIDParam(c, "entry_id")
+	if !ok {
+		return
+	}
+	result, err := h.svc.CreateInstalledEntryContentDownloadURL(c.Request.Context(), userID, collectionID, snapshotID, entryRecordID)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	response.OK(c, result)
+}
+
+func parseAccessSnapshotParams(c *gin.Context) (uuid.UUID, uuid.UUID, bool) {
+	collectionID, ok := parseUUIDParam(c, "id")
+	if !ok {
+		return uuid.Nil, uuid.Nil, false
+	}
+	snapshotID, ok := parseUUIDParam(c, "snapshot_id")
+	if !ok {
+		return uuid.Nil, uuid.Nil, false
+	}
+	return collectionID, snapshotID, true
+}
+
 func (h *KBHubHandler) handleError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrKBCollectionNotFound), errors.Is(err, service.ErrKBSnapshotNotFound):
 		response.NotFound(c, err.Error())
+	case errors.Is(err, service.ErrKBSubscriptionNeeded):
+		response.Forbidden(c, err.Error())
 	case errors.Is(err, service.ErrKBNoEntries):
 		response.Conflict(c, err.Error())
 	case errors.Is(err, service.ErrKBInvalid):
