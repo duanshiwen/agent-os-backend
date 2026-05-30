@@ -1,0 +1,273 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/url"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/agent-os/backend/internal/config"
+	"github.com/agent-os/backend/internal/model"
+	"github.com/agent-os/backend/internal/repository"
+	"github.com/google/uuid"
+)
+
+var (
+	ErrObjectNotFound      = errors.New("object not found")
+	ErrObjectForbidden     = errors.New("object forbidden")
+	ErrObjectInvalid       = errors.New("object invalid")
+	ErrObjectNotActive     = errors.New("object is not active")
+	ErrObjectHashMismatch  = errors.New("object hash mismatch")
+	ErrObjectSizeMismatch  = errors.New("object size mismatch")
+	ErrObjectTypeMismatch  = errors.New("object content type mismatch")
+	ErrObjectHasReferences = errors.New("object has references")
+)
+
+type ObjectStorageBackend interface {
+	EnsureBucket(ctx context.Context, bucket string) error
+	PresignedPutURL(ctx context.Context, bucket, key string, ttl time.Duration, contentType string) (string, error)
+	PresignedGetURL(ctx context.Context, bucket, key string, ttl time.Duration, disposition string) (string, error)
+	HeadObject(ctx context.Context, bucket, key string) (ObjectHead, error)
+}
+
+type ObjectHead struct {
+	ContentHash string
+	ContentSize int64
+	ContentType string
+}
+
+type ObjectService struct {
+	repo    *repository.ObjectRecordsRepo
+	storage ObjectStorageBackend
+	cfg     config.ObjectStorageConfig
+}
+
+type CreateUploadIntentInput struct {
+	Scope       string `json:"scope"`
+	Filename    string `json:"filename"`
+	ContentType string `json:"content_type"`
+	ContentSize int64  `json:"content_size"`
+	SHA256      string `json:"sha256"`
+}
+
+type UploadIntentResponse struct {
+	Object    *model.ObjectRecord `json:"object"`
+	UploadURL string              `json:"upload_url"`
+	Method    string              `json:"method"`
+	ExpiresAt time.Time           `json:"expires_at"`
+}
+
+type CompleteUploadInput struct {
+	ObservedHash string `json:"observed_hash"`
+	ObservedSize int64  `json:"observed_size"`
+}
+
+type CreateDownloadURLInput struct {
+	Disposition string `json:"disposition"`
+}
+
+type DownloadURLResponse struct {
+	Object      *model.ObjectRecord `json:"object"`
+	DownloadURL string              `json:"download_url"`
+	ExpiresAt   time.Time           `json:"expires_at"`
+}
+
+func NewObjectService(repo *repository.ObjectRecordsRepo, storage ObjectStorageBackend, cfg config.ObjectStorageConfig) *ObjectService {
+	return &ObjectService{repo: repo, storage: storage, cfg: cfg}
+}
+
+func (s *ObjectService) CreateUploadIntent(ctx context.Context, ownerID uuid.UUID, input CreateUploadIntentInput) (*UploadIntentResponse, error) {
+	if ownerID == uuid.Nil {
+		return nil, ErrObjectForbidden
+	}
+	if err := validateUploadIntentInput(input); err != nil {
+		return nil, err
+	}
+	if err := s.storage.EnsureBucket(ctx, s.cfg.Bucket); err != nil {
+		return nil, err
+	}
+	recordID := uuid.New()
+	ttl := time.Duration(s.cfg.UploadTTLSecs) * time.Second
+	expiresAt := time.Now().Add(ttl)
+	objectKey := buildObjectKey(ownerID, recordID, input.Scope, input.Filename)
+	objectURI := fmt.Sprintf("minio://%s/%s", s.cfg.Bucket, objectKey)
+	uploadURL, err := s.storage.PresignedPutURL(ctx, s.cfg.Bucket, objectKey, ttl, strings.TrimSpace(input.ContentType))
+	if err != nil {
+		return nil, err
+	}
+	record := &model.ObjectRecord{
+		Base:        model.Base{ID: recordID},
+		OwnerID:     ownerID,
+		Scope:       strings.TrimSpace(input.Scope),
+		Bucket:      s.cfg.Bucket,
+		ObjectKey:   objectKey,
+		ObjectURI:   objectURI,
+		Filename:    strings.TrimSpace(input.Filename),
+		ContentType: strings.TrimSpace(input.ContentType),
+		ContentHash: strings.ToLower(strings.TrimSpace(input.SHA256)),
+		ContentSize: input.ContentSize,
+		Status:      repository.ObjectStatusPending,
+		ExpiresAt:   &expiresAt,
+	}
+	if err := s.repo.Create(record); err != nil {
+		return nil, err
+	}
+	return &UploadIntentResponse{Object: record, UploadURL: uploadURL, Method: "PUT", ExpiresAt: expiresAt}, nil
+}
+
+func (s *ObjectService) CompleteUpload(ctx context.Context, ownerID uuid.UUID, objectID uuid.UUID, input CompleteUploadInput) (*model.ObjectRecord, error) {
+	record, err := s.getOwned(ownerID, objectID)
+	if err != nil {
+		return nil, err
+	}
+	if record.Status != repository.ObjectStatusPending {
+		return nil, ErrObjectInvalid
+	}
+	if record.ExpiresAt != nil && time.Now().After(*record.ExpiresAt) {
+		return nil, fmt.Errorf("%w: upload intent expired", ErrObjectInvalid)
+	}
+	head, err := s.storage.HeadObject(ctx, record.Bucket, record.ObjectKey)
+	if err != nil {
+		return nil, err
+	}
+	observedHash := firstNonEmpty(strings.ToLower(strings.TrimSpace(input.ObservedHash)), strings.ToLower(strings.TrimSpace(head.ContentHash)))
+	observedSize := input.ObservedSize
+	if observedSize == 0 {
+		observedSize = head.ContentSize
+	}
+	if observedHash != "" && observedHash != strings.ToLower(record.ContentHash) {
+		return nil, ErrObjectHashMismatch
+	}
+	if observedSize != 0 && observedSize != record.ContentSize {
+		return nil, ErrObjectSizeMismatch
+	}
+	if head.ContentType != "" && record.ContentType != "" && head.ContentType != record.ContentType {
+		return nil, ErrObjectTypeMismatch
+	}
+	if err := s.repo.MarkActive(record.ID); err != nil {
+		return nil, err
+	}
+	return s.repo.GetByIDForOwner(ownerID, objectID)
+}
+
+func (s *ObjectService) GetObject(ownerID uuid.UUID, objectID uuid.UUID) (*model.ObjectRecord, error) {
+	return s.getOwned(ownerID, objectID)
+}
+
+func (s *ObjectService) CreateDownloadURL(ctx context.Context, ownerID uuid.UUID, objectID uuid.UUID, input CreateDownloadURLInput) (*DownloadURLResponse, error) {
+	record, err := s.getOwned(ownerID, objectID)
+	if err != nil {
+		return nil, err
+	}
+	if record.Status != repository.ObjectStatusActive {
+		return nil, ErrObjectNotActive
+	}
+	disposition := strings.TrimSpace(input.Disposition)
+	if disposition == "" {
+		disposition = "attachment"
+	}
+	if disposition != "attachment" && disposition != "inline" {
+		return nil, fmt.Errorf("%w: disposition must be attachment or inline", ErrObjectInvalid)
+	}
+	ttl := time.Duration(s.cfg.DownloadTTLSecs) * time.Second
+	expiresAt := time.Now().Add(ttl)
+	downloadURL, err := s.storage.PresignedGetURL(ctx, record.Bucket, record.ObjectKey, ttl, disposition)
+	if err != nil {
+		return nil, err
+	}
+	return &DownloadURLResponse{Object: record, DownloadURL: downloadURL, ExpiresAt: expiresAt}, nil
+}
+
+func (s *ObjectService) DeleteObject(ownerID uuid.UUID, objectID uuid.UUID) (*model.ObjectRecord, error) {
+	record, err := s.getOwned(ownerID, objectID)
+	if err != nil {
+		return nil, err
+	}
+	if record.RefCount > 0 {
+		return nil, ErrObjectHasReferences
+	}
+	if err := s.repo.SoftDelete(record.ID); err != nil {
+		if repository.IsNotFound(err) {
+			return nil, ErrObjectNotFound
+		}
+		return nil, err
+	}
+	return s.repo.GetByIDForOwner(ownerID, objectID)
+}
+
+func (s *ObjectService) getOwned(ownerID uuid.UUID, objectID uuid.UUID) (*model.ObjectRecord, error) {
+	if ownerID == uuid.Nil {
+		return nil, ErrObjectForbidden
+	}
+	record, err := s.repo.GetByIDForOwner(ownerID, objectID)
+	if err != nil {
+		if repository.IsNotFound(err) {
+			return nil, ErrObjectNotFound
+		}
+		return nil, err
+	}
+	return record, nil
+}
+
+func validateUploadIntentInput(input CreateUploadIntentInput) error {
+	if strings.TrimSpace(input.Scope) == "" {
+		return fmt.Errorf("%w: scope is required", ErrObjectInvalid)
+	}
+	if strings.Contains(input.Scope, "..") {
+		return fmt.Errorf("%w: invalid scope", ErrObjectInvalid)
+	}
+	if strings.TrimSpace(input.Filename) == "" {
+		return fmt.Errorf("%w: filename is required", ErrObjectInvalid)
+	}
+	if input.ContentSize <= 0 {
+		return fmt.Errorf("%w: content_size must be positive", ErrObjectInvalid)
+	}
+	if strings.TrimSpace(input.SHA256) == "" {
+		return fmt.Errorf("%w: sha256 is required", ErrObjectInvalid)
+	}
+	if len(strings.TrimSpace(input.SHA256)) != 64 {
+		return fmt.Errorf("%w: sha256 must be 64 hex characters", ErrObjectInvalid)
+	}
+	return nil
+}
+
+func buildObjectKey(ownerID uuid.UUID, recordID uuid.UUID, scope, filename string) string {
+	safeScope := sanitizePathSegment(scope)
+	safeName := sanitizePathSegment(filepath.Base(filename))
+	if safeName == "." || safeName == "/" || safeName == "" {
+		safeName = "object.bin"
+	}
+	return fmt.Sprintf("objects/%s/%s/%s/%s", ownerID.String(), safeScope, recordID.String(), safeName)
+}
+
+func sanitizePathSegment(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.ReplaceAll(value, "\\", "/")
+	parts := strings.FieldsFunc(value, func(r rune) bool {
+		return r == '/' || r == ':' || r == '?' || r == '#' || r == '&'
+	})
+	clean := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" || p == "." || p == ".." {
+			continue
+		}
+		clean = append(clean, url.PathEscape(p))
+	}
+	if len(clean) == 0 {
+		return "default"
+	}
+	return strings.Join(clean, "-")
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}

@@ -1,7 +1,7 @@
-# AgentOS Backend Phase 1 / M2.3 Status
+# AgentOS Backend Phase 1 / M3.0 Status
 
 Updated: 2026-05-30
-Branch: `m2-3-client-sync-integration`
+Branch: `m2-4-sync-integration-gate`
 
 ## Summary
 
@@ -15,7 +15,9 @@ M2.1 Sync Object Coverage is implemented for the low-risk configuration objects 
 - agent settings
 - server list
 
-M2.2 Knowledge Sync Semantics is implemented for a user's personal knowledge entries. M2.3 has started by documenting the client-facing sync consumer contract and adding router-level coverage for the two-device knowledge pull/apply/ack flow. This remains intentionally scoped to cross-device sync of the user's own local knowledge objects. It does not implement KB Hub publishing, marketplace discovery, subscription state, billing, semantic indexing, or Rust knowledge FFI.
+M2.2 Knowledge Sync Semantics is implemented for a user's personal knowledge entries. M2.3 documents and verifies the client-facing sync consumer contract with router-level coverage for the two-device knowledge pull/apply/ack flow. M2.4 adds the live integration gate: the backend has been verified against running PostgreSQL/Redis with a real two-device QR pairing + knowledge create/update/conflict/delete/ack smoke. This remains intentionally scoped to cross-device sync of the user's own local knowledge objects. It does not implement KB Hub publishing, marketplace discovery, subscription state, billing, or semantic indexing.
+
+Rust FFI has two verified surfaces: identity verification is in the backend runtime path, while knowledge sync bridge reducer exports are covered as a contract/integration surface for SDK/client consumption and are not part of the backend business write path.
 
 ## Implemented and Verified
 
@@ -125,7 +127,7 @@ The contract is documented in `docs/sync-contract.md` under **Knowledge Entry Sy
 
 ### M2.3 Client Sync Consumer Contract
 
-M2.3 now has an explicit client-facing sync consumer contract in:
+M2.3 has an explicit client-facing sync consumer contract in:
 
 ```text
 docs/client-sync-consumer-contract.md
@@ -165,6 +167,55 @@ It verifies a minimal client consumer loop for personal knowledge sync:
 9. Device A deletes with `base_version`;
 10. Device B pulls/applies/acks the tombstone;
 11. final pull after ack returns no remaining events.
+
+### M2.4 Live Integration Gate
+
+The live two-device sync gate is verified through:
+
+```text
+scripts/smoke-live-two-device-knowledge-sync.sh
+```
+
+It verifies against a running backend with PostgreSQL/Redis dependencies:
+
+1. `/health` reports database, Redis, and FFI identity verifier as healthy;
+2. Device A authenticates through Ed25519 challenge-response;
+3. Device A starts QR-only pairing;
+4. Device B claims the QR pairing session;
+5. Device B authenticates as the same user identity;
+6. Device A creates a personal knowledge entry;
+7. Device B pulls and acks `knowledge.created`;
+8. Device A updates the entry with `base_version`;
+9. Device B pulls and acks `knowledge.updated`;
+10. Device B attempts a stale update and receives `409` without a new sync event;
+11. Device A deletes the entry;
+12. Device B pulls and acks the `knowledge.deleted` tombstone;
+13. final pull returns no remaining events.
+
+Latest verified result:
+
+```text
+Live two-device knowledge sync smoke passed.
+Device A: live-knowledge-a-1780121029
+Device B: live-knowledge-b-1780121029
+Entry:    notes/live-two-device-1780121029
+```
+
+### Rust FFI Bridge Contract Surface
+
+The bundled `agentos-ffi` dynamic library exposes and tests:
+
+- `agentos_identity_verify_ed25519_challenge` — backend runtime identity verification path;
+- `agentos_apply_knowledge_sync_events_json` — SDK/client knowledge reducer contract surface;
+- `agentos_apply_knowledge_sync_pull_response_json` — SDK/client backend pull-response reducer contract surface.
+
+Backend-side integration coverage exists in:
+
+```text
+internal/service/ffi_verifier_test.go
+```
+
+`TestFFIKnowledgeSyncBridgeIntegration` loads the bundled dynamic library, registers the knowledge sync bridge export, applies `testdata/m2_3_knowledge_sync_pull_response.json`, and verifies that tombstone/version semantics advance the projection cursor correctly.
 
 ### Production Migrations
 
@@ -214,7 +265,8 @@ Latest verified result:
 M2.1 sync settings smoke passed.
 M2.2 knowledge sync smoke passed.
 M2.3 client sync consumer smoke passed.
-Go test: 108 passed in 10 packages
+Live two-device knowledge sync smoke passed.
+Go test: 109 passed in 10 packages
 ```
 
 Run Rust FFI integration test:
@@ -223,13 +275,12 @@ Run Rust FFI integration test:
 ./scripts/test-ffi-integration.sh
 ```
 
-Latest previously verified result:
+Latest verified result:
 
 ```text
-=== RUN   TestFFIVerifierIntegration
---- PASS: TestFFIVerifierIntegration (0.00s)
-PASS
-ok  github.com/agent-os/backend/internal/service
+TestFFIVerifierIntegration: passed
+TestFFIKnowledgeSyncBridgeIntegration: passed
+cargo test -p agentos-ffi --locked: 6 passed
 ```
 
 ## Smoke Coverage
@@ -314,14 +365,55 @@ For live sync pull smoke against a running server, use:
 TOKEN="<jwt>" ./scripts/smoke-sync.sh
 ```
 
+For the full live two-device QR pairing + knowledge sync gate, start dependencies and the backend, then run:
+
+```bash
+docker compose up -d postgres redis minio
+AUTO_MIGRATE=true go run ./cmd/server
+./scripts/smoke-live-two-device-knowledge-sync.sh
+```
+
+## M3.0 Object Storage Foundation
+
+Initial object storage foundation is implemented for the backend-owned MinIO path:
+
+- `object_records` model and migration;
+- object storage configuration in `.env.example` and `internal/config`;
+- `ObjectStorageBackend` interface;
+- `MinIOStorageService` implementation;
+- `ObjectService` upload/complete/download/delete lifecycle;
+- authenticated object APIs:
+  - `POST /api/v1/objects/upload-intents`
+  - `POST /api/v1/objects/uploads/:id/complete`
+  - `GET /api/v1/objects/:id`
+  - `POST /api/v1/objects/:id/download-url`
+  - `DELETE /api/v1/objects/:id`
+- unit tests with fake object storage backend;
+- live MinIO smoke script:
+
+```text
+scripts/smoke-object-storage.sh
+```
+
+Latest verified result:
+
+```text
+Object storage smoke passed.
+Object ID:  5a249dd9-79ae-4c74-81aa-06748eba8217
+Object URI: minio://agentos-objects/objects/d132733f-0f70-49ed-83d5-34b6dd878239/smoke-object-storage/5a249dd9-79ae-4c74-81aa-06748eba8217/object-smoke-1780121652.txt
+SHA-256:    cbb723fef74720a3f6a6d3fe2942cb15eeb47070a79b7dd3a8bd1b8cfeacf588
+```
+
+This foundation is intentionally still storage-only. KB Hub snapshot publishing should use this service rather than calling MinIO directly.
+
 ## Current Known Limitations
 
-Phase 1 / M2.3 intentionally does **not** include:
+Phase 1 / M3.0 intentionally does **not** include:
 
 - KB Hub service routes;
 - KB publishing / snapshot / subscription semantics;
 - semantic indexing, embeddings, or content storage pipeline;
-- Rust FFI knowledge operations beyond identity verification;
+- backend business usage of Rust knowledge FFI beyond SDK/client contract verification;
 - plugin marketplace / SAGE service routes;
 - billing business logic;
 - multi-server federation or remote server authentication;
@@ -332,15 +424,16 @@ Phase 1 / M2.3 intentionally does **not** include:
 
 Model structs for KB, plugin, and billing already exist, but they should be treated as future-phase placeholders until the corresponding service, repository, handler, migration, and sync semantics are designed.
 
-Local Postgres migration smoke is still pending on this machine because Docker Desktop was not running during verification.
+Local live Postgres/Redis/MinIO verification has now passed on this machine.
 
 ## Recommended Next Milestone
 
-M2.3 client sync integration is now the recommended next milestone. Recommended next steps:
+M3.1 KB Hub Snapshot Vertical Slice is now the recommended next milestone. Recommended next steps:
 
-1. run Postgres migration smoke once Docker Desktop is available;
-2. keep M2.2 knowledge sync reviewed/merged before expanding Hub scope;
-3. implement the SDK/client reducer contract described in `docs/client-sync-consumer-contract.md`;
-4. add a real two-device live smoke once a running Postgres/Redis environment is available;
-5. keep KB Hub service implementation blocked until personal knowledge sync is integrated by clients;
-6. after client integration feedback, design the separate KB Hub contract for publishing, snapshots, subscriptions, and marketplace behavior.
+1. update KB snapshot models to use object URI fields (`manifest_object_uri`, `archive_object_uri`, `content_object_uri`, `embedding_object_uri`, `content_hash`, `content_size`);
+2. add KB collection/snapshot repositories and migrations as needed;
+3. implement collection create/list/detail APIs;
+4. implement snapshot publish from active `UserKnowledgeEntry` rows into Object Storage;
+5. write snapshot manifest and entry Markdown content through `ObjectService` / storage abstraction, not direct MinIO calls;
+6. verify snapshot immutability after source personal knowledge entries change;
+7. add `scripts/smoke-kb-snapshot.sh` before expanding into search, subscriptions, billing, or marketplace behavior.
