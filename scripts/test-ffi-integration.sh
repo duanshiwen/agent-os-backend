@@ -4,4 +4,4 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 cd "$ROOT_DIR"
-go test ./internal/service -run TestFFIVerifierIntegration -count=1 -v
+go test ./internal/service -run 'TestFFI.*Integration' -count=1 -v
