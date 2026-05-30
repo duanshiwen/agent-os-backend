@@ -17,6 +17,8 @@ import (
 
 const defaultSensitiveConfirmationTTL = 5 * time.Minute
 
+const SensitiveOperationDeviceRevoke = "device.revoke"
+
 type SensitiveOperationService struct {
 	userRepo *repository.UserRepo
 	repo     *repository.SensitiveOperationRepo

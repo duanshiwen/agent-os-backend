@@ -11,8 +11,9 @@ import (
 )
 
 type IdentityHandler struct {
-	svc      *service.IdentityService
-	auditSvc *service.AuditService
+	svc                   *service.IdentityService
+	auditSvc              *service.AuditService
+	sensitiveOperationSvc *service.SensitiveOperationService
 }
 
 func NewIdentityHandler(svc *service.IdentityService) *IdentityHandler {
@@ -21,6 +22,10 @@ func NewIdentityHandler(svc *service.IdentityService) *IdentityHandler {
 
 func (h *IdentityHandler) SetAuditService(auditSvc *service.AuditService) {
 	h.auditSvc = auditSvc
+}
+
+func (h *IdentityHandler) SetSensitiveOperationService(svc *service.SensitiveOperationService) {
+	h.sensitiveOperationSvc = svc
 }
 
 // POST /api/v1/auth/challenge
@@ -145,6 +150,22 @@ func (h *IdentityHandler) RevokeDevice(c *gin.Context) {
 	userID := middleware.MustGetUserID(c)
 	currentDeviceID := middleware.MustGetDeviceID(c)
 	targetDeviceID := c.Param("device_id")
+	var req struct {
+		ConfirmationToken string `json:"confirmation_token" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	if h.sensitiveOperationSvc == nil {
+		response.InternalError(c, "sensitive operation service unavailable")
+		return
+	}
+	if err := h.sensitiveOperationSvc.ConsumeConfirmation(userID, req.ConfirmationToken, service.SensitiveOperationDeviceRevoke, "device.revoke"); err != nil {
+		h.recordAudit(c, service.AuditActionDeviceRevoked, "device", targetDeviceID, service.AuditOutcomeDenied, gin.H{"error": err.Error(), "reason": "confirmation_required"})
+		response.Forbidden(c, err.Error())
+		return
+	}
 	device, err := h.svc.RevokeDevice(userID, currentDeviceID, targetDeviceID)
 	if err != nil {
 		h.recordAudit(c, service.AuditActionDeviceRevoked, "device", targetDeviceID, service.AuditOutcomeFailure, gin.H{"error": err.Error()})

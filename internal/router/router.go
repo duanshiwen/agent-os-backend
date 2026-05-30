@@ -78,6 +78,7 @@ func Setup(
 	// Handlers
 	identityH := handler.NewIdentityHandler(identitySvc)
 	identityH.SetAuditService(auditSvc)
+	identityH.SetSensitiveOperationService(sensitiveOperationSvc)
 	auditH := handler.NewAuditHandler(auditSvc)
 	admissionH := handler.NewAdmissionHandler(admissionSvc)
 	admissionH.SetAuditService(auditSvc)
