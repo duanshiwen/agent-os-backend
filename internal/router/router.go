@@ -97,6 +97,7 @@ func Setup(
 	sensitiveOperationH := handler.NewSensitiveOperationHandler(sensitiveOperationSvc)
 	kbHubH.SetSearchService(kbSearchSvc)
 	kbHubH.SetBillingService(billingSvc)
+	kbHubH.SetAuditService(auditSvc)
 
 	// WebSocket dispatcher
 	dispatcher := ws.NewDispatcher(hub, msgSvc, convSvc, convRepo)
@@ -212,11 +213,16 @@ func Setup(
 			protected.POST("/kb/collections", kbHubH.CreateCollection)
 			protected.GET("/kb/collections", kbHubH.ListCollections)
 			protected.PUT("/kb/collections/:id/pricing", kbHubH.UpdateCollectionPricing)
+			protected.PUT("/kb/collections/:id/declarations", kbHubH.UpdateCollectionDeclarations)
+			protected.POST("/kb/collections/:id/reports", kbHubH.ReportCollection)
 			protected.GET("/kb/collections/:id/stats", kbHubH.GetCollectionStats)
 			protected.GET("/kb/collections/:id/earnings", kbHubH.ListContributorEarnings)
 			protected.POST("/kb/collections/:id/snapshots", kbHubH.PublishSnapshot)
 			protected.GET("/kb/collections/:id/snapshots", kbHubH.ListSnapshots)
 			protected.GET("/kb/collections/:id/snapshots/:snapshot_id", kbHubH.GetSnapshot)
+			protected.POST("/kb/collections/:id/snapshots/:snapshot_id/archive", kbHubH.ArchiveSnapshot)
+			protected.POST("/kb/collections/:id/snapshots/:snapshot_id/restore", kbHubH.RestoreSnapshot)
+			protected.GET("/kb/collections/:id/snapshot-diff", kbHubH.DiffSnapshots)
 			protected.GET("/kb/collections/:id/snapshots/:snapshot_id/embedding-status", kbHubH.GetSnapshotEmbeddingStatus)
 			protected.POST("/kb/collections/:id/snapshots/:snapshot_id/embedding-jobs/retry-failed", kbHubH.RetrySnapshotEmbeddingJobs)
 			protected.POST("/kb/collections/:id/install", kbHubH.InstallCollection)
@@ -240,6 +246,11 @@ func Setup(
 			admin.GET("/admission/requests", admissionH.GetPending)
 			admin.POST("/admission/requests/:id/approve", admissionH.Approve)
 			admin.POST("/admission/requests/:id/reject", admissionH.Reject)
+			admin.GET("/kb/collections/review", kbHubH.AdminListCollectionsForReview)
+			admin.POST("/kb/collections/:id/review", kbHubH.AdminReviewCollection)
+			admin.GET("/kb/moderation/reports", kbHubH.AdminListModerationReports)
+			admin.POST("/kb/moderation/reports/:report_id/resolve", kbHubH.AdminResolveModerationReport)
+			admin.POST("/kb/subscriptions/expire", kbHubH.AdminExpireSubscriptions)
 		}
 	}
 

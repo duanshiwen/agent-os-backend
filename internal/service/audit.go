@@ -29,6 +29,11 @@ const (
 	AuditActionPasswordChanged               = "identity.password.changed"
 	AuditActionSensitiveConfirmationIssued   = "sensitive_operation.confirmation.issued"
 	AuditActionSensitiveConfirmationConsumed = "sensitive_operation.confirmation.consumed"
+	AuditActionKBCollectionReviewed          = "kb.collection.reviewed"
+	AuditActionKBCollectionReported          = "kb.collection.reported"
+	AuditActionKBSnapshotArchived            = "kb.snapshot.archived"
+	AuditActionKBSnapshotRestored            = "kb.snapshot.restored"
+	AuditActionKBSubscriptionsExpired        = "kb.subscriptions.expired"
 )
 
 type AuditService struct {

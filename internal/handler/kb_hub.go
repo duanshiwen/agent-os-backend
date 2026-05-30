@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/agent-os/backend/internal/middleware"
 	"github.com/agent-os/backend/internal/pkg/response"
@@ -16,6 +17,7 @@ type KBHubHandler struct {
 	svc        *service.KBHubService
 	searchSvc  *service.KBSearchService
 	billingSvc *service.KBBillingService
+	auditSvc   *service.AuditService
 }
 
 func NewKBHubHandler(svc *service.KBHubService) *KBHubHandler {
@@ -28,6 +30,10 @@ func (h *KBHubHandler) SetSearchService(searchSvc *service.KBSearchService) {
 
 func (h *KBHubHandler) SetBillingService(billingSvc *service.KBBillingService) {
 	h.billingSvc = billingSvc
+}
+
+func (h *KBHubHandler) SetAuditService(auditSvc *service.AuditService) {
+	h.auditSvc = auditSvc
 }
 
 func (h *KBHubHandler) CreateCollection(c *gin.Context) {
@@ -102,6 +108,68 @@ func (h *KBHubHandler) ListSnapshots(c *gin.Context) {
 		return
 	}
 	response.OK(c, snapshots)
+}
+
+func (h *KBHubHandler) ArchiveSnapshot(c *gin.Context) {
+	userID := middleware.MustGetUserID(c)
+	collectionID, ok := parseUUIDParam(c, "id")
+	if !ok {
+		return
+	}
+	snapshotID, ok := parseUUIDParam(c, "snapshot_id")
+	if !ok {
+		return
+	}
+	snapshot, err := h.svc.ArchiveSnapshot(userID, collectionID, snapshotID)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	recordAuditFromContext(c, h.auditSvc, service.AuditActionKBSnapshotArchived, "kb_snapshot", snapshotID.String(), service.AuditOutcomeSuccess, gin.H{"collection_id": collectionID.String()})
+	response.OK(c, snapshot)
+}
+
+func (h *KBHubHandler) RestoreSnapshot(c *gin.Context) {
+	userID := middleware.MustGetUserID(c)
+	collectionID, ok := parseUUIDParam(c, "id")
+	if !ok {
+		return
+	}
+	snapshotID, ok := parseUUIDParam(c, "snapshot_id")
+	if !ok {
+		return
+	}
+	snapshot, err := h.svc.RestoreSnapshot(userID, collectionID, snapshotID)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	recordAuditFromContext(c, h.auditSvc, service.AuditActionKBSnapshotRestored, "kb_snapshot", snapshotID.String(), service.AuditOutcomeSuccess, gin.H{"collection_id": collectionID.String()})
+	response.OK(c, snapshot)
+}
+
+func (h *KBHubHandler) DiffSnapshots(c *gin.Context) {
+	userID := middleware.MustGetUserID(c)
+	collectionID, ok := parseUUIDParam(c, "id")
+	if !ok {
+		return
+	}
+	fromID, err := uuid.Parse(c.Query("from_snapshot_id"))
+	if err != nil {
+		response.BadRequest(c, "invalid from_snapshot_id")
+		return
+	}
+	toID, err := uuid.Parse(c.Query("to_snapshot_id"))
+	if err != nil {
+		response.BadRequest(c, "invalid to_snapshot_id")
+		return
+	}
+	diff, err := h.svc.DiffSnapshots(userID, collectionID, fromID, toID)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	response.OK(c, diff)
 }
 
 func (h *KBHubHandler) GetSnapshot(c *gin.Context) {
@@ -232,6 +300,45 @@ func (h *KBHubHandler) CreateManifestDownloadURL(c *gin.Context) {
 		return
 	}
 	response.OK(c, result)
+}
+
+func (h *KBHubHandler) UpdateCollectionDeclarations(c *gin.Context) {
+	userID := middleware.MustGetUserID(c)
+	collectionID, ok := parseUUIDParam(c, "id")
+	if !ok {
+		return
+	}
+	var req service.UpdateKBCollectionDeclarationsInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	collection, err := h.svc.UpdateCollectionDeclarations(userID, collectionID, req)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	response.OK(c, collection)
+}
+
+func (h *KBHubHandler) ReportCollection(c *gin.Context) {
+	userID := middleware.MustGetUserID(c)
+	collectionID, ok := parseUUIDParam(c, "id")
+	if !ok {
+		return
+	}
+	var req service.ReportKBCollectionInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	report, err := h.svc.ReportCollection(userID, collectionID, req)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	recordAuditFromContext(c, h.auditSvc, service.AuditActionKBCollectionReported, "kb_collection", collectionID.String(), service.AuditOutcomeSuccess, gin.H{"reason": report.Reason, "report_id": report.ID.String()})
+	response.Created(c, report)
 }
 
 func (h *KBHubHandler) UpdateCollectionPricing(c *gin.Context) {
@@ -412,6 +519,73 @@ func (h *KBHubHandler) ListBillingTransactions(c *gin.Context) {
 		return
 	}
 	response.OK(c, txns)
+}
+
+func (h *KBHubHandler) AdminListCollectionsForReview(c *gin.Context) {
+	collections, err := h.svc.ListCollectionsForReview(c.Query("review_status"), parseIntQuery(c, "limit", 50), parseIntQuery(c, "offset", 0))
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, collections)
+}
+
+func (h *KBHubHandler) AdminReviewCollection(c *gin.Context) {
+	adminID := middleware.MustGetUserID(c)
+	collectionID, ok := parseUUIDParam(c, "id")
+	if !ok {
+		return
+	}
+	var req service.ReviewKBCollectionInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	collection, err := h.svc.ReviewCollection(adminID, collectionID, req)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	recordAuditFromContext(c, h.auditSvc, service.AuditActionKBCollectionReviewed, "kb_collection", collectionID.String(), service.AuditOutcomeSuccess, gin.H{"review_status": collection.ReviewStatus, "reason": req.Reason})
+	response.OK(c, collection)
+}
+
+func (h *KBHubHandler) AdminListModerationReports(c *gin.Context) {
+	reports, err := h.svc.ListModerationReports(c.Query("status"), parseIntQuery(c, "limit", 50), parseIntQuery(c, "offset", 0))
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, reports)
+}
+
+func (h *KBHubHandler) AdminResolveModerationReport(c *gin.Context) {
+	adminID := middleware.MustGetUserID(c)
+	reportID, ok := parseUUIDParam(c, "report_id")
+	if !ok {
+		return
+	}
+	var req service.ResolveKBModerationReportInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	report, err := h.svc.ResolveModerationReport(adminID, reportID, req)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	response.OK(c, report)
+}
+
+func (h *KBHubHandler) AdminExpireSubscriptions(c *gin.Context) {
+	count, err := h.svc.ExpireSubscriptions(time.Now().UTC())
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	recordAuditFromContext(c, h.auditSvc, service.AuditActionKBSubscriptionsExpired, "kb_subscription", "expired", service.AuditOutcomeSuccess, gin.H{"expired": count})
+	response.OK(c, gin.H{"expired": count})
 }
 
 func (h *KBHubHandler) ListContributorEarnings(c *gin.Context) {

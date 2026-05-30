@@ -208,28 +208,39 @@ type ObjectRecord struct {
 
 type KBCollection struct {
 	Base
-	OwnerID          uuid.UUID `gorm:"type:uuid;index;not null" json:"owner_id"`
-	Name             string    `gorm:"not null" json:"name"`
-	Description      string    `json:"description"`
-	Status           string    `gorm:"index;not null;default:draft" json:"status"`
-	PricingModel     string    `json:"pricing_model"`
-	MonthlyPrice     int64     `json:"monthly_price"`
-	IsFree           bool      `json:"is_free"`
-	PlatformMinPrice int64     `json:"platform_min_price"`
-	PlatformMaxPrice int64     `json:"platform_max_price"`
+	OwnerID              uuid.UUID         `gorm:"type:uuid;index;not null" json:"owner_id"`
+	Name                 string            `gorm:"not null" json:"name"`
+	Description          string            `json:"description"`
+	Status               string            `gorm:"index;not null;default:draft" json:"status"`
+	ReviewStatus         string            `gorm:"index;not null;default:pending" json:"review_status"`
+	ReviewReason         string            `json:"review_reason"`
+	ReviewedBy           *uuid.UUID        `gorm:"type:uuid;index" json:"reviewed_by"`
+	ReviewedAt           *time.Time        `json:"reviewed_at"`
+	TakedownReason       string            `json:"takedown_reason"`
+	TakedownAt           *time.Time        `json:"takedown_at"`
+	SourceDeclaration    string            `gorm:"type:text" json:"source_declaration"`
+	CopyrightDeclaration string            `gorm:"type:text" json:"copyright_declaration"`
+	ModerationMetadata   datatypes.JSONMap `gorm:"type:jsonb" json:"moderation_metadata"`
+	PricingModel         string            `json:"pricing_model"`
+	MonthlyPrice         int64             `json:"monthly_price"`
+	IsFree               bool              `json:"is_free"`
+	PlatformMinPrice     int64             `json:"platform_min_price"`
+	PlatformMaxPrice     int64             `json:"platform_max_price"`
 }
 type KBSnapshot struct {
 	Base
-	CollectionID      uuid.UUID `gorm:"type:uuid;index;not null;uniqueIndex:idx_kb_snapshot_collection_version" json:"collection_id"`
-	Version           int       `gorm:"not null;uniqueIndex:idx_kb_snapshot_collection_version" json:"version"`
-	EntryCount        int       `json:"entry_count"`
-	TotalTokens       int       `json:"total_tokens"`
-	PublishedAt       time.Time `gorm:"index" json:"published_at"`
-	Checksum          string    `gorm:"index" json:"checksum"`
-	ManifestObjectURI string    `json:"manifest_object_uri"`
-	ArchiveObjectURI  string    `json:"archive_object_uri"`
-	ContentHash       string    `gorm:"index" json:"content_hash"`
-	ContentSize       int64     `json:"content_size"`
+	CollectionID      uuid.UUID  `gorm:"type:uuid;index;not null;uniqueIndex:idx_kb_snapshot_collection_version" json:"collection_id"`
+	Version           int        `gorm:"not null;uniqueIndex:idx_kb_snapshot_collection_version" json:"version"`
+	Status            string     `gorm:"index;not null;default:active" json:"status"`
+	EntryCount        int        `json:"entry_count"`
+	TotalTokens       int        `json:"total_tokens"`
+	PublishedAt       time.Time  `gorm:"index" json:"published_at"`
+	ArchivedAt        *time.Time `json:"archived_at"`
+	Checksum          string     `gorm:"index" json:"checksum"`
+	ManifestObjectURI string     `json:"manifest_object_uri"`
+	ArchiveObjectURI  string     `json:"archive_object_uri"`
+	ContentHash       string     `gorm:"index" json:"content_hash"`
+	ContentSize       int64      `json:"content_size"`
 }
 type KBSnapshotEntry struct {
 	Base
@@ -254,6 +265,18 @@ type KBSubscription struct {
 	StartedAt     time.Time  `json:"started_at"`
 	ExpiresAt     *time.Time `json:"expires_at"`
 }
+type KBModerationReport struct {
+	Base
+	CollectionID uuid.UUID  `gorm:"type:uuid;index;not null" json:"collection_id"`
+	ReporterID   uuid.UUID  `gorm:"type:uuid;index;not null" json:"reporter_id"`
+	Reason       string     `gorm:"index;not null" json:"reason"`
+	Detail       string     `gorm:"type:text" json:"detail"`
+	Status       string     `gorm:"index;not null;default:open" json:"status"`
+	ResolvedBy   *uuid.UUID `gorm:"type:uuid;index" json:"resolved_by"`
+	ResolvedAt   *time.Time `json:"resolved_at"`
+	Resolution   string     `gorm:"type:text" json:"resolution"`
+}
+
 type KBUsageRecord struct {
 	Base
 	UserID          uuid.UUID  `gorm:"type:uuid;index" json:"user_id"`
@@ -401,5 +424,5 @@ type AuditEvent struct {
 }
 
 func AllModels() []any {
-	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &UserAgentSetting{}, &UserServerConnection{}, &UserKnowledgeEntry{}, &ObjectRecord{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBUsageRecord{}, &KBSearchDocument{}, &KBEmbeddingJob{}, &KBSearchEmbedding{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}, &SensitiveOperationConfirmation{}, &AuditEvent{}}
+	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &UserAgentSetting{}, &UserServerConnection{}, &UserKnowledgeEntry{}, &ObjectRecord{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBModerationReport{}, &KBUsageRecord{}, &KBSearchDocument{}, &KBEmbeddingJob{}, &KBSearchEmbedding{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}, &SensitiveOperationConfirmation{}, &AuditEvent{}}
 }

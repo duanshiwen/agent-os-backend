@@ -2,6 +2,7 @@ package repository
 
 import (
 	"strings"
+	"time"
 
 	"github.com/agent-os/backend/internal/model"
 	"github.com/google/uuid"
@@ -12,6 +13,15 @@ const (
 	KBCollectionStatusDraft     = "draft"
 	KBCollectionStatusPublished = "published"
 	KBCollectionStatusArchived  = "archived"
+
+	KBReviewStatusPending  = "pending"
+	KBReviewStatusApproved = "approved"
+	KBReviewStatusRejected = "rejected"
+	KBReviewStatusTakedown = "takedown"
+	KBReviewStatusArchived = "archived"
+
+	KBSnapshotStatusActive   = "active"
+	KBSnapshotStatusArchived = "archived"
 )
 
 type ListPublishedCollectionsQuery struct {
@@ -43,6 +53,25 @@ func (r *KBHubRepo) Transaction(fn func(txRepo *KBHubRepo) error) error {
 
 func (r *KBHubRepo) CreateCollection(collection *model.KBCollection) error {
 	return r.db.Create(collection).Error
+}
+
+func (r *KBHubRepo) GetCollection(collectionID uuid.UUID) (*model.KBCollection, error) {
+	var collection model.KBCollection
+	err := r.db.First(&collection, "id = ?", collectionID).Error
+	return &collection, err
+}
+
+func (r *KBHubRepo) ListCollectionsForReview(status string, limit, offset int) ([]model.KBCollection, error) {
+	var collections []model.KBCollection
+	db := r.db.Model(&model.KBCollection{})
+	if strings.TrimSpace(status) != "" {
+		db = db.Where("review_status = ?", strings.TrimSpace(status))
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	err := db.Order("updated_at DESC").Limit(normalizeLimit(limit)).Offset(offset).Find(&collections).Error
+	return collections, err
 }
 
 func (r *KBHubRepo) ListCollectionsByOwner(ownerID uuid.UUID) ([]model.KBCollection, error) {
@@ -107,7 +136,7 @@ func normalizeLimit(limit int) int {
 
 func (r *KBHubRepo) GetPublishedCollection(collectionID uuid.UUID) (*model.KBCollection, error) {
 	var collection model.KBCollection
-	err := r.db.First(&collection, "id = ? AND status = ?", collectionID, KBCollectionStatusPublished).Error
+	err := r.db.First(&collection, "id = ? AND status = ? AND review_status = ?", collectionID, KBCollectionStatusPublished, KBReviewStatusApproved).Error
 	return &collection, err
 }
 
@@ -140,6 +169,21 @@ func (r *KBHubRepo) ListSnapshots(collectionID uuid.UUID) ([]model.KBSnapshot, e
 	return snapshots, err
 }
 
+func (r *KBHubRepo) ArchiveSnapshot(collectionID, snapshotID uuid.UUID) (*model.KBSnapshot, error) {
+	now := nowUTC()
+	if err := r.db.Model(&model.KBSnapshot{}).Where("id = ? AND collection_id = ?", snapshotID, collectionID).Updates(map[string]any{"status": KBSnapshotStatusArchived, "archived_at": &now}).Error; err != nil {
+		return nil, err
+	}
+	return r.GetSnapshot(collectionID, snapshotID)
+}
+
+func (r *KBHubRepo) RestoreSnapshot(collectionID, snapshotID uuid.UUID) (*model.KBSnapshot, error) {
+	if err := r.db.Model(&model.KBSnapshot{}).Where("id = ? AND collection_id = ?", snapshotID, collectionID).Updates(map[string]any{"status": KBSnapshotStatusActive, "archived_at": nil}).Error; err != nil {
+		return nil, err
+	}
+	return r.GetSnapshot(collectionID, snapshotID)
+}
+
 func (r *KBHubRepo) GetSnapshot(collectionID, snapshotID uuid.UUID) (*model.KBSnapshot, error) {
 	var snapshot model.KBSnapshot
 	err := r.db.First(&snapshot, "id = ? AND collection_id = ?", snapshotID, collectionID).Error
@@ -148,7 +192,7 @@ func (r *KBHubRepo) GetSnapshot(collectionID, snapshotID uuid.UUID) (*model.KBSn
 
 func (r *KBHubRepo) GetLatestSnapshot(collectionID uuid.UUID) (*model.KBSnapshot, error) {
 	var snapshot model.KBSnapshot
-	err := r.db.Where("collection_id = ?", collectionID).Order("version DESC").First(&snapshot).Error
+	err := r.db.Where("collection_id = ? AND status = ?", collectionID, KBSnapshotStatusActive).Order("version DESC").First(&snapshot).Error
 	return &snapshot, err
 }
 
@@ -171,7 +215,57 @@ func (r *KBHubRepo) GetSnapshotEntry(snapshotID, entryRecordID uuid.UUID) (*mode
 }
 
 func (r *KBHubRepo) MarkCollectionPublished(collectionID uuid.UUID) error {
-	return r.db.Model(&model.KBCollection{}).Where("id = ?", collectionID).Update("status", KBCollectionStatusPublished).Error
+	return r.db.Model(&model.KBCollection{}).Where("id = ?", collectionID).Updates(map[string]any{"status": KBCollectionStatusPublished, "review_status": KBReviewStatusApproved}).Error
+}
+
+func (r *KBHubRepo) UpdateCollectionReview(collectionID, reviewerID uuid.UUID, reviewStatus, reason string) (*model.KBCollection, error) {
+	now := nowUTC()
+	updates := map[string]any{"review_status": reviewStatus, "review_reason": reason, "reviewed_by": &reviewerID, "reviewed_at": &now}
+	if reviewStatus == KBReviewStatusApproved {
+		updates["status"] = KBCollectionStatusPublished
+		updates["takedown_reason"] = ""
+		updates["takedown_at"] = nil
+	}
+	if reviewStatus == KBReviewStatusRejected {
+		updates["status"] = KBCollectionStatusDraft
+	}
+	if reviewStatus == KBReviewStatusTakedown {
+		updates["status"] = KBCollectionStatusArchived
+		updates["takedown_reason"] = reason
+		updates["takedown_at"] = &now
+	}
+	if err := r.db.Model(&model.KBCollection{}).Where("id = ?", collectionID).Updates(updates).Error; err != nil {
+		return nil, err
+	}
+	return r.GetCollection(collectionID)
+}
+
+func (r *KBHubRepo) CreateModerationReport(report *model.KBModerationReport) error {
+	return r.db.Create(report).Error
+}
+
+func (r *KBHubRepo) ListModerationReports(status string, limit, offset int) ([]model.KBModerationReport, error) {
+	var reports []model.KBModerationReport
+	db := r.db.Model(&model.KBModerationReport{})
+	if strings.TrimSpace(status) != "" {
+		db = db.Where("status = ?", strings.TrimSpace(status))
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	err := db.Order("created_at DESC").Limit(normalizeLimit(limit)).Offset(offset).Find(&reports).Error
+	return reports, err
+}
+
+func (r *KBHubRepo) ResolveModerationReport(reportID, adminID uuid.UUID, status, resolution string) (*model.KBModerationReport, error) {
+	now := nowUTC()
+	updates := map[string]any{"status": status, "resolution": resolution, "resolved_by": &adminID, "resolved_at": &now}
+	if err := r.db.Model(&model.KBModerationReport{}).Where("id = ?", reportID).Updates(updates).Error; err != nil {
+		return nil, err
+	}
+	var report model.KBModerationReport
+	err := r.db.First(&report, "id = ?", reportID).Error
+	return &report, err
 }
 
 func (r *KBHubRepo) UpsertSubscription(subscription *model.KBSubscription) error {
@@ -242,6 +336,13 @@ func KBManifestDownloadOperations() []string {
 
 func KBContentDownloadOperations() []string {
 	return []string{"entry_content_download_url.created.installed"}
+}
+
+func nowUTC() time.Time { return time.Now().UTC() }
+
+func (r *KBHubRepo) ExpireSubscriptions(now time.Time) (int64, error) {
+	result := r.db.Model(&model.KBSubscription{}).Where("status = ? AND expires_at IS NOT NULL AND expires_at <= ?", "active", now.UTC()).Update("status", "expired")
+	return result.RowsAffected, result.Error
 }
 
 func (r *KBHubRepo) CancelSubscription(userID, collectionID uuid.UUID) error {
