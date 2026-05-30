@@ -48,7 +48,7 @@ Current known major gaps:
 - Multi-server federation is not implemented beyond local user server-list sync.
 - Governance/policy/audit is not yet a platform-wide control plane.
 - Production observability, admin operations, release gates, and background job unification are incomplete.
-- KB Hub production governance, moderation, version lifecycle, billing completion, and chunk-level search quality are incomplete.
+- KB Hub now has a Stage 2 productionization foundation for review/takedown/reporting, source/copyright declarations, snapshot archive/restore/diff, and subscription expiry cleanup; remaining gaps are full invoice/payout operations, per-plan entitlement variants, unified background scheduling, and chunk-level search quality.
 
 ## 3. Platform Completion Stages
 
@@ -115,38 +115,50 @@ Primary workstreams:
 
 Goal: turn KB Hub from a functional subsystem into a governable knowledge economy platform.
 
-Primary workstreams:
+Completed Stage 2 foundation:
 
-1. Real semantic search operational gate
-   - deterministic semantic smoke remains CI-safe;
-   - real BGE-M3 worker path is live-smoked and documented;
-   - embedding status/retry operations are admin-ready.
+1. KB governance and moderation
+   - source and copyright declarations on collections;
+   - collection review statuses: pending, approved, rejected, takedown, archived;
+   - admin review/takedown API;
+   - user report API;
+   - admin moderation report list/resolve API;
+   - audit events for review, report, snapshot lifecycle, and subscription expiry.
 
-2. KB governance and moderation
-   - collection review;
-   - takedown;
-   - report abuse;
-   - contributor profile and verification;
-   - source/copyright declarations.
+2. Version lifecycle
+   - snapshot status: active / archived;
+   - snapshot archive/restore APIs;
+   - latest public snapshot ignores archived snapshots;
+   - snapshot diff API for added/removed/changed/unchanged entries.
 
-3. Version lifecycle
-   - snapshot diff;
-   - archive/restore;
-   - subscriber impact preview;
-   - version cleanup policy.
+3. Entitlement cleanup foundation
+   - subscriptions may carry `expires_at`;
+   - expired active subscriptions can be marked expired by service/admin API;
+   - installed access continues to require active subscription.
 
-4. Search quality
+Remaining Stage 2 gaps:
+
+1. Real semantic search operational gate and quality
+   - real BGE-M3 worker path live smoke;
    - chunk-level search documents;
    - passage embeddings;
    - hybrid reranking;
-   - query logs and feedback;
-   - search evaluation fixtures.
+   - query logs, feedback, and evaluation fixtures.
 
-5. Billing completion
+2. Billing completion
+   - pricing rule versions;
    - plans, invoices, invoice items;
-   - payout ledger;
+   - contributor payout operations;
    - refund/dispute records;
    - platform fee policy.
+
+3. Entitlements
+   - free / paid / trial / granted access variants;
+   - owner/admin revocation;
+   - automated renewal job runner.
+
+4. Operations
+   - unified background scheduler for expiry, cleanup, billing, embedding, and moderation jobs.
 
 ## 7. Stage 3 — Full SAGE Plugin Marketplace
 

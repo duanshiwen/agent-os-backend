@@ -14,7 +14,7 @@ Legend:
 
 ```text
 Backend: go test ./...
-Result: 135 passed in 11 packages
+Result: 137 passed in 11 packages
 
 Rust SDK: cargo test --workspace --all-targets --locked
 Result: 1560 passed, 2 ignored, 110 suites
@@ -58,11 +58,13 @@ Backend working tree at Stage 0 start had one existing README documentation diff
 | Object storage | Upload intent / complete / download / delete APIs | ✅ | `ObjectService`; authenticated routes | malware/content scanning and quota policy |
 | Object storage | MinIO backend | ✅ | `MinIOStorageService`; compose MinIO | production lifecycle policy and bucket validation gate |
 | KB personal | User knowledge entries | ✅ | `user_knowledge_entries` | restore and local client reducer beyond fixture |
-| KB Hub | Collection create/list/detail | ✅ | `KBCollection`; routes | moderation/status workflow |
-| KB Hub | Immutable snapshot publish | ✅ | `KBSnapshot`; manifest and content objects | snapshot diff and lifecycle |
-| KB Hub | Public collection discovery | ✅ | public KB routes | ranking/curation/moderation |
-| KB Hub | Install latest/pinned | ✅ | `KBSubscription`; install/list/cancel | renewal/expiry job |
-| KB Hub | Installed content access gate | ✅ | installed manifest/content/fulltext endpoints | per-plan entitlement model |
+| KB Hub | Collection create/list/detail | ✅ | `KBCollection`; owner routes; source/copyright declarations | contributor profile and verification |
+| KB Hub | Governance and moderation | ✅ | review statuses, admin review/takedown, reports, report resolution | richer moderation queues and reviewer policy |
+| KB Hub | Immutable snapshot publish | ✅ | `KBSnapshot`; manifest and content objects | subscriber impact preview |
+| KB Hub | Snapshot lifecycle | ✅ | active/archived status, archive/restore, diff | retention/version cleanup policy |
+| KB Hub | Public collection discovery | ✅ | public KB routes gated by published + approved state | ranking/curation quality |
+| KB Hub | Install latest/pinned | ✅ | `KBSubscription`; install/list/cancel; optional expiry | renewal job runner |
+| KB Hub | Installed content access gate | ✅ | installed manifest/content/fulltext endpoints require active subscription | per-plan entitlement variants |
 | KB Hub | Usage metering foundation | ✅ | `KBUsageRecord` | pricing rules, invoices, payouts |
 | KB Hub | Billing account/transaction foundation | ✅ | `BillingAccount`, `BillingTransaction` | full ledger invariants and external payment integration |
 | KB Hub | Contributor earnings foundation | ✅ | `ContributorEarning` | payout cycles, disputes, tax/export docs |
@@ -96,14 +98,14 @@ Backend working tree at Stage 0 start had one existing README documentation diff
 | Federation | Federated KB Discovery | 🚫 | explicitly deferred | not part of current implementation plan; KB Hub remains local-server scoped |
 | Federation | Cross-server DB replication | 🚫 | intentionally not part of design | preserve server independence |
 | Admin | Admission admin | ✅ | admin admission routes | broader admin console API |
-| Admin | KB admin/moderation | ⬜ | none | review/takedown/report APIs |
+| Admin | KB admin/moderation | ✅ | review list, review/takedown, report list/resolve, subscription expiry API | reviewer roles and moderation dashboard |
 | Admin | Plugin admin/review | ⬜ | none | review queue and revoke APIs |
 | Admin | Security/admin ops | ⬜ | none | audit/security/job dashboards |
 | Observability | `/health` | ✅ | database/redis/verifier checks | metrics and structured status |
 | Observability | `/ready` | ✅ | database readiness endpoint | broader dependency readiness policy |
 | Observability | Request IDs | ✅ | `X-Request-ID` middleware; generated or propagated | structured log integration |
 | Observability | Structured logging | ⬜ | standard log today | slog and correlation-aware logs |
-| Release | Go unit/integration tests | ✅ | 135 passed | release-gate script |
+| Release | Go unit/integration tests | ✅ | 137 passed | release-gate script |
 | Release | Rust SDK tests | ✅ | 1560 passed | backend-pinned FFI artifact gate |
 | Release | Smoke scripts | 🟡 | many M2/M3 smoke scripts exist | unified full platform release gate |
 

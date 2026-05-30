@@ -177,7 +177,9 @@ KB Hub is server-hosted snapshot publishing:
 - Updating a collection creates new snapshot versions rather than mutating old content.
 - Installed content access is gated by active subscription or future entitlement policy.
 - Public metadata is separate from private/full content access.
-- Production moderation/review must be added before treating KB Hub as an open marketplace.
+- Public marketplace visibility requires a published collection with approved review state.
+- Stage 2 moderation includes review/takedown/report records, but reviewer role policy and moderation dashboard remain future admin work.
+- Snapshot versions are immutable; lifecycle operations archive/restore snapshot availability rather than mutating snapshot contents.
 
 ## 8. Plugin and SAGE Boundary
 
