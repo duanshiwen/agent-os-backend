@@ -157,13 +157,7 @@ func (h *IdentityHandler) RevokeDevice(c *gin.Context) {
 		response.BadRequest(c, err.Error())
 		return
 	}
-	if h.sensitiveOperationSvc == nil {
-		response.InternalError(c, "sensitive operation service unavailable")
-		return
-	}
-	if err := h.sensitiveOperationSvc.ConsumeConfirmation(userID, req.ConfirmationToken, service.SensitiveOperationDeviceRevoke, "device.revoke"); err != nil {
-		h.recordAudit(c, service.AuditActionDeviceRevoked, "device", targetDeviceID, service.AuditOutcomeDenied, gin.H{"error": err.Error(), "reason": "confirmation_required"})
-		response.Forbidden(c, err.Error())
+	if !enforceSensitiveConfirmation(c, h.sensitiveOperationSvc, h.auditSvc, req.ConfirmationToken, service.SensitiveOperationDeviceRevoke, "device.revoke", service.AuditActionDeviceRevoked, "device", targetDeviceID) {
 		return
 	}
 	device, err := h.svc.RevokeDevice(userID, currentDeviceID, targetDeviceID)

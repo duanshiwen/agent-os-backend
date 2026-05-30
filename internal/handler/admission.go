@@ -38,7 +38,8 @@ func (h *AdmissionHandler) GetPolicy(c *gin.Context) {
 // PUT /api/v1/admin/admission/policy
 func (h *AdmissionHandler) UpdatePolicy(c *gin.Context) {
 	var req struct {
-		PolicyType string `json:"policy_type" binding:"required"`
+		PolicyType        string `json:"policy_type" binding:"required"`
+		ConfirmationToken string `json:"confirmation_token" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, err.Error())
@@ -46,6 +47,9 @@ func (h *AdmissionHandler) UpdatePolicy(c *gin.Context) {
 	}
 
 	adminID := middleware.MustGetUserID(c)
+	if !enforceSensitiveConfirmation(c, h.sensitiveOperationSvc, h.auditSvc, req.ConfirmationToken, service.SensitiveOperationAdmissionPolicyUpdate, "admission.policy.update", service.AuditActionAdmissionPolicyUpdated, "server_admission", "default") {
+		return
+	}
 	policy, err := h.svc.UpdatePolicy("default", req.PolicyType, adminID)
 	if err != nil {
 		h.recordAudit(c, service.AuditActionAdmissionPolicyUpdated, "server_admission", "default", service.AuditOutcomeFailure, gin.H{"policy_type": req.PolicyType, "error": err.Error()})
@@ -68,13 +72,7 @@ func (h *AdmissionHandler) UpdateInvitationCode(c *gin.Context) {
 	}
 
 	adminID := middleware.MustGetUserID(c)
-	if h.sensitiveOperationSvc == nil {
-		response.InternalError(c, "sensitive operation service unavailable")
-		return
-	}
-	if err := h.sensitiveOperationSvc.ConsumeConfirmation(adminID, req.ConfirmationToken, service.SensitiveOperationAdmissionInvitationUpdate, "admission.invitation_code.update"); err != nil {
-		h.recordAudit(c, service.AuditActionAdmissionInvitationCodeSet, "server_admission", "default", service.AuditOutcomeDenied, gin.H{"error": err.Error(), "reason": "confirmation_required"})
-		response.Forbidden(c, err.Error())
+	if !enforceSensitiveConfirmation(c, h.sensitiveOperationSvc, h.auditSvc, req.ConfirmationToken, service.SensitiveOperationAdmissionInvitationUpdate, "admission.invitation_code.update", service.AuditActionAdmissionInvitationCodeSet, "server_admission", "default") {
 		return
 	}
 	policy, err := h.svc.UpdateInvitationCode("default", req.InvitationCode, adminID)

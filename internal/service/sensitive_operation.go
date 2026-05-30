@@ -20,6 +20,7 @@ const defaultSensitiveConfirmationTTL = 5 * time.Minute
 const (
 	SensitiveOperationDeviceRevoke              = "device.revoke"
 	SensitiveOperationAdmissionInvitationUpdate = "admission.invitation_code.update"
+	SensitiveOperationAdmissionPolicyUpdate     = "admission.policy.update"
 )
 
 type SensitiveOperationService struct {
