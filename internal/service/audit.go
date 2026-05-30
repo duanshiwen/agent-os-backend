@@ -23,6 +23,8 @@ const (
 	AuditActionAdmissionRequestRejected   = "admission.request.rejected"
 	AuditActionDevicePairingStarted       = "device.pairing.started"
 	AuditActionDevicePairingClaimed       = "device.pairing.claimed"
+	AuditActionDeviceRenamed              = "device.renamed"
+	AuditActionDeviceRevoked              = "device.revoked"
 )
 
 type AuditService struct {

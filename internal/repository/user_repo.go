@@ -62,9 +62,24 @@ func (r *UserRepo) GetUserDevices(userID uuid.UUID) ([]model.Device, error) {
 	return devices, err
 }
 
+func (r *UserRepo) CountActiveDevices(userID uuid.UUID) (int64, error) {
+	var count int64
+	err := r.db.Model(&model.Device{}).Where("user_id = ? AND status = ?", userID, "active").Count(&count).Error
+	return count, err
+}
+
+func (r *UserRepo) UpdateDevice(d *model.Device) error {
+	return r.db.Save(d).Error
+}
+
+func (r *UserRepo) RevokeDevice(deviceID string, revokedBy uuid.UUID) error {
+	now := time.Now()
+	return r.db.Model(&model.Device{}).Where("device_id = ? AND status = ?", deviceID, "active").Updates(map[string]any{"status": "revoked", "revoked_at": &now, "revoked_by": &revokedBy}).Error
+}
+
 func (r *UserRepo) UpdateDeviceLastSeen(deviceID string) error {
 	now := time.Now()
-	return r.db.Model(&model.Device{}).Where("device_id = ?", deviceID).Update("last_seen_at", &now).Error
+	return r.db.Model(&model.Device{}).Where("device_id = ? AND status = ?", deviceID, "active").Update("last_seen_at", &now).Error
 }
 
 func (r *UserRepo) DeviceBelongsToUser(deviceID string, userID uuid.UUID) (bool, error) {

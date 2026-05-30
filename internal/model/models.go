@@ -37,8 +37,11 @@ type Device struct {
 	DeviceID     string     `gorm:"uniqueIndex;not null" json:"device_id"`
 	DeviceName   string     `json:"device_name"`
 	DevicePubKey string     `json:"device_pubkey"`
+	Status       string     `gorm:"index;not null;default:active" json:"status"`
 	PairedAt     time.Time  `json:"paired_at"`
 	LastSeenAt   *time.Time `json:"last_seen_at"`
+	RevokedAt    *time.Time `json:"revoked_at"`
+	RevokedBy    *uuid.UUID `gorm:"type:uuid" json:"revoked_by"`
 }
 
 type DevicePairingSession struct {

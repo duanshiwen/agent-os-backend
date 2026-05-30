@@ -75,6 +75,7 @@ func Setup(
 
 	// Handlers
 	identityH := handler.NewIdentityHandler(identitySvc)
+	identityH.SetAuditService(auditSvc)
 	auditH := handler.NewAuditHandler(auditSvc)
 	admissionH := handler.NewAdmissionHandler(admissionSvc)
 	admissionH.SetAuditService(auditSvc)
@@ -155,6 +156,8 @@ func Setup(
 			protected.PUT("/users/me", identityH.UpdateProfile)
 			protected.POST("/users/me/devices", identityH.PairDevice)
 			protected.GET("/users/me/devices", identityH.GetDevices)
+			protected.PUT("/users/me/devices/:device_id", identityH.RenameDevice)
+			protected.DELETE("/users/me/devices/:device_id", identityH.RevokeDevice)
 
 			protected.POST("/conversations", convH.Create)
 			protected.GET("/conversations", convH.List)

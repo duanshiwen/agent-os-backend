@@ -65,6 +65,9 @@ func (s *DevicePairingService) StartPairing(userID uuid.UUID, createdByDeviceID 
 	if oldDevice.UserID != userID {
 		return nil, fmt.Errorf("device does not belong to user")
 	}
+	if oldDevice.Status == "revoked" {
+		return nil, fmt.Errorf("device revoked")
+	}
 
 	token, err := randomToken(32)
 	if err != nil {
@@ -161,6 +164,7 @@ func (s *DevicePairingService) ClaimPairing(req *ClaimPairingRequest) (*model.De
 		DeviceID:     req.NewDeviceID,
 		DeviceName:   deviceName,
 		DevicePubKey: req.NewDevicePubKey,
+		Status:       "active",
 		PairedAt:     time.Now(),
 	}
 	if err := s.pairingRepo.ClaimPairingSession(session.ID, device); err != nil {

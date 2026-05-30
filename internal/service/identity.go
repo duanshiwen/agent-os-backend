@@ -216,6 +216,15 @@ func (s *IdentityService) pendingAdmissionResponse(pubKey string) (*AuthResponse
 func (s *IdentityService) findOrCreateDevice(deviceID string, userID uuid.UUID, pubKey string) (*model.Device, error) {
 	device, err := s.userRepo.GetDevice(deviceID)
 	if err == nil {
+		if device.UserID != userID {
+			return nil, fmt.Errorf("device belongs to another user")
+		}
+		if device.Status == "revoked" {
+			return nil, fmt.Errorf("device revoked")
+		}
+		if device.Status == "" {
+			device.Status = "active"
+		}
 		return device, nil
 	}
 
@@ -224,6 +233,7 @@ func (s *IdentityService) findOrCreateDevice(deviceID string, userID uuid.UUID, 
 		DeviceID:     deviceID,
 		DeviceName:   "New Device",
 		DevicePubKey: pubKey,
+		Status:       "active",
 		PairedAt:     time.Now(),
 	}
 	if err := s.userRepo.CreateDevice(device); err != nil {
@@ -332,6 +342,7 @@ func (s *IdentityService) PairDevice(userID uuid.UUID, req *PairDeviceRequest) (
 		DeviceID:     req.DeviceID,
 		DeviceName:   req.DeviceName,
 		DevicePubKey: req.DevicePubKey,
+		Status:       "active",
 		PairedAt:     time.Now(),
 	}
 	if err := s.userRepo.CreateDevice(device); err != nil {
@@ -343,6 +354,64 @@ func (s *IdentityService) PairDevice(userID uuid.UUID, req *PairDeviceRequest) (
 // GetUserDevices returns all devices for the authenticated user.
 func (s *IdentityService) GetUserDevices(userID uuid.UUID) ([]model.Device, error) {
 	return s.userRepo.GetUserDevices(userID)
+}
+
+func (s *IdentityService) RenameDevice(userID uuid.UUID, deviceID, deviceName string) (*model.Device, error) {
+	if deviceName == "" {
+		return nil, fmt.Errorf("device_name is required")
+	}
+	device, err := s.userRepo.GetDevice(deviceID)
+	if err != nil {
+		return nil, fmt.Errorf("device not found: %w", err)
+	}
+	if device.UserID != userID {
+		return nil, fmt.Errorf("device does not belong to user")
+	}
+	if device.Status == "revoked" {
+		return nil, fmt.Errorf("device revoked")
+	}
+	device.DeviceName = deviceName
+	if device.Status == "" {
+		device.Status = "active"
+	}
+	if err := s.userRepo.UpdateDevice(device); err != nil {
+		return nil, err
+	}
+	return device, nil
+}
+
+func (s *IdentityService) RevokeDevice(userID uuid.UUID, currentDeviceID, targetDeviceID string) (*model.Device, error) {
+	if targetDeviceID == "" {
+		return nil, fmt.Errorf("device_id is required")
+	}
+	if targetDeviceID == currentDeviceID {
+		return nil, fmt.Errorf("cannot revoke current device")
+	}
+	device, err := s.userRepo.GetDevice(targetDeviceID)
+	if err != nil {
+		return nil, fmt.Errorf("device not found: %w", err)
+	}
+	if device.UserID != userID {
+		return nil, fmt.Errorf("device does not belong to user")
+	}
+	if device.Status == "revoked" {
+		return nil, fmt.Errorf("device already revoked")
+	}
+	activeCount, err := s.userRepo.CountActiveDevices(userID)
+	if err != nil {
+		return nil, err
+	}
+	if activeCount <= 1 {
+		return nil, fmt.Errorf("cannot revoke the only active device")
+	}
+	if err := s.userRepo.RevokeDevice(targetDeviceID, userID); err != nil {
+		return nil, err
+	}
+	device, err = s.userRepo.GetDevice(targetDeviceID)
+	if err != nil {
+		return nil, err
+	}
+	return device, nil
 }
 
 // VerifyPassword checks if the provided password matches the user's stored hash.

@@ -11,11 +11,16 @@ import (
 )
 
 type IdentityHandler struct {
-	svc *service.IdentityService
+	svc      *service.IdentityService
+	auditSvc *service.AuditService
 }
 
 func NewIdentityHandler(svc *service.IdentityService) *IdentityHandler {
 	return &IdentityHandler{svc: svc}
+}
+
+func (h *IdentityHandler) SetAuditService(auditSvc *service.AuditService) {
+	h.auditSvc = auditSvc
 }
 
 // POST /api/v1/auth/challenge
@@ -112,6 +117,50 @@ func (h *IdentityHandler) GetDevices(c *gin.Context) {
 		return
 	}
 	response.OK(c, devices)
+}
+
+// PUT /api/v1/users/me/devices/:device_id
+func (h *IdentityHandler) RenameDevice(c *gin.Context) {
+	userID := middleware.MustGetUserID(c)
+	deviceID := c.Param("device_id")
+	var req struct {
+		DeviceName string `json:"device_name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	device, err := h.svc.RenameDevice(userID, deviceID, req.DeviceName)
+	if err != nil {
+		h.recordAudit(c, service.AuditActionDeviceRenamed, "device", deviceID, service.AuditOutcomeFailure, gin.H{"error": err.Error()})
+		response.BadRequest(c, err.Error())
+		return
+	}
+	h.recordAudit(c, service.AuditActionDeviceRenamed, "device", deviceID, service.AuditOutcomeSuccess, gin.H{"device_name": device.DeviceName})
+	response.OK(c, device)
+}
+
+// DELETE /api/v1/users/me/devices/:device_id
+func (h *IdentityHandler) RevokeDevice(c *gin.Context) {
+	userID := middleware.MustGetUserID(c)
+	currentDeviceID := middleware.MustGetDeviceID(c)
+	targetDeviceID := c.Param("device_id")
+	device, err := h.svc.RevokeDevice(userID, currentDeviceID, targetDeviceID)
+	if err != nil {
+		h.recordAudit(c, service.AuditActionDeviceRevoked, "device", targetDeviceID, service.AuditOutcomeFailure, gin.H{"error": err.Error()})
+		response.BadRequest(c, err.Error())
+		return
+	}
+	h.recordAudit(c, service.AuditActionDeviceRevoked, "device", targetDeviceID, service.AuditOutcomeSuccess, nil)
+	response.OK(c, device)
+}
+
+func (h *IdentityHandler) recordAudit(c *gin.Context, action, resourceType, resourceID, outcome string, metadata map[string]any) {
+	if h.auditSvc == nil {
+		return
+	}
+	actorID := middleware.MustGetUserID(c)
+	_, _ = h.auditSvc.Record(service.RecordAuditEventInput{ActorUserID: &actorID, ActorDeviceID: middleware.MustGetDeviceID(c), Action: action, ResourceType: resourceType, ResourceID: resourceID, Outcome: outcome, IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(), Metadata: metadata})
 }
 
 // Helper to parse UUID param
