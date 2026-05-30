@@ -56,6 +56,8 @@ func Setup(
 		panic(err)
 	}
 	objectSvc := service.NewObjectService(objectRecordsRepo, objectStorageBackend, objectStorageCfg)
+	kbHubRepo := repository.NewKBHubRepo(db)
+	kbHubSvc := service.NewKBHubService(kbHubRepo, knowledgeEntriesRepo, objectSvc)
 
 	// Handlers
 	identityH := handler.NewIdentityHandler(identitySvc)
@@ -68,6 +70,7 @@ func Setup(
 	serverConnectionsH := handler.NewServerConnectionsHandler(serverConnectionsSvc)
 	knowledgeEntriesH := handler.NewKnowledgeEntriesHandler(knowledgeEntriesSvc)
 	objectH := handler.NewObjectHandler(objectSvc)
+	kbHubH := handler.NewKBHubHandler(kbHubSvc)
 
 	// WebSocket dispatcher
 	dispatcher := ws.NewDispatcher(hub, msgSvc, convSvc, convRepo)
@@ -162,6 +165,13 @@ func Setup(
 			protected.GET("/objects/:id", objectH.Get)
 			protected.POST("/objects/:id/download-url", objectH.CreateDownloadURL)
 			protected.DELETE("/objects/:id", objectH.Delete)
+
+			protected.POST("/kb/collections", kbHubH.CreateCollection)
+			protected.GET("/kb/collections", kbHubH.ListCollections)
+			protected.GET("/kb/collections/:id", kbHubH.GetCollection)
+			protected.POST("/kb/collections/:id/snapshots", kbHubH.PublishSnapshot)
+			protected.GET("/kb/collections/:id/snapshots", kbHubH.ListSnapshots)
+			protected.GET("/kb/collections/:id/snapshots/:snapshot_id", kbHubH.GetSnapshot)
 		}
 
 		// Admin routes

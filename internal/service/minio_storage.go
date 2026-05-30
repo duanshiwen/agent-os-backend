@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"io"
 	"net/url"
 	"strings"
 	"time"
@@ -37,6 +38,11 @@ func (s *MinIOStorageService) EnsureBucket(ctx context.Context, bucket string) e
 		return nil
 	}
 	return s.client.MakeBucket(ctx, bucket, minio.MakeBucketOptions{})
+}
+
+func (s *MinIOStorageService) PutObject(ctx context.Context, bucket, key string, reader io.Reader, size int64, contentType string, metadata map[string]string) error {
+	_, err := s.client.PutObject(ctx, bucket, key, reader, size, minio.PutObjectOptions{ContentType: contentType, UserMetadata: metadata})
+	return err
 }
 
 func (s *MinIOStorageService) PresignedPutURL(ctx context.Context, bucket, key string, ttl time.Duration, contentType string) (string, error) {
