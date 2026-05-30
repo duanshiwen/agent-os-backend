@@ -91,7 +91,8 @@ Backend working tree at Stage 0 start had one existing README documentation diff
 | Federation | Server identity | ⬜ | none | server public key and trust records |
 | Federation | Well-known discovery | ⬜ | none | `.well-known/agentos-server.json` |
 | Federation | Federation handshake | ⬜ | none | signed challenge protocol |
-| Federation | Remote KB/plugin discovery | ⬜ | none | metadata APIs and trust policy |
+| Federation | Remote plugin discovery | ⬜ | none | metadata APIs and trust policy |
+| Federation | Federated KB Discovery | 🚫 | explicitly deferred | not part of current implementation plan; KB Hub remains local-server scoped |
 | Federation | Cross-server DB replication | 🚫 | intentionally not part of design | preserve server independence |
 | Admin | Admission admin | ✅ | admin admission routes | broader admin console API |
 | Admin | KB admin/moderation | ⬜ | none | review/takedown/report APIs |

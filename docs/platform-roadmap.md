@@ -217,12 +217,13 @@ Primary workstreams:
 - federation capability discovery;
 - server handshake;
 - remote server trust score;
-- federated KB metadata discovery;
 - federated plugin metadata discovery;
-- remote install references;
+- remote install references for plugin/server resources;
 - local policy gate for all remote resources.
 
-Non-goal: cross-server strong consistency or hidden database replication.
+Deferred follow-up: Federated KB Discovery is explicitly not part of the current Stage 5 implementation plan. KB Hub remains local-server scoped until a separate product/security review reopens cross-server KB metadata discovery.
+
+Non-goal: cross-server strong consistency, hidden database replication, or federated KB metadata discovery in this stage.
 
 ## 10. Stage 6 — Admin, Observability, Release Gates
 

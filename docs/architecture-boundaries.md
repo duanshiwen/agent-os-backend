@@ -271,10 +271,13 @@ Allowed:
 - server public key discovery;
 - capability discovery;
 - signed handshakes;
-- remote KB metadata discovery;
 - remote plugin metadata discovery;
-- local references to remote installs/subscriptions;
+- local references to remote plugin/server resources;
 - local trust records.
+
+Deferred:
+
+- Federated KB Discovery / remote KB metadata discovery. KB Hub remains local-server scoped until a separate product/security review explicitly reopens this boundary.
 
 Not allowed in current architecture:
 
@@ -282,6 +285,7 @@ Not allowed in current architecture:
 - hidden remote database writes;
 - global timeline requiring all servers to agree;
 - remote plugins bypassing local governance;
+- remote KB metadata discovery in the current implementation plan;
 - remote content access without local permission checks and signed remote authorization.
 
 ## 12. Admin and Observability Boundary
