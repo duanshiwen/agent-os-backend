@@ -174,10 +174,17 @@ EMBEDDING_DIMENSIONS=1024
 docker compose up -d
 ```
 
-手动检查 embedding worker：
+手动检查真实 embedding worker（会触发/依赖本地 BGE-M3 环境）：
 
 ```bash
 ./scripts/smoke-kb-embedding-worker.sh
+```
+
+不下载 BGE-M3 的端到端确定性 smoke（验证 publish → durable queue → Go worker → semantic search）：
+
+```bash
+APP_PORT=18080 EMBEDDING_PROVIDER=deterministic EMBEDDING_MODEL=deterministic-test EMBEDDING_DIMENSIONS=1024 go run ./cmd/server
+BASE_URL=http://localhost:18080 ./scripts/smoke-kb-semantic-deterministic.sh
 ```
 
 查询 snapshot embedding 状态：

@@ -639,7 +639,18 @@ Latest local verification:
 
 ```text
 go test ./...: 122 passed in 11 packages
+Docker Compose config validation: passed
+Live pgvector AutoMigrate probe: vector extension + kb_search_embeddings.embedding vector column verified
+Deterministic semantic pipeline smoke: passed
 ```
+
+Deterministic semantic smoke script:
+
+```text
+scripts/smoke-kb-semantic-deterministic.sh
+```
+
+It validates publish → durable queue enqueue → Go worker processing → ready embedding coverage → semantic search result without downloading BGE-M3.
 
 ## Current Known Limitations
 
