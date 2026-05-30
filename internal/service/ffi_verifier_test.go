@@ -5,6 +5,8 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -64,48 +66,13 @@ func TestFFIKnowledgeSyncBridgeIntegration(t *testing.T) {
 	var applyPullResponse func(projectionJSON string, pullResponseJSON string, errorOut **byte) *byte
 	purego.RegisterLibFunc(&applyPullResponse, verifier.handle, "agentos_apply_knowledge_sync_pull_response_json")
 
-	pullResponse := `{
-		"code": 0,
-		"message": "ok",
-		"data": {
-			"events": [{
-				"id": "evt-backend-ffi-1",
-				"user_id": "user-1",
-				"device_id": "device-b",
-				"event_type": "knowledge.created",
-				"schema_version": 1,
-				"object_type": "knowledge",
-				"object_id": "notes/backend-ffi",
-				"operation": "created",
-				"source_device_id": "device-a",
-				"client_event_id": "client-backend-ffi-1",
-				"payload": {
-					"entry_id": "notes/backend-ffi",
-					"object_id": "notes/backend-ffi",
-					"title": "Backend FFI Contract",
-					"content_markdown": "# Backend FFI Contract",
-					"summary": "summary",
-					"tags": ["agentos", "ffi"],
-					"metadata": {"source": "backend-test"},
-					"source_uri": "",
-					"status": "active",
-					"version": 1,
-					"content_hash": "hash-backend-ffi-1",
-					"updated_by_device_id": "device-a",
-					"updated_at": "2026-05-30T02:00:00Z"
-				},
-				"timestamp": "2026-05-30T02:00:01Z",
-				"sequence": 7
-			}],
-			"next_after_sequence": 7,
-			"has_more": false,
-			"server_time": 1780106401000,
-			"schema_version": 1
-		}
-	}`
+	pullResponse, err := os.ReadFile("testdata/m2_3_knowledge_sync_pull_response.json")
+	if err != nil {
+		t.Fatalf("read M2.3 knowledge sync fixture: %v", err)
+	}
 
 	var errPtr *byte
-	out := applyPullResponse("", pullResponse, &errPtr)
+	out := applyPullResponse("", string(pullResponse), &errPtr)
 	if errPtr != nil {
 		defer verifier.freeString(errPtr)
 		t.Fatalf("apply knowledge sync pull response returned error: %s", cStringToGo(errPtr))
@@ -115,12 +82,16 @@ func TestFFIKnowledgeSyncBridgeIntegration(t *testing.T) {
 	}
 	defer verifier.freeString(out)
 
-	response := cStringToGo(out)
-	if !strings.Contains(response, "notes/backend-ffi") {
-		t.Fatalf("expected projected entry id in bridge response, got %s", response)
+	projection := decodeKnowledgeBridgeProjection(t, cStringToGo(out))
+	if projection.Cursor.LastAppliedSequence != 10 {
+		t.Fatalf("expected cursor to advance through stale event sequence 10, got %+v", projection.Cursor)
 	}
-	if !strings.Contains(response, "last_applied_sequence") || !strings.Contains(response, "7") {
-		t.Fatalf("expected advanced cursor in bridge response, got %s", response)
+	entry, ok := projection.Entries["notes/backend-ffi"]
+	if !ok {
+		t.Fatalf("expected projected entry notes/backend-ffi, got %+v", projection.Entries)
+	}
+	if entry.Version != 3 || entry.Status != "deleted" || entry.Title != "Backend FFI Contract v2" || entry.ContentHash != "hash-backend-ffi-3" {
+		t.Fatalf("expected deleted v3 tombstone to win over stale v2 event, got %+v", entry)
 	}
 
 	errPtr = nil
@@ -136,4 +107,39 @@ func TestFFIKnowledgeSyncBridgeIntegration(t *testing.T) {
 	if !strings.Contains(cStringToGo(errPtr), "invalid backend sync pull response json") {
 		t.Fatalf("expected invalid pull response error, got %s", cStringToGo(errPtr))
 	}
+}
+
+func decodeKnowledgeBridgeProjection(t *testing.T, bridgeResponseJSON string) knowledgeBridgeProjection {
+	t.Helper()
+	var bridgeResponse struct {
+		OK   bool   `json:"ok"`
+		JSON string `json:"json"`
+	}
+	if err := json.Unmarshal([]byte(bridgeResponseJSON), &bridgeResponse); err != nil {
+		t.Fatalf("decode bridge response JSON: %v; response=%s", err, bridgeResponseJSON)
+	}
+	if !bridgeResponse.OK || bridgeResponse.JSON == "" {
+		t.Fatalf("expected successful bridge response, got %+v", bridgeResponse)
+	}
+
+	var projection knowledgeBridgeProjection
+	if err := json.Unmarshal([]byte(bridgeResponse.JSON), &projection); err != nil {
+		t.Fatalf("decode knowledge projection JSON: %v; projection=%s", err, bridgeResponse.JSON)
+	}
+	return projection
+}
+
+type knowledgeBridgeProjection struct {
+	Cursor struct {
+		LastAppliedSequence uint64 `json:"last_applied_sequence"`
+	} `json:"cursor"`
+	Entries map[string]knowledgeBridgeEntry `json:"entries"`
+}
+
+type knowledgeBridgeEntry struct {
+	EntryID     string `json:"entry_id"`
+	Title       string `json:"title"`
+	Status      string `json:"status"`
+	Version     uint64 `json:"version"`
+	ContentHash string `json:"content_hash"`
 }
