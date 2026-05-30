@@ -185,6 +185,24 @@ type UserKnowledgeEntry struct {
 	UpdatedByDeviceID string                      `gorm:"index" json:"updated_by_device_id"`
 }
 
+type ObjectRecord struct {
+	Base
+	OwnerID     uuid.UUID  `gorm:"type:uuid;index;not null" json:"owner_id"`
+	Scope       string     `gorm:"index;not null" json:"scope"`
+	Bucket      string     `gorm:"not null" json:"bucket"`
+	ObjectKey   string     `gorm:"uniqueIndex;not null" json:"object_key"`
+	ObjectURI   string     `gorm:"uniqueIndex;not null" json:"object_uri"`
+	Filename    string     `json:"filename"`
+	ContentType string     `json:"content_type"`
+	ContentHash string     `gorm:"index;not null" json:"content_hash"`
+	ContentSize int64      `json:"content_size"`
+	Status      string     `gorm:"index;not null;default:pending" json:"status"`
+	RefCount    int        `gorm:"not null;default:0" json:"ref_count"`
+	ExpiresAt   *time.Time `json:"expires_at"`
+	CompletedAt *time.Time `json:"completed_at"`
+	DeletedAt   *time.Time `gorm:"column:deleted_at" json:"deleted_at"`
+}
+
 type KBCollection struct {
 	Base
 	OwnerID          uuid.UUID `gorm:"type:uuid;index" json:"owner_id"`
@@ -290,5 +308,5 @@ type ContributorEarning struct {
 }
 
 func AllModels() []any {
-	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &UserAgentSetting{}, &UserServerConnection{}, &UserKnowledgeEntry{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBUsageRecord{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}}
+	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &UserAgentSetting{}, &UserServerConnection{}, &UserKnowledgeEntry{}, &ObjectRecord{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBUsageRecord{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}}
 }

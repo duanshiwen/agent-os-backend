@@ -46,6 +46,16 @@ func Setup(
 	serverConnectionsSvc := service.NewServerConnectionsService(serverConnectionsRepo, syncSvc)
 	knowledgeEntriesRepo := repository.NewKnowledgeEntriesRepo(db)
 	knowledgeEntriesSvc := service.NewKnowledgeEntriesService(knowledgeEntriesRepo, syncSvc)
+	objectRecordsRepo := repository.NewObjectRecordsRepo(db)
+	objectStorageCfg := cfg.ObjectStorage
+	if objectStorageCfg.Endpoint == "" {
+		objectStorageCfg = config.ObjectStorageConfig{Endpoint: "localhost:9000", PublicEndpoint: "localhost:9000", AccessKey: "minioadmin", SecretKey: "minioadmin", Bucket: "agentos-objects", UploadTTLSecs: 900, DownloadTTLSecs: 900}
+	}
+	objectStorageBackend, err := service.NewMinIOStorageService(objectStorageCfg)
+	if err != nil {
+		panic(err)
+	}
+	objectSvc := service.NewObjectService(objectRecordsRepo, objectStorageBackend, objectStorageCfg)
 
 	// Handlers
 	identityH := handler.NewIdentityHandler(identitySvc)
@@ -57,6 +67,7 @@ func Setup(
 	agentSettingsH := handler.NewAgentSettingsHandler(agentSettingsSvc)
 	serverConnectionsH := handler.NewServerConnectionsHandler(serverConnectionsSvc)
 	knowledgeEntriesH := handler.NewKnowledgeEntriesHandler(knowledgeEntriesSvc)
+	objectH := handler.NewObjectHandler(objectSvc)
 
 	// WebSocket dispatcher
 	dispatcher := ws.NewDispatcher(hub, msgSvc, convSvc, convRepo)
@@ -145,6 +156,12 @@ func Setup(
 			protected.GET("/knowledge/entries/*entry_id", knowledgeEntriesH.Get)
 			protected.PUT("/knowledge/entries/*entry_id", knowledgeEntriesH.Update)
 			protected.DELETE("/knowledge/entries/*entry_id", knowledgeEntriesH.Delete)
+
+			protected.POST("/objects/upload-intents", objectH.CreateUploadIntent)
+			protected.POST("/objects/uploads/:id/complete", objectH.CompleteUpload)
+			protected.GET("/objects/:id", objectH.Get)
+			protected.POST("/objects/:id/download-url", objectH.CreateDownloadURL)
+			protected.DELETE("/objects/:id", objectH.Delete)
 		}
 
 		// Admin routes

@@ -17,6 +17,7 @@ type Config struct {
 	CORS             CORSConfig
 	Admission        AdmissionConfig
 	IdentityVerifier IdentityVerifierConfig
+	ObjectStorage    ObjectStorageConfig
 }
 
 type AppConfig struct {
@@ -42,6 +43,17 @@ type IdentityVerifierConfig struct {
 	FFILibraryPath string
 }
 
+type ObjectStorageConfig struct {
+	Endpoint        string
+	PublicEndpoint  string
+	AccessKey       string
+	SecretKey       string
+	UseSSL          bool
+	Bucket          string
+	UploadTTLSecs   int
+	DownloadTTLSecs int
+}
+
 func (d DatabaseConfig) DSN() string {
 	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s TimeZone=Asia/Shanghai", d.Host, d.Port, d.User, d.Password, d.DBName, d.SSLMode)
 }
@@ -58,6 +70,16 @@ func Load() (*Config, error) {
 		CORS:             CORSConfig{AllowOrigins: splitCSV(getEnv("CORS_ORIGIN", "http://localhost:5173"))},
 		Admission:        AdmissionConfig{PolicyType: getEnv("ADMISSION_POLICY", "protocol"), InvitationCode: getEnv("ADMISSION_INVITATION_CODE", "agentos-dev")},
 		IdentityVerifier: IdentityVerifierConfig{},
+		ObjectStorage: ObjectStorageConfig{
+			Endpoint:        getEnv("OBJECT_STORAGE_ENDPOINT", "localhost:9000"),
+			PublicEndpoint:  getEnv("OBJECT_STORAGE_PUBLIC_ENDPOINT", getEnv("OBJECT_STORAGE_ENDPOINT", "localhost:9000")),
+			AccessKey:       getEnv("OBJECT_STORAGE_ACCESS_KEY", "minioadmin"),
+			SecretKey:       getEnv("OBJECT_STORAGE_SECRET_KEY", "minioadmin"),
+			UseSSL:          getEnvBool("OBJECT_STORAGE_USE_SSL", false),
+			Bucket:          getEnv("OBJECT_STORAGE_BUCKET", "agentos-objects"),
+			UploadTTLSecs:   getEnvInt("OBJECT_UPLOAD_PRESIGN_TTL_SECONDS", 900),
+			DownloadTTLSecs: getEnvInt("OBJECT_DOWNLOAD_PRESIGN_TTL_SECONDS", 900),
+		},
 	}
 	return cfg, cfg.Validate()
 }
@@ -75,6 +97,21 @@ func (c *Config) Validate() error {
 	case "protocol", "invitation", "approval":
 	default:
 		return fmt.Errorf("unsupported ADMISSION_POLICY %q", c.Admission.PolicyType)
+	}
+	if strings.TrimSpace(c.ObjectStorage.Endpoint) == "" {
+		return fmt.Errorf("OBJECT_STORAGE_ENDPOINT is required")
+	}
+	if strings.TrimSpace(c.ObjectStorage.PublicEndpoint) == "" {
+		return fmt.Errorf("OBJECT_STORAGE_PUBLIC_ENDPOINT is required")
+	}
+	if strings.TrimSpace(c.ObjectStorage.Bucket) == "" {
+		return fmt.Errorf("OBJECT_STORAGE_BUCKET is required")
+	}
+	if c.ObjectStorage.UploadTTLSecs <= 0 {
+		return fmt.Errorf("OBJECT_UPLOAD_PRESIGN_TTL_SECONDS must be positive")
+	}
+	if c.ObjectStorage.DownloadTTLSecs <= 0 {
+		return fmt.Errorf("OBJECT_DOWNLOAD_PRESIGN_TTL_SECONDS must be positive")
 	}
 	return nil
 }
