@@ -56,6 +56,8 @@ func Setup(
 		panic(err)
 	}
 	objectSvc := service.NewObjectService(objectRecordsRepo, objectStorageBackend, objectStorageCfg)
+	kbHubRepo := repository.NewKBHubRepo(db)
+	kbHubSvc := service.NewKBHubService(kbHubRepo, knowledgeEntriesRepo, objectSvc)
 
 	// Handlers
 	identityH := handler.NewIdentityHandler(identitySvc)
@@ -68,6 +70,7 @@ func Setup(
 	serverConnectionsH := handler.NewServerConnectionsHandler(serverConnectionsSvc)
 	knowledgeEntriesH := handler.NewKnowledgeEntriesHandler(knowledgeEntriesSvc)
 	objectH := handler.NewObjectHandler(objectSvc)
+	kbHubH := handler.NewKBHubHandler(kbHubSvc)
 
 	// WebSocket dispatcher
 	dispatcher := ws.NewDispatcher(hub, msgSvc, convSvc, convRepo)
@@ -118,6 +121,12 @@ func Setup(
 		// Public QR pairing claim route. The qr_payload itself carries the one-time pairing proof.
 		v1.POST("/devices/pairing/claim", pairingH.Claim)
 
+		// Public KB Hub read routes
+		v1.GET("/kb/public/collections", kbHubH.ListPublicCollections)
+		v1.GET("/kb/public/collections/:id", kbHubH.GetPublicCollection)
+		v1.GET("/kb/public/collections/:id/snapshots/:snapshot_id", kbHubH.GetPublicSnapshot)
+		v1.POST("/kb/public/collections/:id/snapshots/:snapshot_id/manifest-download-url", kbHubH.CreateManifestDownloadURL)
+
 		// Protected routes
 		protected := v1.Group("")
 		protected.Use(middleware.JWTAuth(cfg.JWT.Secret))
@@ -162,6 +171,18 @@ func Setup(
 			protected.GET("/objects/:id", objectH.Get)
 			protected.POST("/objects/:id/download-url", objectH.CreateDownloadURL)
 			protected.DELETE("/objects/:id", objectH.Delete)
+
+			protected.POST("/kb/collections", kbHubH.CreateCollection)
+			protected.GET("/kb/collections", kbHubH.ListCollections)
+			protected.GET("/kb/collections/:id", kbHubH.GetCollection)
+			protected.POST("/kb/collections/:id/snapshots", kbHubH.PublishSnapshot)
+			protected.GET("/kb/collections/:id/snapshots", kbHubH.ListSnapshots)
+			protected.GET("/kb/collections/:id/snapshots/:snapshot_id", kbHubH.GetSnapshot)
+			protected.POST("/kb/collections/:id/install", kbHubH.InstallCollection)
+			protected.DELETE("/kb/collections/:id/install", kbHubH.CancelSubscription)
+			protected.POST("/kb/collections/:id/snapshots/:snapshot_id/manifest-download-url", kbHubH.CreateInstalledManifestDownloadURL)
+			protected.POST("/kb/collections/:id/snapshots/:snapshot_id/entries/:entry_id/content-download-url", kbHubH.CreateInstalledEntryContentDownloadURL)
+			protected.GET("/kb/subscriptions", kbHubH.ListSubscriptions)
 		}
 
 		// Admin routes

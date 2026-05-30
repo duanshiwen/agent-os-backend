@@ -38,6 +38,12 @@ func (r *ObjectRecordsRepo) GetByIDForOwner(ownerID uuid.UUID, id uuid.UUID) (*m
 	return &record, err
 }
 
+func (r *ObjectRecordsRepo) GetByObjectURI(objectURI string) (*model.ObjectRecord, error) {
+	var record model.ObjectRecord
+	err := r.db.First(&record, "object_uri = ?", objectURI).Error
+	return &record, err
+}
+
 func (r *ObjectRecordsRepo) MarkActive(id uuid.UUID) error {
 	now := time.Now()
 	return r.db.Model(&model.ObjectRecord{}).

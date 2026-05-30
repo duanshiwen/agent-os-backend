@@ -1,9 +1,13 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -28,6 +32,7 @@ var (
 
 type ObjectStorageBackend interface {
 	EnsureBucket(ctx context.Context, bucket string) error
+	PutObject(ctx context.Context, bucket, key string, reader io.Reader, size int64, contentType string, metadata map[string]string) error
 	PresignedPutURL(ctx context.Context, bucket, key string, ttl time.Duration, contentType string) (string, error)
 	PresignedGetURL(ctx context.Context, bucket, key string, ttl time.Duration, disposition string) (string, error)
 	HeadObject(ctx context.Context, bucket, key string) (ObjectHead, error)
@@ -75,8 +80,65 @@ type DownloadURLResponse struct {
 	ExpiresAt   time.Time           `json:"expires_at"`
 }
 
+type StoreObjectInput struct {
+	Scope       string
+	Filename    string
+	ContentType string
+	Content     []byte
+}
+
 func NewObjectService(repo *repository.ObjectRecordsRepo, storage ObjectStorageBackend, cfg config.ObjectStorageConfig) *ObjectService {
 	return &ObjectService{repo: repo, storage: storage, cfg: cfg}
+}
+
+func (s *ObjectService) StoreObject(ctx context.Context, ownerID uuid.UUID, input StoreObjectInput) (*model.ObjectRecord, error) {
+	if ownerID == uuid.Nil {
+		return nil, ErrObjectForbidden
+	}
+	if strings.TrimSpace(input.Scope) == "" || strings.Contains(input.Scope, "..") {
+		return nil, fmt.Errorf("%w: invalid scope", ErrObjectInvalid)
+	}
+	if strings.TrimSpace(input.Filename) == "" {
+		return nil, fmt.Errorf("%w: filename is required", ErrObjectInvalid)
+	}
+	if len(input.Content) == 0 {
+		return nil, fmt.Errorf("%w: content is required", ErrObjectInvalid)
+	}
+	if err := s.storage.EnsureBucket(ctx, s.cfg.Bucket); err != nil {
+		return nil, err
+	}
+	recordID := uuid.New()
+	sum := sha256.Sum256(input.Content)
+	contentHash := hex.EncodeToString(sum[:])
+	objectKey := buildObjectKey(ownerID, recordID, input.Scope, input.Filename)
+	objectURI := fmt.Sprintf("minio://%s/%s", s.cfg.Bucket, objectKey)
+	contentType := strings.TrimSpace(input.ContentType)
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	metadata := map[string]string{"sha256": contentHash}
+	if err := s.storage.PutObject(ctx, s.cfg.Bucket, objectKey, bytes.NewReader(input.Content), int64(len(input.Content)), contentType, metadata); err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	record := &model.ObjectRecord{
+		Base:        model.Base{ID: recordID},
+		OwnerID:     ownerID,
+		Scope:       strings.TrimSpace(input.Scope),
+		Bucket:      s.cfg.Bucket,
+		ObjectKey:   objectKey,
+		ObjectURI:   objectURI,
+		Filename:    strings.TrimSpace(input.Filename),
+		ContentType: contentType,
+		ContentHash: contentHash,
+		ContentSize: int64(len(input.Content)),
+		Status:      repository.ObjectStatusActive,
+		CompletedAt: &now,
+	}
+	if err := s.repo.Create(record); err != nil {
+		return nil, err
+	}
+	return record, nil
 }
 
 func (s *ObjectService) CreateUploadIntent(ctx context.Context, ownerID uuid.UUID, input CreateUploadIntentInput) (*UploadIntentResponse, error) {
@@ -162,6 +224,21 @@ func (s *ObjectService) CreateDownloadURL(ctx context.Context, ownerID uuid.UUID
 	if err != nil {
 		return nil, err
 	}
+	return s.createDownloadURLForRecord(ctx, record, input)
+}
+
+func (s *ObjectService) CreateDownloadURLByObjectURI(ctx context.Context, objectURI string, input CreateDownloadURLInput) (*DownloadURLResponse, error) {
+	record, err := s.repo.GetByObjectURI(objectURI)
+	if err != nil {
+		if repository.IsNotFound(err) {
+			return nil, ErrObjectNotFound
+		}
+		return nil, err
+	}
+	return s.createDownloadURLForRecord(ctx, record, input)
+}
+
+func (s *ObjectService) createDownloadURLForRecord(ctx context.Context, record *model.ObjectRecord, input CreateDownloadURLInput) (*DownloadURLResponse, error) {
 	if record.Status != repository.ObjectStatusActive {
 		return nil, ErrObjectNotActive
 	}

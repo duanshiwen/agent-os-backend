@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -140,6 +141,17 @@ func (f *fakeObjectStorageBackend) EnsureBucket(ctx context.Context, bucket stri
 	_ = ctx
 	_ = bucket
 	f.bucketEnsured = true
+	return nil
+}
+
+func (f *fakeObjectStorageBackend) PutObject(ctx context.Context, bucket, key string, reader io.Reader, size int64, contentType string, metadata map[string]string) error {
+	_ = ctx
+	_ = bucket
+	_ = key
+	_ = reader
+	_ = size
+	_ = contentType
+	_ = metadata
 	return nil
 }
 

@@ -1,4 +1,4 @@
-# AgentOS Backend Phase 1 / M3.0 Status
+# AgentOS Backend Phase 1 / M3.3 Status
 
 Updated: 2026-05-30
 Branch: `m2-4-sync-integration-gate`
@@ -406,11 +406,119 @@ SHA-256:    cbb723fef74720a3f6a6d3fe2942cb15eeb47070a79b7dd3a8bd1b8cfeacf588
 
 This foundation is intentionally still storage-only. KB Hub snapshot publishing should use this service rather than calling MinIO directly.
 
+## M3.1 KB Hub Snapshot Vertical Slice
+
+The first KB Hub vertical slice is now implemented:
+
+- `kb_collections`, `kb_snapshots`, and `kb_snapshot_entries` migration;
+- KB collection create/list/detail APIs;
+- immutable snapshot publish API;
+- snapshot manifest and per-entry Markdown content written through `ObjectService` / `ObjectStorageBackend`;
+- snapshot metadata persisted in PostgreSQL;
+- snapshot entries denormalized at publish time to preserve immutability;
+- unit tests covering publish and source-entry mutation immutability;
+- live smoke script:
+
+```text
+scripts/smoke-kb-snapshot.sh
+```
+
+Authenticated KB Hub APIs:
+
+- `POST /api/v1/kb/collections`
+- `GET /api/v1/kb/collections`
+- `GET /api/v1/kb/collections/:id`
+- `POST /api/v1/kb/collections/:id/snapshots`
+- `GET /api/v1/kb/collections/:id/snapshots`
+- `GET /api/v1/kb/collections/:id/snapshots/:snapshot_id`
+
+Latest verified result:
+
+```text
+KB snapshot smoke passed.
+Collection ID: 6d32bb2e-5a97-4017-8de3-6c8b3c9cec0e
+Snapshot v1:   88be81fd-d1c5-4ceb-9c56-c56417c9dc55
+Manifest URI:  minio://agentos-objects/objects/bb8ef35c-c414-400f-922f-e5199431206f/kb-snapshots-6d32bb2e-5a97-4017-8de3-6c8b3c9cec0e-v1/27173474-23b1-408f-bfc4-5c38b4747957/manifest.json
+Content URI:   minio://agentos-objects/objects/bb8ef35c-c414-400f-922f-e5199431206f/kb-snapshots-6d32bb2e-5a97-4017-8de3-6c8b3c9cec0e-v1-entries/d6314c68-9dec-4b4d-84de-d8318345a684/notes__kb-snapshot-1780124548.md
+```
+
+## M3.2 KB Hub Read/Install Consumer Slice
+
+The first KB Hub consumer slice is now implemented:
+
+- public/read-side collection discovery and detail APIs;
+- public snapshot detail API;
+- public manifest presigned download URL endpoint;
+- authenticated install/subscription API;
+- `latest` and `pinned` subscription track modes;
+- consumer subscription listing;
+- subscription schema extension with snapshot reference and active status;
+- unit tests covering public read, manifest URL, latest install, pinned install, and subscription upsert;
+- live smoke script:
+
+```text
+scripts/smoke-kb-install.sh
+```
+
+Public/read APIs:
+
+- `GET /api/v1/kb/public/collections`
+- `GET /api/v1/kb/public/collections/:id`
+- `GET /api/v1/kb/public/collections/:id/snapshots/:snapshot_id`
+- `POST /api/v1/kb/public/collections/:id/snapshots/:snapshot_id/manifest-download-url`
+
+Authenticated consumer APIs:
+
+- `POST /api/v1/kb/collections/:id/install`
+- `GET /api/v1/kb/subscriptions`
+
+Latest verified result:
+
+```text
+KB install smoke passed.
+Collection ID: 23c121ae-2123-41a9-85f6-d0718a210b41
+Snapshot ID:   83377496-b9d6-4124-a811-b6d870d03c72
+Consumer:      kb-consumer-1780125366
+```
+
+## M3.3 KB Hub Access/Download Consumer Slice
+
+The installed-consumer access slice is now implemented:
+
+- authenticated installed snapshot manifest download URL endpoint;
+- authenticated installed snapshot entry content download URL endpoint;
+- active subscription gate for private content URLs;
+- public metadata remains readable without installation;
+- non-installed users receive `403` for installed content endpoints;
+- subscription cancel endpoint;
+- cancelled users lose installed content access;
+- unit tests covering installed access, stranger denial, content URL retrieval, cancel, and post-cancel denial;
+- live smoke script:
+
+```text
+scripts/smoke-kb-access.sh
+```
+
+Authenticated installed access APIs:
+
+- `POST /api/v1/kb/collections/:id/snapshots/:snapshot_id/manifest-download-url`
+- `POST /api/v1/kb/collections/:id/snapshots/:snapshot_id/entries/:entry_id/content-download-url`
+- `DELETE /api/v1/kb/collections/:id/install`
+
+Latest verified result:
+
+```text
+KB access smoke passed.
+Collection ID: 167ec914-285f-4fb8-bb2d-22acc5e9f77d
+Snapshot ID:   48d8ceaa-fbe5-449e-91e8-72e9a1b128d3
+Entry Record:  1b2b0c10-816f-468f-a7a2-f07f38ed9ea3
+```
+
 ## Current Known Limitations
 
-Phase 1 / M3.0 intentionally does **not** include:
+Phase 1 / M3.3 intentionally does **not** include:
 
-- KB Hub service routes;
+- marketplace ranking/search beyond basic public discovery;
 - KB publishing / snapshot / subscription semantics;
 - semantic indexing, embeddings, or content storage pipeline;
 - backend business usage of Rust knowledge FFI beyond SDK/client contract verification;
@@ -426,14 +534,24 @@ Model structs for KB, plugin, and billing already exist, but they should be trea
 
 Local live Postgres/Redis/MinIO verification has now passed on this machine.
 
+Latest verification set:
+
+```text
+go test ./...: 118 passed in 10 packages
+scripts/smoke-kb-access.sh: KB access smoke passed
+scripts/smoke-kb-install.sh: KB install smoke passed
+scripts/smoke-kb-snapshot.sh: KB snapshot smoke passed
+scripts/smoke-object-storage.sh: Object storage smoke passed
+scripts/smoke-live-two-device-knowledge-sync.sh: Live two-device knowledge sync smoke passed
+```
+
 ## Recommended Next Milestone
 
-M3.1 KB Hub Snapshot Vertical Slice is now the recommended next milestone. Recommended next steps:
+M3.4 KB Hub Search/Marketplace Metadata Slice is now the recommended next milestone. Recommended next steps:
 
-1. update KB snapshot models to use object URI fields (`manifest_object_uri`, `archive_object_uri`, `content_object_uri`, `embedding_object_uri`, `content_hash`, `content_size`);
-2. add KB collection/snapshot repositories and migrations as needed;
-3. implement collection create/list/detail APIs;
-4. implement snapshot publish from active `UserKnowledgeEntry` rows into Object Storage;
-5. write snapshot manifest and entry Markdown content through `ObjectService` / storage abstraction, not direct MinIO calls;
-6. verify snapshot immutability after source personal knowledge entries change;
-7. add `scripts/smoke-kb-snapshot.sh` before expanding into search, subscriptions, billing, or marketplace behavior.
+1. add basic public search/filter over published collections (`q`, owner, tags later if modeled);
+2. add safe collection metadata fields needed for marketplace cards;
+3. add lightweight usage event recording for manifest/content download URL issuance;
+4. add owner-facing subscription count / install count summary;
+5. add smoke for search and usage metrics;
+6. keep billing settlement, semantic vector search, ranking algorithms, and revenue share out of this slice.

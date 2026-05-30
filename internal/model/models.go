@@ -205,9 +205,10 @@ type ObjectRecord struct {
 
 type KBCollection struct {
 	Base
-	OwnerID          uuid.UUID `gorm:"type:uuid;index" json:"owner_id"`
-	Name             string    `json:"name"`
+	OwnerID          uuid.UUID `gorm:"type:uuid;index;not null" json:"owner_id"`
+	Name             string    `gorm:"not null" json:"name"`
 	Description      string    `json:"description"`
+	Status           string    `gorm:"index;not null;default:draft" json:"status"`
 	PricingModel     string    `json:"pricing_model"`
 	MonthlyPrice     int64     `json:"monthly_price"`
 	IsFree           bool      `json:"is_free"`
@@ -216,31 +217,37 @@ type KBCollection struct {
 }
 type KBSnapshot struct {
 	Base
-	CollectionID uuid.UUID `gorm:"type:uuid;index" json:"collection_id"`
-	Version      int       `json:"version"`
-	EntryCount   int       `json:"entry_count"`
-	TotalTokens  int       `json:"total_tokens"`
-	PublishedAt  time.Time `json:"published_at"`
-	Checksum     string    `json:"checksum"`
+	CollectionID      uuid.UUID `gorm:"type:uuid;index;not null;uniqueIndex:idx_kb_snapshot_collection_version" json:"collection_id"`
+	Version           int       `gorm:"not null;uniqueIndex:idx_kb_snapshot_collection_version" json:"version"`
+	EntryCount        int       `json:"entry_count"`
+	TotalTokens       int       `json:"total_tokens"`
+	PublishedAt       time.Time `gorm:"index" json:"published_at"`
+	Checksum          string    `gorm:"index" json:"checksum"`
+	ManifestObjectURI string    `json:"manifest_object_uri"`
+	ArchiveObjectURI  string    `json:"archive_object_uri"`
+	ContentHash       string    `gorm:"index" json:"content_hash"`
+	ContentSize       int64     `json:"content_size"`
 }
 type KBSnapshotEntry struct {
 	Base
-	SnapshotID    uuid.UUID                   `gorm:"type:uuid;index" json:"snapshot_id"`
-	EntryID       string                      `gorm:"index" json:"entry_id"`
-	Title         string                      `json:"title"`
-	Summary       string                      `json:"summary"`
-	Tags          datatypes.JSONSlice[string] `gorm:"type:jsonb" json:"tags"`
-	Metadata      datatypes.JSONMap           `gorm:"type:jsonb" json:"metadata"`
-	ContentPath   string                      `json:"content_path"`
-	EmbeddingPath string                      `json:"embedding_path"`
-	Tokens        int                         `json:"tokens"`
+	SnapshotID       uuid.UUID                   `gorm:"type:uuid;index;not null" json:"snapshot_id"`
+	EntryID          string                      `gorm:"index;not null" json:"entry_id"`
+	Title            string                      `json:"title"`
+	Summary          string                      `json:"summary"`
+	Tags             datatypes.JSONSlice[string] `gorm:"type:jsonb" json:"tags"`
+	Metadata         datatypes.JSONMap           `gorm:"type:jsonb" json:"metadata"`
+	ContentObjectURI string                      `json:"content_object_uri"`
+	EmbeddingPath    string                      `json:"embedding_path"`
+	Tokens           int                         `json:"tokens"`
 }
 type KBSubscription struct {
 	Base
-	UserID        uuid.UUID  `gorm:"type:uuid;index" json:"user_id"`
-	CollectionID  uuid.UUID  `gorm:"type:uuid;index" json:"collection_id"`
-	TrackMode     string     `json:"track_mode"`
+	UserID        uuid.UUID  `gorm:"type:uuid;index;not null;uniqueIndex:idx_kb_subscription_user_collection" json:"user_id"`
+	CollectionID  uuid.UUID  `gorm:"type:uuid;index;not null;uniqueIndex:idx_kb_subscription_user_collection" json:"collection_id"`
+	SnapshotID    uuid.UUID  `gorm:"type:uuid;index" json:"snapshot_id"`
+	TrackMode     string     `gorm:"index;not null;default:latest" json:"track_mode"`
 	PinnedVersion *int       `json:"pinned_version"`
+	Status        string     `gorm:"index;not null;default:active" json:"status"`
 	StartedAt     time.Time  `json:"started_at"`
 	ExpiresAt     *time.Time `json:"expires_at"`
 }
