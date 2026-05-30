@@ -1,4 +1,4 @@
-# AgentOS Backend Phase 1 / M3.1 Status
+# AgentOS Backend Phase 1 / M3.2 Status
 
 Updated: 2026-05-30
 Branch: `m2-4-sync-integration-gate`
@@ -442,11 +442,50 @@ Manifest URI:  minio://agentos-objects/objects/bb8ef35c-c414-400f-922f-e51994312
 Content URI:   minio://agentos-objects/objects/bb8ef35c-c414-400f-922f-e5199431206f/kb-snapshots-6d32bb2e-5a97-4017-8de3-6c8b3c9cec0e-v1-entries/d6314c68-9dec-4b4d-84de-d8318345a684/notes__kb-snapshot-1780124548.md
 ```
 
+## M3.2 KB Hub Read/Install Consumer Slice
+
+The first KB Hub consumer slice is now implemented:
+
+- public/read-side collection discovery and detail APIs;
+- public snapshot detail API;
+- public manifest presigned download URL endpoint;
+- authenticated install/subscription API;
+- `latest` and `pinned` subscription track modes;
+- consumer subscription listing;
+- subscription schema extension with snapshot reference and active status;
+- unit tests covering public read, manifest URL, latest install, pinned install, and subscription upsert;
+- live smoke script:
+
+```text
+scripts/smoke-kb-install.sh
+```
+
+Public/read APIs:
+
+- `GET /api/v1/kb/public/collections`
+- `GET /api/v1/kb/public/collections/:id`
+- `GET /api/v1/kb/public/collections/:id/snapshots/:snapshot_id`
+- `POST /api/v1/kb/public/collections/:id/snapshots/:snapshot_id/manifest-download-url`
+
+Authenticated consumer APIs:
+
+- `POST /api/v1/kb/collections/:id/install`
+- `GET /api/v1/kb/subscriptions`
+
+Latest verified result:
+
+```text
+KB install smoke passed.
+Collection ID: 23c121ae-2123-41a9-85f6-d0718a210b41
+Snapshot ID:   83377496-b9d6-4124-a811-b6d870d03c72
+Consumer:      kb-consumer-1780125366
+```
+
 ## Current Known Limitations
 
-Phase 1 / M3.1 intentionally does **not** include:
+Phase 1 / M3.2 intentionally does **not** include:
 
-- public KB Hub marketplace/discovery routes;
+- marketplace ranking/search beyond basic public discovery;
 - KB publishing / snapshot / subscription semantics;
 - semantic indexing, embeddings, or content storage pipeline;
 - backend business usage of Rust knowledge FFI beyond SDK/client contract verification;
@@ -465,7 +504,8 @@ Local live Postgres/Redis/MinIO verification has now passed on this machine.
 Latest verification set:
 
 ```text
-go test ./...: 116 passed in 10 packages
+go test ./...: 117 passed in 10 packages
+scripts/smoke-kb-install.sh: KB install smoke passed
 scripts/smoke-kb-snapshot.sh: KB snapshot smoke passed
 scripts/smoke-object-storage.sh: Object storage smoke passed
 scripts/smoke-live-two-device-knowledge-sync.sh: Live two-device knowledge sync smoke passed
@@ -473,11 +513,11 @@ scripts/smoke-live-two-device-knowledge-sync.sh: Live two-device knowledge sync 
 
 ## Recommended Next Milestone
 
-M3.2 KB Hub Read/Install Consumer Slice is now the recommended next milestone. Recommended next steps:
+M3.3 KB Hub Access/Download Consumer Slice is now the recommended next milestone. Recommended next steps:
 
-1. add public/read-side collection and snapshot detail APIs with owner-safe fields;
-2. add snapshot manifest download URL endpoint;
-3. implement user subscription/install record creation against a snapshot;
-4. define track modes (`latest`, `pinned`) against immutable snapshots;
-5. add consumer-side smoke verifying another user can discover/read/install a published snapshot;
-6. keep marketplace ranking, billing, semantic search, and revenue share out of this slice.
+1. add installed snapshot manifest/content access endpoints gated by active subscription;
+2. add content object download URLs for installed snapshot entries;
+3. ensure non-installed users can see public metadata but cannot fetch private content objects directly through consumer APIs;
+4. add subscription update/cancel behavior;
+5. add consumer access smoke covering public metadata, install, content URL retrieval, and cancel/denied access;
+6. keep billing, ranking, semantic search, and revenue share out of this slice.

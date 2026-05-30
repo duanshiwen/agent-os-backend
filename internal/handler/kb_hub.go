@@ -110,9 +110,96 @@ func (h *KBHubHandler) GetSnapshot(c *gin.Context) {
 	response.OK(c, snapshot)
 }
 
+func (h *KBHubHandler) ListPublicCollections(c *gin.Context) {
+	collections, err := h.svc.ListPublicCollections()
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, collections)
+}
+
+func (h *KBHubHandler) GetPublicCollection(c *gin.Context) {
+	collectionID, ok := parseUUIDParam(c, "id")
+	if !ok {
+		return
+	}
+	collection, err := h.svc.GetPublicCollection(collectionID)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	response.OK(c, collection)
+}
+
+func (h *KBHubHandler) GetPublicSnapshot(c *gin.Context) {
+	collectionID, ok := parseUUIDParam(c, "id")
+	if !ok {
+		return
+	}
+	snapshotID, ok := parseUUIDParam(c, "snapshot_id")
+	if !ok {
+		return
+	}
+	snapshot, err := h.svc.GetPublicSnapshot(collectionID, snapshotID)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	response.OK(c, snapshot)
+}
+
+func (h *KBHubHandler) CreateManifestDownloadURL(c *gin.Context) {
+	collectionID, ok := parseUUIDParam(c, "id")
+	if !ok {
+		return
+	}
+	snapshotID, ok := parseUUIDParam(c, "snapshot_id")
+	if !ok {
+		return
+	}
+	result, err := h.svc.CreateSnapshotManifestDownloadURL(c.Request.Context(), collectionID, snapshotID)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	response.OK(c, result)
+}
+
+func (h *KBHubHandler) InstallCollection(c *gin.Context) {
+	userID := middleware.MustGetUserID(c)
+	collectionID, ok := parseUUIDParam(c, "id")
+	if !ok {
+		return
+	}
+	var req service.InstallKBCollectionInput
+	if c.Request.Body != nil && c.Request.ContentLength != 0 {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+	}
+	subscription, err := h.svc.InstallCollection(userID, collectionID, req)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	response.Created(c, subscription)
+}
+
+func (h *KBHubHandler) ListSubscriptions(c *gin.Context) {
+	userID := middleware.MustGetUserID(c)
+	subscriptions, err := h.svc.ListSubscriptions(userID)
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, subscriptions)
+}
+
 func (h *KBHubHandler) handleError(c *gin.Context, err error) {
 	switch {
-	case errors.Is(err, service.ErrKBCollectionNotFound):
+	case errors.Is(err, service.ErrKBCollectionNotFound), errors.Is(err, service.ErrKBSnapshotNotFound):
 		response.NotFound(c, err.Error())
 	case errors.Is(err, service.ErrKBNoEntries):
 		response.Conflict(c, err.Error())

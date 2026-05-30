@@ -121,6 +121,12 @@ func Setup(
 		// Public QR pairing claim route. The qr_payload itself carries the one-time pairing proof.
 		v1.POST("/devices/pairing/claim", pairingH.Claim)
 
+		// Public KB Hub read routes
+		v1.GET("/kb/public/collections", kbHubH.ListPublicCollections)
+		v1.GET("/kb/public/collections/:id", kbHubH.GetPublicCollection)
+		v1.GET("/kb/public/collections/:id/snapshots/:snapshot_id", kbHubH.GetPublicSnapshot)
+		v1.POST("/kb/public/collections/:id/snapshots/:snapshot_id/manifest-download-url", kbHubH.CreateManifestDownloadURL)
+
 		// Protected routes
 		protected := v1.Group("")
 		protected.Use(middleware.JWTAuth(cfg.JWT.Secret))
@@ -172,6 +178,8 @@ func Setup(
 			protected.POST("/kb/collections/:id/snapshots", kbHubH.PublishSnapshot)
 			protected.GET("/kb/collections/:id/snapshots", kbHubH.ListSnapshots)
 			protected.GET("/kb/collections/:id/snapshots/:snapshot_id", kbHubH.GetSnapshot)
+			protected.POST("/kb/collections/:id/install", kbHubH.InstallCollection)
+			protected.GET("/kb/subscriptions", kbHubH.ListSubscriptions)
 		}
 
 		// Admin routes

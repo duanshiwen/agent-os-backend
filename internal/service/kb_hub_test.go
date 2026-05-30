@@ -89,13 +89,69 @@ func TestKBHubServiceRejectsEmptySnapshot(t *testing.T) {
 	}
 }
 
+func TestKBHubServicePublicReadManifestAndInstall(t *testing.T) {
+	svc, knowledgeRepo, _, ownerID := newKBHubServiceTestEnv(t)
+	consumerID := uuid.New()
+	if err := knowledgeRepo.Create(&model.UserKnowledgeEntry{UserID: ownerID, EntryID: "notes/public", Title: "Public", ContentMarkdown: "# Public", Summary: "public", Status: repository.KnowledgeEntryStatusActive, Version: 1, ContentHash: strings.Repeat("c", 64)}); err != nil {
+		t.Fatalf("create knowledge entry: %v", err)
+	}
+	collection, err := svc.CreateCollection(ownerID, CreateKBCollectionInput{Name: "Public KB"})
+	if err != nil {
+		t.Fatalf("create collection: %v", err)
+	}
+	if public, err := svc.ListPublicCollections(); err != nil || len(public) != 0 {
+		t.Fatalf("draft collection should not be public, got public=%+v err=%v", public, err)
+	}
+	detail, err := svc.PublishSnapshot(context.Background(), ownerID, collection.ID, PublishKBSnapshotInput{})
+	if err != nil {
+		t.Fatalf("publish snapshot: %v", err)
+	}
+	public, err := svc.ListPublicCollections()
+	if err != nil || len(public) != 1 || public[0].ID != collection.ID {
+		t.Fatalf("expected published collection in public list, got public=%+v err=%v", public, err)
+	}
+	publicDetail, err := svc.GetPublicCollection(collection.ID)
+	if err != nil {
+		t.Fatalf("get public collection: %v", err)
+	}
+	if publicDetail.LatestSnapshot == nil || publicDetail.LatestSnapshot.ID != detail.Snapshot.ID {
+		t.Fatalf("unexpected public detail: %+v", publicDetail)
+	}
+	manifestURL, err := svc.CreateSnapshotManifestDownloadURL(context.Background(), collection.ID, detail.Snapshot.ID)
+	if err != nil {
+		t.Fatalf("manifest download url: %v", err)
+	}
+	if manifestURL.DownloadURL == "" || manifestURL.Object.ObjectURI != detail.Snapshot.ManifestObjectURI {
+		t.Fatalf("unexpected manifest download response: %+v", manifestURL)
+	}
+	sub, err := svc.InstallCollection(consumerID, collection.ID, InstallKBCollectionInput{})
+	if err != nil {
+		t.Fatalf("install latest: %v", err)
+	}
+	if sub.TrackMode != "latest" || sub.SnapshotID != detail.Snapshot.ID || sub.Status != "active" {
+		t.Fatalf("unexpected subscription: %+v", sub)
+	}
+	pinned := 1
+	sub, err = svc.InstallCollection(consumerID, collection.ID, InstallKBCollectionInput{TrackMode: "pinned", PinnedVersion: &pinned})
+	if err != nil {
+		t.Fatalf("install pinned: %v", err)
+	}
+	if sub.TrackMode != "pinned" || sub.PinnedVersion == nil || *sub.PinnedVersion != 1 {
+		t.Fatalf("unexpected pinned subscription: %+v", sub)
+	}
+	subs, err := svc.ListSubscriptions(consumerID)
+	if err != nil || len(subs) != 1 {
+		t.Fatalf("expected one upserted subscription, got subs=%+v err=%v", subs, err)
+	}
+}
+
 func newKBHubServiceTestEnv(t *testing.T) (*KBHubService, *repository.KnowledgeEntriesRepo, *recordingObjectStorageBackend, uuid.UUID) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+strings.ReplaceAll(t.Name(), "/", "_")+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.UserKnowledgeEntry{}, &model.ObjectRecord{}, &model.KBCollection{}, &model.KBSnapshot{}, &model.KBSnapshotEntry{}); err != nil {
+	if err := db.AutoMigrate(&model.UserKnowledgeEntry{}, &model.ObjectRecord{}, &model.KBCollection{}, &model.KBSnapshot{}, &model.KBSnapshotEntry{}, &model.KBSubscription{}); err != nil {
 		t.Fatalf("migrate models: %v", err)
 	}
 	fake := &recordingObjectStorageBackend{fakeObjectStorageBackend: fakeObjectStorageBackend{head: ObjectHead{ContentHash: strings.Repeat("a", 64), ContentSize: 1}}}

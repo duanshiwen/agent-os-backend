@@ -242,10 +242,12 @@ type KBSnapshotEntry struct {
 }
 type KBSubscription struct {
 	Base
-	UserID        uuid.UUID  `gorm:"type:uuid;index" json:"user_id"`
-	CollectionID  uuid.UUID  `gorm:"type:uuid;index" json:"collection_id"`
-	TrackMode     string     `json:"track_mode"`
+	UserID        uuid.UUID  `gorm:"type:uuid;index;not null;uniqueIndex:idx_kb_subscription_user_collection" json:"user_id"`
+	CollectionID  uuid.UUID  `gorm:"type:uuid;index;not null;uniqueIndex:idx_kb_subscription_user_collection" json:"collection_id"`
+	SnapshotID    uuid.UUID  `gorm:"type:uuid;index" json:"snapshot_id"`
+	TrackMode     string     `gorm:"index;not null;default:latest" json:"track_mode"`
 	PinnedVersion *int       `json:"pinned_version"`
+	Status        string     `gorm:"index;not null;default:active" json:"status"`
 	StartedAt     time.Time  `json:"started_at"`
 	ExpiresAt     *time.Time `json:"expires_at"`
 }

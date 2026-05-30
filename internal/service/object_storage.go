@@ -224,6 +224,21 @@ func (s *ObjectService) CreateDownloadURL(ctx context.Context, ownerID uuid.UUID
 	if err != nil {
 		return nil, err
 	}
+	return s.createDownloadURLForRecord(ctx, record, input)
+}
+
+func (s *ObjectService) CreateDownloadURLByObjectURI(ctx context.Context, objectURI string, input CreateDownloadURLInput) (*DownloadURLResponse, error) {
+	record, err := s.repo.GetByObjectURI(objectURI)
+	if err != nil {
+		if repository.IsNotFound(err) {
+			return nil, ErrObjectNotFound
+		}
+		return nil, err
+	}
+	return s.createDownloadURLForRecord(ctx, record, input)
+}
+
+func (s *ObjectService) createDownloadURLForRecord(ctx context.Context, record *model.ObjectRecord, input CreateDownloadURLInput) (*DownloadURLResponse, error) {
 	if record.Status != repository.ObjectStatusActive {
 		return nil, ErrObjectNotActive
 	}

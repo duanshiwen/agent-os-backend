@@ -20,6 +20,7 @@ import (
 
 var (
 	ErrKBCollectionNotFound = errors.New("kb collection not found")
+	ErrKBSnapshotNotFound   = errors.New("kb snapshot not found")
 	ErrKBInvalid            = errors.New("kb request invalid")
 	ErrKBNoEntries          = errors.New("kb snapshot requires at least one active knowledge entry")
 )
@@ -40,9 +41,19 @@ type PublishKBSnapshotInput struct {
 	EntryIDs []string `json:"entry_ids"`
 }
 
+type InstallKBCollectionInput struct {
+	TrackMode     string `json:"track_mode"`
+	PinnedVersion *int   `json:"pinned_version"`
+}
+
 type KBSnapshotDetail struct {
 	Snapshot *model.KBSnapshot       `json:"snapshot"`
 	Entries  []model.KBSnapshotEntry `json:"entries"`
+}
+
+type KBPublicCollectionDetail struct {
+	Collection     *model.KBCollection `json:"collection"`
+	LatestSnapshot *model.KBSnapshot   `json:"latest_snapshot"`
 }
 
 type kbManifest struct {
@@ -98,6 +109,29 @@ func (s *KBHubService) CreateCollection(ownerID uuid.UUID, input CreateKBCollect
 
 func (s *KBHubService) ListCollections(ownerID uuid.UUID) ([]model.KBCollection, error) {
 	return s.kbRepo.ListCollectionsByOwner(ownerID)
+}
+
+func (s *KBHubService) ListPublicCollections() ([]model.KBCollection, error) {
+	return s.kbRepo.ListPublishedCollections()
+}
+
+func (s *KBHubService) GetPublicCollection(collectionID uuid.UUID) (*KBPublicCollectionDetail, error) {
+	collection, err := s.kbRepo.GetPublishedCollection(collectionID)
+	if err != nil {
+		if repository.IsNotFound(err) {
+			return nil, ErrKBCollectionNotFound
+		}
+		return nil, err
+	}
+	latest, err := s.kbRepo.GetLatestSnapshot(collectionID)
+	if err != nil {
+		if repository.IsNotFound(err) {
+			latest = nil
+		} else {
+			return nil, err
+		}
+	}
+	return &KBPublicCollectionDetail{Collection: collection, LatestSnapshot: latest}, nil
 }
 
 func (s *KBHubService) GetCollection(ownerID, collectionID uuid.UUID) (*model.KBCollection, error) {
@@ -237,10 +271,88 @@ func (s *KBHubService) GetSnapshot(ownerID, collectionID, snapshotID uuid.UUID) 
 	if _, err := s.GetCollection(ownerID, collectionID); err != nil {
 		return nil, err
 	}
+	return s.getSnapshotDetail(collectionID, snapshotID)
+}
+
+func (s *KBHubService) GetPublicSnapshot(collectionID, snapshotID uuid.UUID) (*KBSnapshotDetail, error) {
+	if _, err := s.GetPublicCollection(collectionID); err != nil {
+		return nil, err
+	}
+	return s.getSnapshotDetail(collectionID, snapshotID)
+}
+
+func (s *KBHubService) CreateSnapshotManifestDownloadURL(ctx context.Context, collectionID, snapshotID uuid.UUID) (*DownloadURLResponse, error) {
+	if _, err := s.GetPublicCollection(collectionID); err != nil {
+		return nil, err
+	}
 	snapshot, err := s.kbRepo.GetSnapshot(collectionID, snapshotID)
 	if err != nil {
 		if repository.IsNotFound(err) {
-			return nil, ErrKBCollectionNotFound
+			return nil, ErrKBSnapshotNotFound
+		}
+		return nil, err
+	}
+	return s.objectSvc.CreateDownloadURLByObjectURI(ctx, snapshot.ManifestObjectURI, CreateDownloadURLInput{Disposition: "attachment"})
+}
+
+func (s *KBHubService) InstallCollection(userID, collectionID uuid.UUID, input InstallKBCollectionInput) (*model.KBSubscription, error) {
+	if userID == uuid.Nil {
+		return nil, fmt.Errorf("%w: user is required", ErrKBInvalid)
+	}
+	if _, err := s.GetPublicCollection(collectionID); err != nil {
+		return nil, err
+	}
+	trackMode := strings.TrimSpace(input.TrackMode)
+	if trackMode == "" {
+		trackMode = "latest"
+	}
+	if trackMode != "latest" && trackMode != "pinned" {
+		return nil, fmt.Errorf("%w: track_mode must be latest or pinned", ErrKBInvalid)
+	}
+	var snapshot *model.KBSnapshot
+	var err error
+	var pinnedVersion *int
+	if trackMode == "pinned" {
+		if input.PinnedVersion == nil || *input.PinnedVersion <= 0 {
+			return nil, fmt.Errorf("%w: pinned_version is required for pinned track mode", ErrKBInvalid)
+		}
+		version := *input.PinnedVersion
+		pinnedVersion = &version
+		snapshot, err = s.kbRepo.GetSnapshotByVersion(collectionID, version)
+	} else {
+		snapshot, err = s.kbRepo.GetLatestSnapshot(collectionID)
+	}
+	if err != nil {
+		if repository.IsNotFound(err) {
+			return nil, ErrKBSnapshotNotFound
+		}
+		return nil, err
+	}
+	now := time.Now().UTC()
+	subscription := &model.KBSubscription{
+		UserID:        userID,
+		CollectionID:  collectionID,
+		SnapshotID:    snapshot.ID,
+		TrackMode:     trackMode,
+		PinnedVersion: pinnedVersion,
+		Status:        "active",
+		StartedAt:     now,
+	}
+	if err := s.kbRepo.UpsertSubscription(subscription); err != nil {
+		return nil, err
+	}
+	return subscription, nil
+}
+
+func (s *KBHubService) ListSubscriptions(userID uuid.UUID) ([]model.KBSubscription, error) {
+	return s.kbRepo.ListSubscriptionsByUser(userID)
+}
+
+func (s *KBHubService) getSnapshotDetail(collectionID, snapshotID uuid.UUID) (*KBSnapshotDetail, error) {
+	snapshot, err := s.kbRepo.GetSnapshot(collectionID, snapshotID)
+	if err != nil {
+		if repository.IsNotFound(err) {
+			return nil, ErrKBSnapshotNotFound
 		}
 		return nil, err
 	}
