@@ -371,6 +371,20 @@ type ContributorEarning struct {
 	NetAmount     int64     `json:"net_amount"`
 }
 
+type AuditEvent struct {
+	Base
+	ActorUserID   *uuid.UUID        `gorm:"type:uuid;index" json:"actor_user_id"`
+	ActorDeviceID string            `gorm:"index" json:"actor_device_id"`
+	Action        string            `gorm:"index;not null" json:"action"`
+	ResourceType  string            `gorm:"index;not null" json:"resource_type"`
+	ResourceID    string            `gorm:"index" json:"resource_id"`
+	Outcome       string            `gorm:"index;not null;default:success" json:"outcome"`
+	IPAddress     string            `json:"ip_address"`
+	UserAgent     string            `json:"user_agent"`
+	Metadata      datatypes.JSONMap `gorm:"type:jsonb" json:"metadata"`
+	OccurredAt    time.Time         `gorm:"index;not null" json:"occurred_at"`
+}
+
 func AllModels() []any {
-	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &UserAgentSetting{}, &UserServerConnection{}, &UserKnowledgeEntry{}, &ObjectRecord{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBUsageRecord{}, &KBSearchDocument{}, &KBEmbeddingJob{}, &KBSearchEmbedding{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}}
+	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &UserAgentSetting{}, &UserServerConnection{}, &UserKnowledgeEntry{}, &ObjectRecord{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBUsageRecord{}, &KBSearchDocument{}, &KBEmbeddingJob{}, &KBSearchEmbedding{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}, &AuditEvent{}}
 }

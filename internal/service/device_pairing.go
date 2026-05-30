@@ -24,6 +24,7 @@ type DevicePairingService struct {
 	verifier    SignatureVerifier
 	serverID    string
 	ttl         time.Duration
+	auditSvc    *AuditService
 }
 
 type DevicePairingQRPayload struct {
@@ -50,6 +51,10 @@ type ClaimPairingRequest struct {
 
 func NewDevicePairingService(pairingRepo *repository.DevicePairingRepo, userRepo *repository.UserRepo, verifier SignatureVerifier) *DevicePairingService {
 	return &DevicePairingService{pairingRepo: pairingRepo, userRepo: userRepo, verifier: verifier, serverID: "default", ttl: defaultPairingTTL}
+}
+
+func (s *DevicePairingService) SetAuditService(auditSvc *AuditService) {
+	s.auditSvc = auditSvc
 }
 
 func (s *DevicePairingService) StartPairing(userID uuid.UUID, createdByDeviceID string) (*StartPairingResponse, error) {
@@ -99,6 +104,7 @@ func (s *DevicePairingService) StartPairing(userID uuid.UUID, createdByDeviceID 
 	if err := s.pairingRepo.CreatePairingSession(session); err != nil {
 		return nil, fmt.Errorf("create pairing session: %w", err)
 	}
+	s.recordAudit(&userID, createdByDeviceID, AuditActionDevicePairingStarted, "device_pairing_session", session.ID.String(), AuditOutcomeSuccess, map[string]any{"expires_at": expiresAt.Unix()})
 
 	return &StartPairingResponse{PairingSessionID: session.ID, QRPayload: encodedPayload, ExpiresAt: expiresAt.Unix()}, nil
 }
@@ -160,7 +166,15 @@ func (s *DevicePairingService) ClaimPairing(req *ClaimPairingRequest) (*model.De
 	if err := s.pairingRepo.ClaimPairingSession(session.ID, device); err != nil {
 		return nil, err
 	}
+	s.recordAudit(&session.UserID, req.NewDeviceID, AuditActionDevicePairingClaimed, "device", req.NewDeviceID, AuditOutcomeSuccess, map[string]any{"pairing_session_id": session.ID.String(), "created_by_device_id": session.CreatedByDeviceID})
 	return device, nil
+}
+
+func (s *DevicePairingService) recordAudit(actorUserID *uuid.UUID, actorDeviceID, action, resourceType, resourceID, outcome string, metadata map[string]any) {
+	if s.auditSvc == nil {
+		return
+	}
+	_, _ = s.auditSvc.Record(RecordAuditEventInput{ActorUserID: actorUserID, ActorDeviceID: actorDeviceID, Action: action, ResourceType: resourceType, ResourceID: resourceID, Outcome: outcome, Metadata: metadata})
 }
 
 func (s *DevicePairingService) canonicalClaimChallenge(payload *DevicePairingQRPayload, req *ClaimPairingRequest) string {

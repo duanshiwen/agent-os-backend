@@ -8,11 +8,16 @@ import (
 )
 
 type AdmissionHandler struct {
-	svc *service.AdmissionService
+	svc      *service.AdmissionService
+	auditSvc *service.AuditService
 }
 
 func NewAdmissionHandler(svc *service.AdmissionService) *AdmissionHandler {
 	return &AdmissionHandler{svc: svc}
+}
+
+func (h *AdmissionHandler) SetAuditService(auditSvc *service.AuditService) {
+	h.auditSvc = auditSvc
 }
 
 // GET /api/v1/admin/admission/policy
@@ -38,9 +43,11 @@ func (h *AdmissionHandler) UpdatePolicy(c *gin.Context) {
 	adminID := middleware.MustGetUserID(c)
 	policy, err := h.svc.UpdatePolicy("default", req.PolicyType, adminID)
 	if err != nil {
+		h.recordAudit(c, service.AuditActionAdmissionPolicyUpdated, "server_admission", "default", service.AuditOutcomeFailure, gin.H{"policy_type": req.PolicyType, "error": err.Error()})
 		response.BadRequest(c, err.Error())
 		return
 	}
+	h.recordAudit(c, service.AuditActionAdmissionPolicyUpdated, "server_admission", "default", service.AuditOutcomeSuccess, gin.H{"policy_type": policy.PolicyType})
 	response.OK(c, policy)
 }
 
@@ -57,9 +64,11 @@ func (h *AdmissionHandler) UpdateInvitationCode(c *gin.Context) {
 	adminID := middleware.MustGetUserID(c)
 	policy, err := h.svc.UpdateInvitationCode("default", req.InvitationCode, adminID)
 	if err != nil {
+		h.recordAudit(c, service.AuditActionAdmissionInvitationCodeSet, "server_admission", "default", service.AuditOutcomeFailure, gin.H{"error": err.Error()})
 		response.BadRequest(c, err.Error())
 		return
 	}
+	h.recordAudit(c, service.AuditActionAdmissionInvitationCodeSet, "server_admission", "default", service.AuditOutcomeSuccess, gin.H{"policy_type": policy.PolicyType})
 	response.OK(c, policy)
 }
 
@@ -81,9 +90,11 @@ func (h *AdmissionHandler) Approve(c *gin.Context) {
 	}
 
 	if err := h.svc.ApproveRequest(id); err != nil {
+		h.recordAudit(c, service.AuditActionAdmissionRequestApproved, "admission_request", id.String(), service.AuditOutcomeFailure, gin.H{"error": err.Error()})
 		response.BadRequest(c, err.Error())
 		return
 	}
+	h.recordAudit(c, service.AuditActionAdmissionRequestApproved, "admission_request", id.String(), service.AuditOutcomeSuccess, nil)
 	response.OK(c, gin.H{"status": "approved"})
 }
 
@@ -100,8 +111,28 @@ func (h *AdmissionHandler) Reject(c *gin.Context) {
 	_ = c.ShouldBindJSON(&req)
 
 	if err := h.svc.RejectRequest(id, req.Reason); err != nil {
+		h.recordAudit(c, service.AuditActionAdmissionRequestRejected, "admission_request", id.String(), service.AuditOutcomeFailure, gin.H{"error": err.Error(), "reason_present": req.Reason != ""})
 		response.BadRequest(c, err.Error())
 		return
 	}
+	h.recordAudit(c, service.AuditActionAdmissionRequestRejected, "admission_request", id.String(), service.AuditOutcomeSuccess, gin.H{"reason_present": req.Reason != ""})
 	response.OK(c, gin.H{"status": "rejected"})
+}
+
+func (h *AdmissionHandler) recordAudit(c *gin.Context, action, resourceType, resourceID, outcome string, metadata map[string]any) {
+	if h.auditSvc == nil {
+		return
+	}
+	actorID := middleware.MustGetUserID(c)
+	_, _ = h.auditSvc.Record(service.RecordAuditEventInput{
+		ActorUserID:   &actorID,
+		ActorDeviceID: middleware.MustGetDeviceID(c),
+		Action:        action,
+		ResourceType:  resourceType,
+		ResourceID:    resourceID,
+		Outcome:       outcome,
+		IPAddress:     c.ClientIP(),
+		UserAgent:     c.Request.UserAgent(),
+		Metadata:      metadata,
+	})
 }

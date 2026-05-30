@@ -33,6 +33,8 @@ func Setup(
 	r.Use(middleware.RateLimiter(10, 50))
 
 	// Services (using injected repos)
+	auditRepo := repository.NewAuditRepo(db)
+	auditSvc := service.NewAuditService(auditRepo)
 	admissionRepo := repository.NewAdmissionRepo(db)
 	admissionSvc := service.NewAdmissionServiceWithRepo(userRepo, admissionRepo, cfg.Admission)
 	identitySvc := service.NewIdentityServiceWithAdmission(userRepo, cfg.JWT, signatureVerifier, admissionSvc)
@@ -40,6 +42,7 @@ func Setup(
 	convSvc := service.NewConversationService(convRepo, userRepo)
 	pairingRepo := repository.NewDevicePairingRepo(db)
 	pairingSvc := service.NewDevicePairingService(pairingRepo, userRepo, signatureVerifier)
+	pairingSvc.SetAuditService(auditSvc)
 	skillSettingsRepo := repository.NewSkillSettingsRepo(db)
 	skillSettingsSvc := service.NewSkillSettingsService(skillSettingsRepo, syncSvc)
 	agentSettingsRepo := repository.NewAgentSettingsRepo(db)
@@ -72,7 +75,9 @@ func Setup(
 
 	// Handlers
 	identityH := handler.NewIdentityHandler(identitySvc)
+	auditH := handler.NewAuditHandler(auditSvc)
 	admissionH := handler.NewAdmissionHandler(admissionSvc)
+	admissionH.SetAuditService(auditSvc)
 	convH := handler.NewConversationHandler(convSvc, msgSvc)
 	syncH := handler.NewSyncHandler(syncSvc)
 	pairingH := handler.NewDevicePairingHandler(pairingSvc)
@@ -213,6 +218,7 @@ func Setup(
 		admin.Use(middleware.JWTAuth(cfg.JWT.Secret))
 		admin.Use(middleware.AdminMiddleware(userRepo))
 		{
+			admin.GET("/audit/events", auditH.List)
 			admin.GET("/admission/policy", admissionH.GetPolicy)
 			admin.PUT("/admission/policy", admissionH.UpdatePolicy)
 			admin.PUT("/admission/invitation-code", admissionH.UpdateInvitationCode)
