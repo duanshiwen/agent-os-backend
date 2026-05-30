@@ -118,6 +118,13 @@ func (s *SensitiveOperationService) IssueConfirmation(userID uuid.UUID, actorDev
 	return &SensitiveConfirmationResponse{ConfirmationToken: token, Operation: operation, ExpiresAt: expiresAt}, nil
 }
 
+func (s *SensitiveOperationService) CleanupExpiredConfirmations(now time.Time) (int64, error) {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	return s.repo.DeleteExpired(now.UTC())
+}
+
 func (s *SensitiveOperationService) ConsumeConfirmation(userID uuid.UUID, token, operation, consumedBy string) error {
 	if strings.TrimSpace(token) == "" {
 		return fmt.Errorf("confirmation token is required")

@@ -3,12 +3,50 @@ package service
 import (
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/agent-os/backend/internal/model"
 	"github.com/agent-os/backend/internal/repository"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+func TestSensitiveOperationServiceCleanupExpiredConfirmations(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+url.PathEscape(t.Name())+"?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&model.User{}, &model.SensitiveOperationConfirmation{}, &model.AuditEvent{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	userRepo := repository.NewUserRepo(db)
+	svc := NewSensitiveOperationService(userRepo, repository.NewSensitiveOperationRepo(db), nil)
+	user := &model.User{PubKeyEd25519: "cleanup-user-pubkey", DisplayName: "Cleanup User", Status: "active"}
+	if err := userRepo.Create(user); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	now := time.Now().UTC()
+	if err := db.Create(&model.SensitiveOperationConfirmation{UserID: user.ID, DeviceID: "device-1", Operation: "expired", TokenHash: "expired-token", ExpiresAt: now.Add(-time.Minute)}).Error; err != nil {
+		t.Fatalf("create expired: %v", err)
+	}
+	if err := db.Create(&model.SensitiveOperationConfirmation{UserID: user.ID, DeviceID: "device-1", Operation: "valid", TokenHash: "valid-token", ExpiresAt: now.Add(time.Minute)}).Error; err != nil {
+		t.Fatalf("create valid: %v", err)
+	}
+	deleted, err := svc.CleanupExpiredConfirmations(now)
+	if err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+	if deleted != 1 {
+		t.Fatalf("expected one deleted confirmation, got %d", deleted)
+	}
+	var count int64
+	if err := db.Model(&model.SensitiveOperationConfirmation{}).Count(&count).Error; err != nil {
+		t.Fatalf("count confirmations: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected one remaining confirmation, got %d", count)
+	}
+}
 
 func TestSensitiveOperationServicePasswordAndConfirmation(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+url.PathEscape(t.Name())+"?mode=memory&cache=shared"), &gorm.Config{})
