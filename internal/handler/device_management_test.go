@@ -24,19 +24,24 @@ func TestIdentityHTTPRenameAndRevokeDeviceWithAudit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.Device{}, &model.AuthChallenge{}, &model.AdmissionRequest{}, &model.ServerAdmission{}, &model.AuditEvent{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Device{}, &model.AuthChallenge{}, &model.AdmissionRequest{}, &model.ServerAdmission{}, &model.SensitiveOperationConfirmation{}, &model.AuditEvent{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	userRepo := repository.NewUserRepo(db)
 	identitySvc := service.NewIdentityService(userRepo, config.JWTConfig{Secret: "device-management-secret", AccessTokenMins: 60, Issuer: "agent-os-test"}, &handlerStubVerifier{valid: true})
 	auditSvc := service.NewAuditService(repository.NewAuditRepo(db))
+	sensitiveSvc := service.NewSensitiveOperationService(userRepo, repository.NewSensitiveOperationRepo(db), auditSvc)
 	identityH := NewIdentityHandler(identitySvc)
 	identityH.SetAuditService(auditSvc)
+	identityH.SetSensitiveOperationService(sensitiveSvc)
 	auditH := NewAuditHandler(auditSvc)
 
 	user := &model.User{PubKeyEd25519: "device-http-user-pubkey", DisplayName: "Device HTTP", Status: "active"}
 	if err := userRepo.Create(user); err != nil {
 		t.Fatalf("create user: %v", err)
+	}
+	if err := sensitiveSvc.SetPassword(user.ID, "http-current", "secret123"); err != nil {
+		t.Fatalf("set password: %v", err)
 	}
 	current := &model.Device{UserID: user.ID, DeviceID: "http-current", DeviceName: "Current", DevicePubKey: "current-pubkey", Status: "active", PairedAt: time.Now()}
 	target := &model.Device{UserID: user.ID, DeviceID: "http-target", DeviceName: "Target", DevicePubKey: "target-pubkey", Status: "active", PairedAt: time.Now()}
@@ -72,7 +77,19 @@ func TestIdentityHTTPRenameAndRevokeDeviceWithAudit(t *testing.T) {
 		t.Fatalf("unexpected renamed device: %+v", renameResp.Data)
 	}
 
-	revokeReq := httptest.NewRequest(http.MethodDelete, "/api/v1/users/me/devices/http-target", nil)
+	missingConfirmationReq := httptest.NewRequest(http.MethodDelete, "/api/v1/users/me/devices/http-target", nil)
+	missingConfirmationReq.Header.Set("Authorization", "Bearer "+token)
+	missingConfirmationW := httptest.NewRecorder()
+	r.ServeHTTP(missingConfirmationW, missingConfirmationReq)
+	if missingConfirmationW.Code != http.StatusBadRequest {
+		t.Fatalf("expected missing confirmation 400, got %d body=%s", missingConfirmationW.Code, missingConfirmationW.Body.String())
+	}
+	confirmation, err := sensitiveSvc.IssueConfirmation(user.ID, "http-current", "secret123", service.SensitiveOperationDeviceRevoke)
+	if err != nil {
+		t.Fatalf("issue confirmation: %v", err)
+	}
+	revokeReq := httptest.NewRequest(http.MethodDelete, "/api/v1/users/me/devices/http-target", strings.NewReader(`{"confirmation_token":"`+confirmation.ConfirmationToken+`"}`))
+	revokeReq.Header.Set("Content-Type", "application/json")
 	revokeReq.Header.Set("Authorization", "Bearer "+token)
 	revokeW := httptest.NewRecorder()
 	r.ServeHTTP(revokeW, revokeReq)

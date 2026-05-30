@@ -17,6 +17,12 @@ import (
 
 const defaultSensitiveConfirmationTTL = 5 * time.Minute
 
+const (
+	SensitiveOperationDeviceRevoke              = "device.revoke"
+	SensitiveOperationAdmissionInvitationUpdate = "admission.invitation_code.update"
+	SensitiveOperationAdmissionPolicyUpdate     = "admission.policy.update"
+)
+
 type SensitiveOperationService struct {
 	userRepo *repository.UserRepo
 	repo     *repository.SensitiveOperationRepo
@@ -110,6 +116,13 @@ func (s *SensitiveOperationService) IssueConfirmation(userID uuid.UUID, actorDev
 	}
 	s.recordAudit(userID, actorDeviceID, AuditActionSensitiveConfirmationIssued, "sensitive_operation", operation, AuditOutcomeSuccess, map[string]any{"expires_at": expiresAt.Unix()})
 	return &SensitiveConfirmationResponse{ConfirmationToken: token, Operation: operation, ExpiresAt: expiresAt}, nil
+}
+
+func (s *SensitiveOperationService) CleanupExpiredConfirmations(now time.Time) (int64, error) {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	return s.repo.DeleteExpired(now.UTC())
 }
 
 func (s *SensitiveOperationService) ConsumeConfirmation(userID uuid.UUID, token, operation, consumedBy string) error {

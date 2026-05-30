@@ -1,14 +1,25 @@
 # AgentOS Backend Phase 1 / Full M3 KB Hub Status
 
 Updated: 2026-05-31
-Branch: `main`
+Branch: `stage1-sensitive-confirmation-enforcement`
 Stage 0 reset: AgentOS Backend is now planned as a full platform completion program rather than MVP-only delivery. See `docs/platform-roadmap.md`, `docs/system-capability-matrix.md`, and `docs/architecture-boundaries.md` for the current platform baseline and architecture freeze.
 
-Latest local verification for Stage 0 baseline:
+Stage 1 Platform Core Hardening is now underway and has completed the first security/audit closure pass:
+
+- queryable platform audit event foundation;
+- device rename/revoke lifecycle APIs and revoked-device authentication guard;
+- password setup/change APIs;
+- one-time sensitive operation confirmation tokens;
+- confirmation enforcement for device revoke, admission invitation code update, and admission policy update;
+- request ID propagation via `X-Request-ID`;
+- `/ready` readiness endpoint;
+- expired sensitive confirmation cleanup service method.
+
+Latest local verification for Stage 1 branch:
 
 ```text
 Backend: go test ./...
-Result: 122 passed in 11 packages
+Result: 135 passed in 11 packages
 
 Rust SDK: cargo test --workspace --all-targets --locked
 Result: 1560 passed, 2 ignored, 110 suites

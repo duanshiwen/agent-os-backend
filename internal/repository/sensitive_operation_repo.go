@@ -30,3 +30,8 @@ func (r *SensitiveOperationRepo) MarkUsed(id uuid.UUID, consumedBy string) error
 	now := time.Now().UTC()
 	return r.db.Model(&model.SensitiveOperationConfirmation{}).Where("id = ? AND used_at IS NULL", id).Updates(map[string]any{"used_at": &now, "consumed_by": consumedBy}).Error
 }
+
+func (r *SensitiveOperationRepo) DeleteExpired(before time.Time) (int64, error) {
+	result := r.db.Where("expires_at <= ?", before).Delete(&model.SensitiveOperationConfirmation{})
+	return result.RowsAffected, result.Error
+}
