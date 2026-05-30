@@ -253,6 +253,13 @@ func TestKBHubServiceFullM3MarketplacePricingAndSearch(t *testing.T) {
 	if len(semantic.Items) != 1 || !semantic.SemanticAvailable {
 		t.Fatalf("expected deterministic semantic result, got %+v", semantic)
 	}
+	status, err := svc.searchSvc.EmbeddingStatus(context.Background(), detail.Snapshot.ID)
+	if err != nil {
+		t.Fatalf("embedding status: %v", err)
+	}
+	if status.Coverage == nil || status.Coverage.ReadyEmbeddings != 1 || status.Coverage.Coverage != 1 {
+		t.Fatalf("unexpected embedding status: %+v", status)
+	}
 }
 
 func newKBHubServiceTestEnv(t *testing.T) (*KBHubService, *repository.KnowledgeEntriesRepo, *recordingObjectStorageBackend, uuid.UUID) {

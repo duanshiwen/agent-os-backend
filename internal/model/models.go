@@ -315,7 +315,7 @@ type KBSearchEmbedding struct {
 	Model            string    `gorm:"not null;uniqueIndex:idx_kb_search_embedding_doc_provider_model_hash" json:"model"`
 	Dimensions       int       `gorm:"not null;default:1024" json:"dimensions"`
 	ContentHash      string    `gorm:"index;not null;uniqueIndex:idx_kb_search_embedding_doc_provider_model_hash" json:"content_hash"`
-	Embedding        string    `gorm:"type:text;not null" json:"embedding"`
+	Embedding        string    `gorm:"type:vector(1024);not null" json:"embedding"`
 }
 
 type Plugin struct {

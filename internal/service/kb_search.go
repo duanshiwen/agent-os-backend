@@ -52,6 +52,16 @@ type KBSearchResult struct {
 	Total                     int64                `json:"total"`
 }
 
+type KBEmbeddingStatus struct {
+	SnapshotID                uuid.UUID                       `json:"snapshot_id"`
+	Provider                  string                          `json:"provider"`
+	Model                     string                          `json:"model"`
+	Dimensions                int                             `json:"dimensions"`
+	ProviderHealth            *EmbeddingProviderHealth        `json:"provider_health,omitempty"`
+	ProviderUnavailableReason string                          `json:"provider_unavailable_reason,omitempty"`
+	Coverage                  *repository.KBEmbeddingCoverage `json:"coverage,omitempty"`
+}
+
 type KBSearchResultItem struct {
 	CollectionID    uuid.UUID `json:"collection_id"`
 	SnapshotID      uuid.UUID `json:"snapshot_id"`
@@ -75,6 +85,55 @@ func (s *KBSearchService) SetEmbedding(repo *repository.KBEmbeddingRepo, provide
 	if provider != nil {
 		s.embeddingProvider = provider
 	}
+}
+
+type RetryKBEmbeddingJobsResult struct {
+	SnapshotID uuid.UUID `json:"snapshot_id"`
+	Provider   string    `json:"provider"`
+	Model      string    `json:"model"`
+	Retried    int64     `json:"retried"`
+}
+
+func (s *KBSearchService) RetryFailedEmbeddingJobs(snapshotID uuid.UUID) (*RetryKBEmbeddingJobsResult, error) {
+	if snapshotID == uuid.Nil {
+		return nil, fmt.Errorf("%w: snapshot_id is required", ErrKBInvalid)
+	}
+	if s.embeddingRepo == nil {
+		return nil, ErrKBSemanticSearchUnavailable
+	}
+	provider := s.embeddingProvider
+	if provider == nil {
+		provider = DisabledEmbeddingProvider{model: DefaultEmbeddingModel, dimensions: DefaultEmbeddingDimensions}
+	}
+	count, err := s.embeddingRepo.RetryFailedJobs(snapshotID, provider.Name(), provider.Model())
+	if err != nil {
+		return nil, err
+	}
+	return &RetryKBEmbeddingJobsResult{SnapshotID: snapshotID, Provider: provider.Name(), Model: provider.Model(), Retried: count}, nil
+}
+
+func (s *KBSearchService) EmbeddingStatus(ctx context.Context, snapshotID uuid.UUID) (*KBEmbeddingStatus, error) {
+	if snapshotID == uuid.Nil {
+		return nil, fmt.Errorf("%w: snapshot_id is required", ErrKBInvalid)
+	}
+	provider := s.embeddingProvider
+	if provider == nil {
+		provider = DisabledEmbeddingProvider{model: DefaultEmbeddingModel, dimensions: DefaultEmbeddingDimensions}
+	}
+	status := &KBEmbeddingStatus{SnapshotID: snapshotID, Provider: provider.Name(), Model: provider.Model(), Dimensions: provider.Dimensions()}
+	if health, err := provider.Health(ctx); err != nil {
+		status.ProviderUnavailableReason = err.Error()
+	} else {
+		status.ProviderHealth = health
+	}
+	if s.embeddingRepo != nil {
+		coverage, err := s.embeddingRepo.Coverage(snapshotID, provider.Name(), provider.Model())
+		if err != nil {
+			return nil, err
+		}
+		status.Coverage = coverage
+	}
+	return status, nil
 }
 
 func (s *KBSearchService) IndexSnapshot(ctx context.Context, collection *model.KBCollection, snapshot *model.KBSnapshot, entries []model.KBSnapshotEntry) error {

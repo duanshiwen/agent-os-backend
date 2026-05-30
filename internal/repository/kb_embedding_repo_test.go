@@ -54,7 +54,24 @@ func TestKBEmbeddingRepoQueueLifecycle(t *testing.T) {
 		t.Fatalf("expected retrying job, got %+v", job)
 	}
 	job.Attempts = job.MaxAttempts
-	if err := repo.CompleteJob(*job, []float32{1, 0, 0, 0}); err != nil {
+	if err := repo.FailJob(*job, errors.New("permanent"), time.Second); err != nil {
+		t.Fatalf("mark failed: %v", err)
+	}
+	retried, err := repo.RetryFailedJobs(doc.SnapshotID, "deterministic", "test")
+	if err != nil {
+		t.Fatalf("retry failed jobs: %v", err)
+	}
+	if retried != 1 {
+		t.Fatalf("expected one retried job, got %d", retried)
+	}
+	claimed, err = repo.ClaimJobs(ClaimKBEmbeddingJobsInput{WorkerID: "test-worker", Limit: 10})
+	if err != nil {
+		t.Fatalf("claim retried: %v", err)
+	}
+	if len(claimed) != 1 || claimed[0].Attempts != 1 {
+		t.Fatalf("unexpected retried claim: %+v", claimed)
+	}
+	if err := repo.CompleteJob(claimed[0], []float32{1, 0, 0, 0}); err != nil {
 		t.Fatalf("complete: %v", err)
 	}
 	coverage, err := repo.Coverage(doc.SnapshotID, "deterministic", "test")

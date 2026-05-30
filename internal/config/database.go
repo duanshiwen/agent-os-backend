@@ -28,10 +28,23 @@ func InitDatabase(cfg *DatabaseConfig, autoMigrate bool) (*gorm.DB, error) {
 	sqlDB.SetConnMaxLifetime(time.Duration(cfg.ConnMaxLifeMin) * time.Minute)
 
 	if autoMigrate {
+		if err := preparePostgresExtensions(db); err != nil {
+			return nil, err
+		}
 		if err := db.AutoMigrate(model.AllModels()...); err != nil {
 			return nil, fmt.Errorf("auto-migrate failed: %w", err)
 		}
 	}
 
 	return db, nil
+}
+
+func preparePostgresExtensions(db *gorm.DB) error {
+	if db.Dialector.Name() != "postgres" {
+		return nil
+	}
+	if err := db.Exec("CREATE EXTENSION IF NOT EXISTS vector").Error; err != nil {
+		return fmt.Errorf("prepare pgvector extension failed: %w", err)
+	}
+	return nil
 }

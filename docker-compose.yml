@@ -69,9 +69,9 @@ services:
       - agentos-dev-network
     restart: on-failure
 
-  # === PostgreSQL 16 ===
+  # === PostgreSQL 16 + pgvector ===
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: agentos-dev-postgres
     ports:
       - "${PG_PORT:-5432}:5432"

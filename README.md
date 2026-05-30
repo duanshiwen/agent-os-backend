@@ -10,7 +10,7 @@ Agent OS 联邦化网络的服务端进程（Go + Rust SDK FFI），提供身份
 # 复制环境变量
 cp .env.example .env
 
-# 启动依赖服务（PostgreSQL + Redis + MinIO）
+# 启动依赖服务（PostgreSQL + Redis + MinIO + 可选 embedding workers）
 docker compose up -d
 ```
 
@@ -150,6 +150,50 @@ M2.1 配置对象同步的本地 smoke 验证：
 ```
 
 完整契约见 `docs/sync-contract.md`。
+
+#### KB Hub 语义搜索（M3.5）
+
+KB Hub semantic search 使用 PostgreSQL + pgvector 持久化 embedding，并通过异步队列生成向量：
+
+- 默认模型：`BAAI/bge-m3`
+- 默认维度：`1024`
+- Go API server 不直接加载模型
+- `cmd/worker` 负责 claim PostgreSQL durable queue 并调用 embedding provider
+- `services/embedding-worker` 是本地 FastAPI embedding model worker
+
+本地启用方式：
+
+```bash
+# .env
+EMBEDDING_PROVIDER=local_http
+EMBEDDING_ENDPOINT=http://localhost:8091
+EMBEDDING_MODEL=BAAI/bge-m3
+EMBEDDING_DIMENSIONS=1024
+
+# 启动 API、PostgreSQL+pgvector、Redis、MinIO、embedding model worker、Go embedding job worker
+docker compose up -d
+```
+
+手动检查 embedding worker：
+
+```bash
+./scripts/smoke-kb-embedding-worker.sh
+```
+
+查询 snapshot embedding 状态：
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8080/api/v1/kb/collections/$COLLECTION_ID/snapshots/$SNAPSHOT_ID/embedding-status
+```
+
+搜索模式：
+
+- `mode=lexical`：普通关键词搜索
+- `mode=semantic`：只使用 ready embeddings；不可用时返回显式错误
+- `mode=hybrid`：semantic 不可用时降级 lexical，并返回 `semantic_available=false` 与原因
+
+普通 Go CI 使用 deterministic provider / SQLite fallback，不下载真实 BGE-M3。
 
 #### WebSocket
 

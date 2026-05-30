@@ -227,6 +227,32 @@ func (r *KBEmbeddingRepo) FailJob(job model.KBEmbeddingJob, cause error, backoff
 	return r.db.Model(&model.KBEmbeddingJob{}).Where("id = ?", job.ID).Updates(updates).Error
 }
 
+func (r *KBEmbeddingRepo) RetryFailedJobs(snapshotID uuid.UUID, provider, modelName string) (int64, error) {
+	if snapshotID == uuid.Nil {
+		return 0, nil
+	}
+	now := time.Now().UTC()
+	q := r.db.Model(&model.KBEmbeddingJob{}).
+		Where("snapshot_id = ? AND status = ?", snapshotID, KBEmbeddingJobStatusFailed)
+	if provider != "" {
+		q = q.Where("provider = ?", provider)
+	}
+	if modelName != "" {
+		q = q.Where("model = ?", modelName)
+	}
+	res := q.Updates(map[string]any{
+		"status":       KBEmbeddingJobStatusPending,
+		"attempts":     0,
+		"available_at": now,
+		"locked_at":    nil,
+		"locked_by":    "",
+		"last_error":   "",
+		"failed_at":    nil,
+		"updated_at":   now,
+	})
+	return res.RowsAffected, res.Error
+}
+
 func (r *KBEmbeddingRepo) Coverage(snapshotID uuid.UUID, provider, modelName string) (*KBEmbeddingCoverage, error) {
 	var total int64
 	if err := r.db.Model(&model.KBSearchDocument{}).Where("snapshot_id = ? AND status = ?", snapshotID, "active").Count(&total).Error; err != nil {

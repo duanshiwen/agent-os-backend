@@ -197,6 +197,8 @@ func Setup(
 			protected.POST("/kb/collections/:id/snapshots", kbHubH.PublishSnapshot)
 			protected.GET("/kb/collections/:id/snapshots", kbHubH.ListSnapshots)
 			protected.GET("/kb/collections/:id/snapshots/:snapshot_id", kbHubH.GetSnapshot)
+			protected.GET("/kb/collections/:id/snapshots/:snapshot_id/embedding-status", kbHubH.GetSnapshotEmbeddingStatus)
+			protected.POST("/kb/collections/:id/snapshots/:snapshot_id/embedding-jobs/retry-failed", kbHubH.RetrySnapshotEmbeddingJobs)
 			protected.POST("/kb/collections/:id/install", kbHubH.InstallCollection)
 			protected.DELETE("/kb/collections/:id/install", kbHubH.CancelSubscription)
 			protected.POST("/kb/collections/:id/snapshots/:snapshot_id/manifest-download-url", kbHubH.CreateInstalledManifestDownloadURL)
