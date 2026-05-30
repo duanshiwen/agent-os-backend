@@ -1,7 +1,7 @@
-# AgentOS Backend Phase 1 / M2.2 Status
+# AgentOS Backend Phase 1 / M2.3 Status
 
 Updated: 2026-05-30
-Branch: `feat/knowledge-sync-m2-2`
+Branch: `m2-3-client-sync-integration`
 
 ## Summary
 
@@ -15,7 +15,7 @@ M2.1 Sync Object Coverage is implemented for the low-risk configuration objects 
 - agent settings
 - server list
 
-M2.2 Knowledge Sync Semantics is now implemented for a user's personal knowledge entries. This is intentionally scoped to cross-device sync of the user's own local knowledge objects. It does not implement KB Hub publishing, marketplace discovery, subscription state, billing, semantic indexing, or Rust knowledge FFI.
+M2.2 Knowledge Sync Semantics is implemented for a user's personal knowledge entries. M2.3 has started by documenting the client-facing sync consumer contract and adding router-level coverage for the two-device knowledge pull/apply/ack flow. This remains intentionally scoped to cross-device sync of the user's own local knowledge objects. It does not implement KB Hub publishing, marketplace discovery, subscription state, billing, semantic indexing, or Rust knowledge FFI.
 
 ## Implemented and Verified
 
@@ -123,6 +123,49 @@ Implemented semantics:
 
 The contract is documented in `docs/sync-contract.md` under **Knowledge Entry Sync**.
 
+### M2.3 Client Sync Consumer Contract
+
+M2.3 now has an explicit client-facing sync consumer contract in:
+
+```text
+docs/client-sync-consumer-contract.md
+```
+
+It defines:
+
+- baseline + incremental sync consumption;
+- `/api/v1/sync/events` pull rules;
+- `/api/v1/sync/ack` cursor/ack discipline;
+- WebSocket `sync.event` as a hint, not the canonical event stream;
+- required sync event envelope fields;
+- apply rules for profile, message, skill, agent, server, and knowledge events;
+- knowledge tombstone and version comparison rules;
+- `client_event_id` idempotent retry behavior;
+- `base_version` optimistic concurrency behavior;
+- offline catch-up behavior;
+- SDK/client reducer test requirements;
+- the gate before KB Hub design/implementation.
+
+Router-level M2.3 coverage is in:
+
+```text
+internal/handler/m2_3_client_sync_contract_test.go
+```
+
+It verifies a minimal client consumer loop for personal knowledge sync:
+
+1. Device A and Device B authenticate under one user;
+2. Device A creates a knowledge entry;
+3. Device B pulls `knowledge.created`;
+4. Device B applies the event into a local projection and acks the sequence;
+5. repeated create with the same `client_event_id` is idempotent and emits no new sync event;
+6. Device A updates the entry with `base_version`;
+7. Device B pulls/applies/acks `knowledge.updated`;
+8. stale update with old `base_version` returns `409` and emits no sync event;
+9. Device A deletes with `base_version`;
+10. Device B pulls/applies/acks the tombstone;
+11. final pull after ack returns no remaining events.
+
 ### Production Migrations
 
 Current migrations:
@@ -153,6 +196,12 @@ Run the M2.2 knowledge sync smoke suite:
 ./scripts/smoke-knowledge-sync.sh
 ```
 
+Run the M2.3 client sync consumer smoke suite:
+
+```bash
+./scripts/smoke-m2-3-client-sync.sh
+```
+
 Run all Go tests:
 
 ```bash
@@ -162,8 +211,10 @@ go test ./...
 Latest verified result:
 
 ```text
+M2.1 sync settings smoke passed.
 M2.2 knowledge sync smoke passed.
-Go test: 107 passed in 10 packages
+M2.3 client sync consumer smoke passed.
+Go test: 108 passed in 10 packages
 ```
 
 Run Rust FFI integration test:
@@ -203,7 +254,8 @@ They verify real Gin router wiring for:
 10. server list mutation and cross-device sync pull;
 11. knowledge create/update/delete and cross-device sync pull;
 12. knowledge tombstone baseline behavior;
-13. knowledge stale `base_version` conflicts returning `409` without sync events.
+13. knowledge stale `base_version` conflicts returning `409` without sync events;
+14. M2.3 client-side projection semantics for pull/apply/ack, idempotent retry, stale conflict, and tombstone application.
 
 The service-level smoke and focused sync tests are in:
 
@@ -226,6 +278,12 @@ Use this script for focused M2.2 verification:
 
 ```bash
 ./scripts/smoke-knowledge-sync.sh
+```
+
+Use this script for focused M2.3 verification:
+
+```bash
+./scripts/smoke-m2-3-client-sync.sh
 ```
 
 ## Run Locally
@@ -258,7 +316,7 @@ TOKEN="<jwt>" ./scripts/smoke-sync.sh
 
 ## Current Known Limitations
 
-Phase 1 / M2.2 intentionally does **not** include:
+Phase 1 / M2.3 intentionally does **not** include:
 
 - KB Hub service routes;
 - KB publishing / snapshot / subscription semantics;
@@ -278,10 +336,11 @@ Local Postgres migration smoke is still pending on this machine because Docker D
 
 ## Recommended Next Milestone
 
-M2.2 personal knowledge sync is ready for review. Recommended next steps:
+M2.3 client sync integration is now the recommended next milestone. Recommended next steps:
 
 1. run Postgres migration smoke once Docker Desktop is available;
-2. review and merge `feat/knowledge-sync-m2-2`;
-3. update SDK/client code to consume the knowledge baseline APIs and sync events;
-4. keep KB Hub service implementation blocked until personal knowledge sync is integrated by clients;
-5. after client integration feedback, design the separate KB Hub contract for publishing, snapshots, subscriptions, and marketplace behavior.
+2. keep M2.2 knowledge sync reviewed/merged before expanding Hub scope;
+3. implement the SDK/client reducer contract described in `docs/client-sync-consumer-contract.md`;
+4. add a real two-device live smoke once a running Postgres/Redis environment is available;
+5. keep KB Hub service implementation blocked until personal knowledge sync is integrated by clients;
+6. after client integration feedback, design the separate KB Hub contract for publishing, snapshots, subscriptions, and marketplace behavior.
