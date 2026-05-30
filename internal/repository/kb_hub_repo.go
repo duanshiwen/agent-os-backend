@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"strings"
+
 	"github.com/agent-os/backend/internal/model"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -11,6 +13,19 @@ const (
 	KBCollectionStatusPublished = "published"
 	KBCollectionStatusArchived  = "archived"
 )
+
+type ListPublishedCollectionsQuery struct {
+	Q       string
+	OwnerID *uuid.UUID
+	IsFree  *bool
+	Limit   int
+	Offset  int
+}
+
+type KBUsageCounts struct {
+	ManifestDownloadCount int64
+	ContentDownloadCount  int64
+}
 
 type KBHubRepo struct {
 	db *gorm.DB
@@ -42,10 +57,52 @@ func (r *KBHubRepo) GetCollectionForOwner(ownerID, collectionID uuid.UUID) (*mod
 	return &collection, err
 }
 
+func (r *KBHubRepo) UpdateCollection(collection *model.KBCollection) error {
+	return r.db.Save(collection).Error
+}
+
 func (r *KBHubRepo) ListPublishedCollections() ([]model.KBCollection, error) {
+	return r.SearchPublishedCollections(ListPublishedCollectionsQuery{})
+}
+
+func (r *KBHubRepo) SearchPublishedCollections(query ListPublishedCollectionsQuery) ([]model.KBCollection, error) {
 	var collections []model.KBCollection
-	err := r.db.Where("status = ?", KBCollectionStatusPublished).Order("updated_at DESC").Find(&collections).Error
+	db := r.applyPublishedCollectionFilters(r.db.Model(&model.KBCollection{}), query)
+	limit := normalizeLimit(query.Limit)
+	if query.Offset < 0 {
+		query.Offset = 0
+	}
+	err := db.Order("updated_at DESC").Limit(limit).Offset(query.Offset).Find(&collections).Error
 	return collections, err
+}
+
+func (r *KBHubRepo) CountPublishedCollections(query ListPublishedCollectionsQuery) (int64, error) {
+	var count int64
+	err := r.applyPublishedCollectionFilters(r.db.Model(&model.KBCollection{}), query).Count(&count).Error
+	return count, err
+}
+
+func (r *KBHubRepo) applyPublishedCollectionFilters(db *gorm.DB, query ListPublishedCollectionsQuery) *gorm.DB {
+	db = db.Where("status = ?", KBCollectionStatusPublished)
+	if query.OwnerID != nil && *query.OwnerID != uuid.Nil {
+		db = db.Where("owner_id = ?", *query.OwnerID)
+	}
+	if query.IsFree != nil {
+		db = db.Where("is_free = ?", *query.IsFree)
+	}
+	q := strings.TrimSpace(query.Q)
+	if q != "" {
+		like := "%" + strings.ToLower(q) + "%"
+		db = db.Where("LOWER(name) LIKE ? OR LOWER(description) LIKE ?", like, like)
+	}
+	return db
+}
+
+func normalizeLimit(limit int) int {
+	if limit <= 0 || limit > 100 {
+		return 20
+	}
+	return limit
 }
 
 func (r *KBHubRepo) GetPublishedCollection(collectionID uuid.UUID) (*model.KBCollection, error) {
@@ -146,6 +203,45 @@ func (r *KBHubRepo) ListSubscriptionsByUser(userID uuid.UUID) ([]model.KBSubscri
 	var subscriptions []model.KBSubscription
 	err := r.db.Where("user_id = ?", userID).Order("updated_at DESC").Find(&subscriptions).Error
 	return subscriptions, err
+}
+
+func (r *KBHubRepo) CountSubscriptionsByStatus(collectionID uuid.UUID, status string) (int64, error) {
+	var count int64
+	err := r.db.Model(&model.KBSubscription{}).Where("collection_id = ? AND status = ?", collectionID, status).Count(&count).Error
+	return count, err
+}
+
+func (r *KBHubRepo) CreateUsageRecord(record *model.KBUsageRecord) error {
+	return r.db.Create(record).Error
+}
+
+func (r *KBHubRepo) CountUsageByOperations(collectionID uuid.UUID, operations []string) (int64, error) {
+	var count int64
+	if len(operations) == 0 {
+		return 0, nil
+	}
+	err := r.db.Model(&model.KBUsageRecord{}).Where("collection_id = ? AND operation_type IN ?", collectionID, operations).Count(&count).Error
+	return count, err
+}
+
+func (r *KBHubRepo) UsageCounts(collectionID uuid.UUID) (KBUsageCounts, error) {
+	manifest, err := r.CountUsageByOperations(collectionID, KBManifestDownloadOperations())
+	if err != nil {
+		return KBUsageCounts{}, err
+	}
+	content, err := r.CountUsageByOperations(collectionID, KBContentDownloadOperations())
+	if err != nil {
+		return KBUsageCounts{}, err
+	}
+	return KBUsageCounts{ManifestDownloadCount: manifest, ContentDownloadCount: content}, nil
+}
+
+func KBManifestDownloadOperations() []string {
+	return []string{"manifest_download_url.created.public", "manifest_download_url.created.installed"}
+}
+
+func KBContentDownloadOperations() []string {
+	return []string{"entry_content_download_url.created.installed"}
 }
 
 func (r *KBHubRepo) CancelSubscription(userID, collectionID uuid.UUID) error {

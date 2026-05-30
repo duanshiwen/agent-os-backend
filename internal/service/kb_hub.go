@@ -26,16 +26,36 @@ var (
 	ErrKBNoEntries          = errors.New("kb snapshot requires at least one active knowledge entry")
 )
 
+const maxKBFullTextBytes int64 = 2 << 20
+
 type KBHubService struct {
 	kbRepo        *repository.KBHubRepo
 	knowledgeRepo *repository.KnowledgeEntriesRepo
 	objectSvc     *ObjectService
+	billingSvc    *KBBillingService
+	searchSvc     *KBSearchService
 }
 
 type CreateKBCollectionInput struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	IsFree      *bool  `json:"is_free"`
+}
+
+type UpdateKBCollectionPricingInput struct {
+	PricingModel     string `json:"pricing_model"`
+	MonthlyPrice     int64  `json:"monthly_price"`
+	IsFree           *bool  `json:"is_free"`
+	PlatformMinPrice int64  `json:"platform_min_price"`
+	PlatformMaxPrice int64  `json:"platform_max_price"`
+}
+
+type SearchKBCollectionsInput struct {
+	Q       string
+	OwnerID *uuid.UUID
+	IsFree  *bool
+	Limit   int
+	Offset  int
 }
 
 type PublishKBSnapshotInput struct {
@@ -55,6 +75,49 @@ type KBSnapshotDetail struct {
 type KBPublicCollectionDetail struct {
 	Collection     *model.KBCollection `json:"collection"`
 	LatestSnapshot *model.KBSnapshot   `json:"latest_snapshot"`
+}
+
+type KBMarketplaceSearchResult struct {
+	Items  []KBMarketplaceCollectionCard `json:"items"`
+	Limit  int                           `json:"limit"`
+	Offset int                           `json:"offset"`
+	Total  int64                         `json:"total"`
+}
+
+type KBMarketplaceCollectionCard struct {
+	CollectionID          uuid.UUID  `json:"collection_id"`
+	OwnerID               uuid.UUID  `json:"owner_id"`
+	Name                  string     `json:"name"`
+	Description           string     `json:"description"`
+	Status                string     `json:"status"`
+	IsFree                bool       `json:"is_free"`
+	PricingModel          string     `json:"pricing_model"`
+	MonthlyPrice          int64      `json:"monthly_price"`
+	LatestSnapshotID      *uuid.UUID `json:"latest_snapshot_id"`
+	LatestVersion         int        `json:"latest_version"`
+	EntryCount            int        `json:"entry_count"`
+	TotalTokens           int        `json:"total_tokens"`
+	PublishedAt           *time.Time `json:"published_at"`
+	ActiveInstallCount    int64      `json:"active_install_count"`
+	ManifestDownloadCount int64      `json:"manifest_download_count"`
+	ContentDownloadCount  int64      `json:"content_download_count"`
+}
+
+type KBOwnerCollectionStats struct {
+	CollectionID          uuid.UUID `json:"collection_id"`
+	ActiveInstallCount    int64     `json:"active_install_count"`
+	CancelledInstallCount int64     `json:"cancelled_install_count"`
+	ManifestDownloadCount int64     `json:"manifest_download_count"`
+	ContentDownloadCount  int64     `json:"content_download_count"`
+	LatestSnapshotVersion int       `json:"latest_snapshot_version"`
+	LatestSnapshotEntries int       `json:"latest_snapshot_entries"`
+	LatestSnapshotTokens  int       `json:"latest_snapshot_tokens"`
+}
+
+type KBFullTextResponse struct {
+	Entry   model.KBSnapshotEntry `json:"entry"`
+	Content string                `json:"content"`
+	Usage   *model.KBUsageRecord  `json:"usage"`
 }
 
 type kbManifest struct {
@@ -84,6 +147,14 @@ type kbManifestEntry struct {
 
 func NewKBHubService(kbRepo *repository.KBHubRepo, knowledgeRepo *repository.KnowledgeEntriesRepo, objectSvc *ObjectService) *KBHubService {
 	return &KBHubService{kbRepo: kbRepo, knowledgeRepo: knowledgeRepo, objectSvc: objectSvc}
+}
+
+func (s *KBHubService) SetBillingService(billingSvc *KBBillingService) {
+	s.billingSvc = billingSvc
+}
+
+func (s *KBHubService) SetSearchService(searchSvc *KBSearchService) {
+	s.searchSvc = searchSvc
 }
 
 func (s *KBHubService) CreateCollection(ownerID uuid.UUID, input CreateKBCollectionInput) (*model.KBCollection, error) {
@@ -116,6 +187,27 @@ func (s *KBHubService) ListPublicCollections() ([]model.KBCollection, error) {
 	return s.kbRepo.ListPublishedCollections()
 }
 
+func (s *KBHubService) SearchPublicCollections(input SearchKBCollectionsInput) (*KBMarketplaceSearchResult, error) {
+	query := repository.ListPublishedCollectionsQuery{Q: input.Q, OwnerID: input.OwnerID, IsFree: input.IsFree, Limit: input.Limit, Offset: input.Offset}
+	collections, err := s.kbRepo.SearchPublishedCollections(query)
+	if err != nil {
+		return nil, err
+	}
+	total, err := s.kbRepo.CountPublishedCollections(query)
+	if err != nil {
+		return nil, err
+	}
+	cards := make([]KBMarketplaceCollectionCard, 0, len(collections))
+	for _, collection := range collections {
+		card, err := s.buildMarketplaceCard(collection)
+		if err != nil {
+			return nil, err
+		}
+		cards = append(cards, card)
+	}
+	return &KBMarketplaceSearchResult{Items: cards, Limit: normalizeAPILimit(input.Limit), Offset: normalizeOffset(input.Offset), Total: total}, nil
+}
+
 func (s *KBHubService) GetPublicCollection(collectionID uuid.UUID) (*KBPublicCollectionDetail, error) {
 	collection, err := s.kbRepo.GetPublishedCollection(collectionID)
 	if err != nil {
@@ -141,6 +233,49 @@ func (s *KBHubService) GetCollection(ownerID, collectionID uuid.UUID) (*model.KB
 		if repository.IsNotFound(err) {
 			return nil, ErrKBCollectionNotFound
 		}
+		return nil, err
+	}
+	return collection, nil
+}
+
+func (s *KBHubService) UpdateCollectionPricing(ownerID, collectionID uuid.UUID, input UpdateKBCollectionPricingInput) (*model.KBCollection, error) {
+	collection, err := s.GetCollection(ownerID, collectionID)
+	if err != nil {
+		return nil, err
+	}
+	isFree := collection.IsFree
+	if input.IsFree != nil {
+		isFree = *input.IsFree
+	}
+	pricingModel := strings.TrimSpace(input.PricingModel)
+	monthlyPrice := input.MonthlyPrice
+	if isFree {
+		pricingModel = "free"
+		monthlyPrice = 0
+	}
+	if !isFree {
+		if pricingModel == "" {
+			pricingModel = "monthly"
+		}
+		if pricingModel != "monthly" && pricingModel != "token" {
+			return nil, fmt.Errorf("%w: pricing_model must be monthly or token", ErrKBInvalid)
+		}
+		if monthlyPrice <= 0 {
+			return nil, fmt.Errorf("%w: monthly_price must be positive for paid collections", ErrKBInvalid)
+		}
+		if input.PlatformMinPrice > 0 && monthlyPrice < input.PlatformMinPrice {
+			return nil, fmt.Errorf("%w: monthly_price below platform minimum", ErrKBInvalid)
+		}
+		if input.PlatformMaxPrice > 0 && monthlyPrice > input.PlatformMaxPrice {
+			return nil, fmt.Errorf("%w: monthly_price above platform maximum", ErrKBInvalid)
+		}
+	}
+	collection.IsFree = isFree
+	collection.PricingModel = pricingModel
+	collection.MonthlyPrice = monthlyPrice
+	collection.PlatformMinPrice = input.PlatformMinPrice
+	collection.PlatformMaxPrice = input.PlatformMaxPrice
+	if err := s.kbRepo.UpdateCollection(collection); err != nil {
 		return nil, err
 	}
 	return collection, nil
@@ -258,6 +393,11 @@ func (s *KBHubService) PublishSnapshot(ctx context.Context, ownerID, collectionI
 	if err != nil {
 		return nil, err
 	}
+	if s.searchSvc != nil {
+		if err := s.searchSvc.IndexSnapshot(ctx, collection, snapshot, createdEntries); err != nil {
+			return nil, err
+		}
+	}
 	return &KBSnapshotDetail{Snapshot: snapshot, Entries: createdEntries}, nil
 }
 
@@ -283,7 +423,8 @@ func (s *KBHubService) GetPublicSnapshot(collectionID, snapshotID uuid.UUID) (*K
 }
 
 func (s *KBHubService) CreateSnapshotManifestDownloadURL(ctx context.Context, collectionID, snapshotID uuid.UUID) (*DownloadURLResponse, error) {
-	if _, err := s.GetPublicCollection(collectionID); err != nil {
+	public, err := s.GetPublicCollection(collectionID)
+	if err != nil {
 		return nil, err
 	}
 	snapshot, err := s.kbRepo.GetSnapshot(collectionID, snapshotID)
@@ -293,7 +434,12 @@ func (s *KBHubService) CreateSnapshotManifestDownloadURL(ctx context.Context, co
 		}
 		return nil, err
 	}
-	return s.objectSvc.CreateDownloadURLByObjectURI(ctx, snapshot.ManifestObjectURI, CreateDownloadURLInput{Disposition: "attachment"})
+	result, err := s.objectSvc.CreateDownloadURLByObjectURI(ctx, snapshot.ManifestObjectURI, CreateDownloadURLInput{Disposition: "attachment"})
+	if err != nil {
+		return nil, err
+	}
+	_, _ = s.recordUsage(RecordKBUsageInput{OwnerID: public.Collection.OwnerID, CollectionID: collectionID, SnapshotID: snapshotID, OperationType: KBOperationManifestDownloadURLPublic, IsFree: true})
+	return result, nil
 }
 
 func (s *KBHubService) InstallCollection(userID, collectionID uuid.UUID, input InstallKBCollectionInput) (*model.KBSubscription, error) {
@@ -379,7 +525,13 @@ func (s *KBHubService) CreateInstalledManifestDownloadURL(ctx context.Context, u
 		}
 		return nil, err
 	}
-	return s.objectSvc.CreateDownloadURLByObjectURI(ctx, snapshot.ManifestObjectURI, CreateDownloadURLInput{Disposition: "attachment"})
+	result, err := s.objectSvc.CreateDownloadURLByObjectURI(ctx, snapshot.ManifestObjectURI, CreateDownloadURLInput{Disposition: "attachment"})
+	if err != nil {
+		return nil, err
+	}
+	collection, _ := s.kbRepo.GetPublishedCollection(collectionID)
+	_, _ = s.recordUsage(RecordKBUsageInput{UserID: userID, OwnerID: ownerIDFromCollection(collection), CollectionID: collectionID, SnapshotID: snapshotID, OperationType: KBOperationManifestDownloadURLInstalled, IsFree: collection == nil || collection.IsFree})
+	return result, nil
 }
 
 func (s *KBHubService) CreateInstalledEntryContentDownloadURL(ctx context.Context, userID, collectionID, snapshotID, entryRecordID uuid.UUID) (*DownloadURLResponse, error) {
@@ -393,7 +545,35 @@ func (s *KBHubService) CreateInstalledEntryContentDownloadURL(ctx context.Contex
 		}
 		return nil, err
 	}
-	return s.objectSvc.CreateDownloadURLByObjectURI(ctx, entry.ContentObjectURI, CreateDownloadURLInput{Disposition: "attachment"})
+	result, err := s.objectSvc.CreateDownloadURLByObjectURI(ctx, entry.ContentObjectURI, CreateDownloadURLInput{Disposition: "attachment"})
+	if err != nil {
+		return nil, err
+	}
+	collection, _ := s.kbRepo.GetPublishedCollection(collectionID)
+	entryID := entry.ID
+	_, _ = s.recordUsage(RecordKBUsageInput{UserID: userID, OwnerID: ownerIDFromCollection(collection), CollectionID: collectionID, SnapshotID: snapshotID, SnapshotEntryID: &entryID, OperationType: KBOperationEntryContentDownloadURL, TokensUsed: entry.Tokens, IsFree: collection == nil || collection.IsFree})
+	return result, nil
+}
+
+func (s *KBHubService) FetchInstalledEntryFullText(ctx context.Context, userID, collectionID, snapshotID, entryRecordID uuid.UUID) (*KBFullTextResponse, error) {
+	if _, err := s.authorizeSnapshotAccess(userID, collectionID, snapshotID); err != nil {
+		return nil, err
+	}
+	entry, err := s.kbRepo.GetSnapshotEntry(snapshotID, entryRecordID)
+	if err != nil {
+		if repository.IsNotFound(err) {
+			return nil, ErrKBSnapshotNotFound
+		}
+		return nil, err
+	}
+	_, content, err := s.objectSvc.ReadObjectByObjectURI(ctx, entry.ContentObjectURI, maxKBFullTextBytes)
+	if err != nil {
+		return nil, err
+	}
+	collection, _ := s.kbRepo.GetPublishedCollection(collectionID)
+	entryID := entry.ID
+	usage, _ := s.recordUsage(RecordKBUsageInput{UserID: userID, OwnerID: ownerIDFromCollection(collection), CollectionID: collectionID, SnapshotID: snapshotID, SnapshotEntryID: &entryID, OperationType: KBOperationEntryFullTextFetch, TokensUsed: entry.Tokens, IsFree: collection == nil || collection.IsFree})
+	return &KBFullTextResponse{Entry: *entry, Content: string(content), Usage: usage}, nil
 }
 
 func (s *KBHubService) authorizeSnapshotAccess(userID, collectionID, snapshotID uuid.UUID) (*model.KBSubscription, error) {
@@ -449,6 +629,75 @@ func (s *KBHubService) getSnapshotDetail(collectionID, snapshotID uuid.UUID) (*K
 		return nil, err
 	}
 	return &KBSnapshotDetail{Snapshot: snapshot, Entries: entries}, nil
+}
+
+func (s *KBHubService) GetCollectionStats(ownerID, collectionID uuid.UUID) (*KBOwnerCollectionStats, error) {
+	if _, err := s.GetCollection(ownerID, collectionID); err != nil {
+		return nil, err
+	}
+	active, err := s.kbRepo.CountSubscriptionsByStatus(collectionID, "active")
+	if err != nil {
+		return nil, err
+	}
+	cancelled, err := s.kbRepo.CountSubscriptionsByStatus(collectionID, "cancelled")
+	if err != nil {
+		return nil, err
+	}
+	usage, err := s.kbRepo.UsageCounts(collectionID)
+	if err != nil {
+		return nil, err
+	}
+	stats := &KBOwnerCollectionStats{CollectionID: collectionID, ActiveInstallCount: active, CancelledInstallCount: cancelled, ManifestDownloadCount: usage.ManifestDownloadCount, ContentDownloadCount: usage.ContentDownloadCount}
+	latest, err := s.kbRepo.GetLatestSnapshot(collectionID)
+	if err == nil {
+		stats.LatestSnapshotVersion = latest.Version
+		stats.LatestSnapshotEntries = latest.EntryCount
+		stats.LatestSnapshotTokens = latest.TotalTokens
+	} else if !repository.IsNotFound(err) {
+		return nil, err
+	}
+	return stats, nil
+}
+
+func (s *KBHubService) buildMarketplaceCard(collection model.KBCollection) (KBMarketplaceCollectionCard, error) {
+	card := KBMarketplaceCollectionCard{CollectionID: collection.ID, OwnerID: collection.OwnerID, Name: collection.Name, Description: collection.Description, Status: collection.Status, IsFree: collection.IsFree, PricingModel: collection.PricingModel, MonthlyPrice: collection.MonthlyPrice}
+	latest, err := s.kbRepo.GetLatestSnapshot(collection.ID)
+	if err == nil {
+		card.LatestSnapshotID = &latest.ID
+		card.LatestVersion = latest.Version
+		card.EntryCount = latest.EntryCount
+		card.TotalTokens = latest.TotalTokens
+		card.PublishedAt = &latest.PublishedAt
+	} else if !repository.IsNotFound(err) {
+		return card, err
+	}
+	active, err := s.kbRepo.CountSubscriptionsByStatus(collection.ID, "active")
+	if err != nil {
+		return card, err
+	}
+	card.ActiveInstallCount = active
+	usage, err := s.kbRepo.UsageCounts(collection.ID)
+	if err != nil {
+		return card, err
+	}
+	card.ManifestDownloadCount = usage.ManifestDownloadCount
+	card.ContentDownloadCount = usage.ContentDownloadCount
+	return card, nil
+}
+
+func (s *KBHubService) recordUsage(input RecordKBUsageInput) (*model.KBUsageRecord, error) {
+	if s.billingSvc == nil {
+		return nil, nil
+	}
+	record, _, _, err := s.billingSvc.RecordUsage(input)
+	return record, err
+}
+
+func ownerIDFromCollection(collection *model.KBCollection) uuid.UUID {
+	if collection == nil {
+		return uuid.Nil
+	}
+	return collection.OwnerID
 }
 
 func filterKnowledgeEntries(entries []model.UserKnowledgeEntry, entryIDs []string) []model.UserKnowledgeEntry {

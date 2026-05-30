@@ -181,6 +181,20 @@ func TestKBHubServiceInstalledAccessAndCancel(t *testing.T) {
 	if contentURL.DownloadURL == "" || contentURL.Object.ObjectURI != detail.Entries[0].ContentObjectURI {
 		t.Fatalf("unexpected content url response: %+v", contentURL)
 	}
+	fullText, err := svc.FetchInstalledEntryFullText(context.Background(), consumerID, collection.ID, detail.Snapshot.ID, entryRecordID)
+	if err != nil {
+		t.Fatalf("fulltext fetch: %v", err)
+	}
+	if fullText.Entry.ID != entryRecordID || fullText.Usage == nil || fullText.Usage.OperationType != KBOperationEntryFullTextFetch || !strings.Contains(fullText.Content, "# Access") {
+		t.Fatalf("unexpected fulltext response: %+v", fullText)
+	}
+	stats, err := svc.GetCollectionStats(ownerID, collection.ID)
+	if err != nil {
+		t.Fatalf("stats: %v", err)
+	}
+	if stats.ActiveInstallCount != 1 || stats.ManifestDownloadCount != 1 || stats.ContentDownloadCount != 1 {
+		t.Fatalf("expected usage stats to reflect access, got %+v", stats)
+	}
 	cancelled, err := svc.CancelSubscription(consumerID, collection.ID)
 	if err != nil {
 		t.Fatalf("cancel subscription: %v", err)
@@ -193,18 +207,64 @@ func TestKBHubServiceInstalledAccessAndCancel(t *testing.T) {
 	}
 }
 
+func TestKBHubServiceFullM3MarketplacePricingAndSearch(t *testing.T) {
+	svc, knowledgeRepo, _, ownerID := newKBHubServiceTestEnv(t)
+	if err := knowledgeRepo.Create(&model.UserKnowledgeEntry{UserID: ownerID, EntryID: "strategy/blue-ocean", Title: "Blue Ocean Strategy", ContentMarkdown: "# Blue Ocean\n\nValue innovation", Summary: "Create uncontested market space", Status: repository.KnowledgeEntryStatusActive, Version: 1, ContentHash: strings.Repeat("e", 64)}); err != nil {
+		t.Fatalf("create knowledge entry: %v", err)
+	}
+	collection, err := svc.CreateCollection(ownerID, CreateKBCollectionInput{Name: "Strategy Library", Description: "Business strategy frameworks"})
+	if err != nil {
+		t.Fatalf("create collection: %v", err)
+	}
+	paid := false
+	priced, err := svc.UpdateCollectionPricing(ownerID, collection.ID, UpdateKBCollectionPricingInput{IsFree: &paid, PricingModel: "monthly", MonthlyPrice: 9900, PlatformMinPrice: 100, PlatformMaxPrice: 20000})
+	if err != nil {
+		t.Fatalf("update pricing: %v", err)
+	}
+	if priced.IsFree || priced.PricingModel != "monthly" || priced.MonthlyPrice != 9900 {
+		t.Fatalf("unexpected pricing: %+v", priced)
+	}
+	detail, err := svc.PublishSnapshot(context.Background(), ownerID, collection.ID, PublishKBSnapshotInput{})
+	if err != nil {
+		t.Fatalf("publish snapshot: %v", err)
+	}
+	market, err := svc.SearchPublicCollections(SearchKBCollectionsInput{Q: "strategy", Limit: 10})
+	if err != nil {
+		t.Fatalf("search public collections: %v", err)
+	}
+	if market.Total != 1 || len(market.Items) != 1 || market.Items[0].LatestSnapshotID == nil || *market.Items[0].LatestSnapshotID != detail.Snapshot.ID || market.Items[0].MonthlyPrice != 9900 {
+		t.Fatalf("unexpected marketplace result: %+v", market)
+	}
+	search, err := svc.searchSvc.Search(context.Background(), KBSearchInput{Q: "Blue Ocean", Mode: "lexical", CollectionID: &collection.ID, Limit: 10})
+	if err != nil {
+		t.Fatalf("lexical search: %v", err)
+	}
+	if search.Total != 1 || len(search.Items) != 1 || search.Items[0].EntryID != "strategy/blue-ocean" {
+		t.Fatalf("unexpected lexical search result: %+v", search)
+	}
+	if _, err := svc.searchSvc.Search(context.Background(), KBSearchInput{Q: "Blue Ocean", Mode: "semantic", Limit: 10}); err == nil || !strings.Contains(err.Error(), ErrKBSemanticSearchUnavailable.Error()) {
+		t.Fatalf("expected explicit semantic unavailable error, got %v", err)
+	}
+}
+
 func newKBHubServiceTestEnv(t *testing.T) (*KBHubService, *repository.KnowledgeEntriesRepo, *recordingObjectStorageBackend, uuid.UUID) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+strings.ReplaceAll(t.Name(), "/", "_")+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.UserKnowledgeEntry{}, &model.ObjectRecord{}, &model.KBCollection{}, &model.KBSnapshot{}, &model.KBSnapshotEntry{}, &model.KBSubscription{}); err != nil {
+	if err := db.AutoMigrate(&model.UserKnowledgeEntry{}, &model.ObjectRecord{}, &model.KBCollection{}, &model.KBSnapshot{}, &model.KBSnapshotEntry{}, &model.KBSubscription{}, &model.KBUsageRecord{}, &model.KBSearchDocument{}, &model.BillingAccount{}, &model.BillingTransaction{}, &model.ContributorEarning{}); err != nil {
 		t.Fatalf("migrate models: %v", err)
 	}
 	fake := &recordingObjectStorageBackend{fakeObjectStorageBackend: fakeObjectStorageBackend{head: ObjectHead{ContentHash: strings.Repeat("a", 64), ContentSize: 1}}}
 	objectSvc := NewObjectService(repository.NewObjectRecordsRepo(db), fake, config.ObjectStorageConfig{Bucket: "agentos-test", UploadTTLSecs: 900, DownloadTTLSecs: 900})
-	return NewKBHubService(repository.NewKBHubRepo(db), repository.NewKnowledgeEntriesRepo(db), objectSvc), repository.NewKnowledgeEntriesRepo(db), fake, uuid.New()
+	kbRepo := repository.NewKBHubRepo(db)
+	billingSvc := NewKBBillingService(repository.NewBillingRepo(db))
+	searchSvc := NewKBSearchService(repository.NewKBSearchRepo(db), kbRepo, billingSvc)
+	svc := NewKBHubService(kbRepo, repository.NewKnowledgeEntriesRepo(db), objectSvc)
+	svc.SetBillingService(billingSvc)
+	svc.SetSearchService(searchSvc)
+	return svc, repository.NewKnowledgeEntriesRepo(db), fake, uuid.New()
 }
 
 type recordedPut struct {
@@ -217,7 +277,8 @@ type recordedPut struct {
 
 type recordingObjectStorageBackend struct {
 	fakeObjectStorageBackend
-	puts []recordedPut
+	puts    []recordedPut
+	objects map[string]string
 }
 
 func (f *recordingObjectStorageBackend) PutObject(ctx context.Context, bucket, key string, reader io.Reader, size int64, contentType string, metadata map[string]string) error {
@@ -227,6 +288,16 @@ func (f *recordingObjectStorageBackend) PutObject(ctx context.Context, bucket, k
 	if err != nil {
 		return err
 	}
+	if f.objects == nil {
+		f.objects = map[string]string{}
+	}
+	f.objects[bucket+"/"+key] = string(buf)
 	f.puts = append(f.puts, recordedPut{Bucket: bucket, Key: key, Size: size, ContentType: contentType, Content: string(buf)})
 	return nil
+}
+
+func (f *recordingObjectStorageBackend) ReadObject(ctx context.Context, bucket, key string, maxBytes int64) ([]byte, error) {
+	_ = ctx
+	_ = maxBytes
+	return []byte(f.objects[bucket+"/"+key]), nil
 }

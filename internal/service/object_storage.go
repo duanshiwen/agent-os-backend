@@ -36,6 +36,7 @@ type ObjectStorageBackend interface {
 	PresignedPutURL(ctx context.Context, bucket, key string, ttl time.Duration, contentType string) (string, error)
 	PresignedGetURL(ctx context.Context, bucket, key string, ttl time.Duration, disposition string) (string, error)
 	HeadObject(ctx context.Context, bucket, key string) (ObjectHead, error)
+	ReadObject(ctx context.Context, bucket, key string, maxBytes int64) ([]byte, error)
 }
 
 type ObjectHead struct {
@@ -236,6 +237,30 @@ func (s *ObjectService) CreateDownloadURLByObjectURI(ctx context.Context, object
 		return nil, err
 	}
 	return s.createDownloadURLForRecord(ctx, record, input)
+}
+
+func (s *ObjectService) ReadObjectByObjectURI(ctx context.Context, objectURI string, maxBytes int64) (*model.ObjectRecord, []byte, error) {
+	record, err := s.repo.GetByObjectURI(objectURI)
+	if err != nil {
+		if repository.IsNotFound(err) {
+			return nil, nil, ErrObjectNotFound
+		}
+		return nil, nil, err
+	}
+	if record.Status != repository.ObjectStatusActive {
+		return nil, nil, ErrObjectNotActive
+	}
+	if maxBytes <= 0 {
+		maxBytes = 1 << 20
+	}
+	if record.ContentSize > maxBytes {
+		return nil, nil, fmt.Errorf("%w: object exceeds max read size", ErrObjectInvalid)
+	}
+	content, err := s.storage.ReadObject(ctx, record.Bucket, record.ObjectKey, maxBytes)
+	if err != nil {
+		return nil, nil, err
+	}
+	return record, content, nil
 }
 
 func (s *ObjectService) createDownloadURLForRecord(ctx context.Context, record *model.ObjectRecord, input CreateDownloadURLInput) (*DownloadURLResponse, error) {

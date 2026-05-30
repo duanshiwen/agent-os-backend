@@ -1,7 +1,7 @@
-# AgentOS Backend Phase 1 / M3.3 Status
+# AgentOS Backend Phase 1 / Full M3 KB Hub Status
 
 Updated: 2026-05-30
-Branch: `m2-4-sync-integration-gate`
+Branch: `feat/kb-hub-m3-full`
 
 ## Summary
 
@@ -514,44 +514,93 @@ Snapshot ID:   48d8ceaa-fbe5-449e-91e8-72e9a1b128d3
 Entry Record:  1b2b0c10-816f-468f-a7a2-f07f38ed9ea3
 ```
 
+## M3 Full KB Hub Completion
+
+Full M3 now implements the KB Hub as a coherent publish / storage / index / discovery / subscription / access / usage / billing / contributor-reporting subsystem.
+
+Implemented full M3 additions:
+
+- public marketplace search/filter over published collections:
+  - `q`
+  - `owner_id`
+  - `is_free`
+  - `limit`
+  - `offset`
+- marketplace collection card metadata:
+  - latest snapshot id/version;
+  - entry count;
+  - total tokens;
+  - pricing fields;
+  - active install count;
+  - manifest/content URL issuance counts;
+- collection pricing update and validation:
+  - `PUT /api/v1/kb/collections/:id/pricing`;
+- owner stats and contributor reporting:
+  - `GET /api/v1/kb/collections/:id/stats`;
+  - `GET /api/v1/kb/collections/:id/earnings`;
+- KB search/index foundation:
+  - `kb_search_documents` index rows are created on snapshot publish;
+  - public lexical search API: `GET /api/v1/kb/public/search`;
+  - metadata search mode;
+  - hybrid mode explicitly reports semantic unavailability;
+  - semantic mode returns explicit `501 semantic search unavailable` rather than fake results;
+- usage metering:
+  - public manifest URL issuance;
+  - installed manifest URL issuance;
+  - installed entry content URL issuance;
+  - installed entry fulltext fetch;
+- billing ledger foundation:
+  - `kb_usage_records`;
+  - `billing_accounts`;
+  - `billing_transactions`;
+  - `contributor_earnings`;
+- billing APIs:
+  - `GET /api/v1/billing/account`;
+  - `GET /api/v1/billing/transactions`;
+- installed fulltext fetch endpoint:
+  - `POST /api/v1/kb/collections/:id/snapshots/:snapshot_id/entries/:entry_id/fulltext`;
+- full M3 live smoke script:
+  - `scripts/smoke-kb-full-m3.sh`.
+
+New full M3 migration:
+
+```text
+migrations/015_kb_usage_billing_search.sql
+```
+
+Latest local verification:
+
+```text
+go test ./...: 119 passed in 10 packages
+```
+
+Expected full live verification once the backend and dependencies are running:
+
+```bash
+docker compose up -d postgres redis minio
+AUTO_MIGRATE=true go run ./cmd/server
+./scripts/smoke-object-storage.sh
+./scripts/smoke-kb-snapshot.sh
+./scripts/smoke-kb-install.sh
+./scripts/smoke-kb-access.sh
+./scripts/smoke-kb-full-m3.sh
+./scripts/smoke-live-two-device-knowledge-sync.sh
+```
+
 ## Current Known Limitations
 
-Phase 1 / M3.3 intentionally does **not** include:
+Full M3 intentionally still does **not** include:
 
-- marketplace ranking/search beyond basic public discovery;
-- KB publishing / snapshot / subscription semantics;
-- semantic indexing, embeddings, or content storage pipeline;
-- backend business usage of Rust knowledge FFI beyond SDK/client contract verification;
 - plugin marketplace / SAGE service routes;
-- billing business logic;
 - multi-server federation or remote server authentication;
 - a full client-side merge engine;
 - full conversation history reconstruction solely from sync events;
 - production observability stack;
-- generic external sync write APIs.
+- generic external sync write APIs;
+- real vector embedding provider integration.
 
-Model structs for KB, plugin, and billing already exist, but they should be treated as future-phase placeholders until the corresponding service, repository, handler, migration, and sync semantics are designed.
-
-Local live Postgres/Redis/MinIO verification has now passed on this machine.
-
-Latest verification set:
-
-```text
-go test ./...: 118 passed in 10 packages
-scripts/smoke-kb-access.sh: KB access smoke passed
-scripts/smoke-kb-install.sh: KB install smoke passed
-scripts/smoke-kb-snapshot.sh: KB snapshot smoke passed
-scripts/smoke-object-storage.sh: Object storage smoke passed
-scripts/smoke-live-two-device-knowledge-sync.sh: Live two-device knowledge sync smoke passed
-```
+Semantic search is deliberately not faked. The M3 search service exposes the semantic boundary and returns explicit unavailability until a real embedding provider/index is configured.
 
 ## Recommended Next Milestone
 
-M3.4 KB Hub Search/Marketplace Metadata Slice is now the recommended next milestone. Recommended next steps:
-
-1. add basic public search/filter over published collections (`q`, owner, tags later if modeled);
-2. add safe collection metadata fields needed for marketplace cards;
-3. add lightweight usage event recording for manifest/content download URL issuance;
-4. add owner-facing subscription count / install count summary;
-5. add smoke for search and usage metrics;
-6. keep billing settlement, semantic vector search, ranking algorithms, and revenue share out of this slice.
+Recommended next milestone is **M4 Plugin Marketplace + SAGE** after live full M3 smoke verification passes. If search quality becomes the priority before M4, the alternative next milestone is a dedicated semantic search provider integration with a real embedding/index backend and contract tests.
