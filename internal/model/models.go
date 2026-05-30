@@ -374,6 +374,18 @@ type ContributorEarning struct {
 	NetAmount     int64     `json:"net_amount"`
 }
 
+type SensitiveOperationConfirmation struct {
+	Base
+	UserID         uuid.UUID  `gorm:"type:uuid;index;not null" json:"user_id"`
+	DeviceID       string     `gorm:"index;not null" json:"device_id"`
+	Operation      string     `gorm:"index;not null" json:"operation"`
+	TokenHash      string     `gorm:"uniqueIndex;not null" json:"-"`
+	ExpiresAt      time.Time  `gorm:"index;not null" json:"expires_at"`
+	UsedAt         *time.Time `json:"used_at"`
+	ConsumedBy     string     `gorm:"index" json:"consumed_by"`
+	RemoteMetadata string     `json:"remote_metadata"`
+}
+
 type AuditEvent struct {
 	Base
 	ActorUserID   *uuid.UUID        `gorm:"type:uuid;index" json:"actor_user_id"`
@@ -389,5 +401,5 @@ type AuditEvent struct {
 }
 
 func AllModels() []any {
-	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &UserAgentSetting{}, &UserServerConnection{}, &UserKnowledgeEntry{}, &ObjectRecord{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBUsageRecord{}, &KBSearchDocument{}, &KBEmbeddingJob{}, &KBSearchEmbedding{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}, &AuditEvent{}}
+	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &UserAgentSetting{}, &UserServerConnection{}, &UserKnowledgeEntry{}, &ObjectRecord{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBUsageRecord{}, &KBSearchDocument{}, &KBEmbeddingJob{}, &KBSearchEmbedding{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}, &SensitiveOperationConfirmation{}, &AuditEvent{}}
 }

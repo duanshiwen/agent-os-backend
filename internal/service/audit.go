@@ -17,14 +17,18 @@ const (
 )
 
 const (
-	AuditActionAdmissionPolicyUpdated     = "admission.policy.updated"
-	AuditActionAdmissionInvitationCodeSet = "admission.invitation_code.set"
-	AuditActionAdmissionRequestApproved   = "admission.request.approved"
-	AuditActionAdmissionRequestRejected   = "admission.request.rejected"
-	AuditActionDevicePairingStarted       = "device.pairing.started"
-	AuditActionDevicePairingClaimed       = "device.pairing.claimed"
-	AuditActionDeviceRenamed              = "device.renamed"
-	AuditActionDeviceRevoked              = "device.revoked"
+	AuditActionAdmissionPolicyUpdated        = "admission.policy.updated"
+	AuditActionAdmissionInvitationCodeSet    = "admission.invitation_code.set"
+	AuditActionAdmissionRequestApproved      = "admission.request.approved"
+	AuditActionAdmissionRequestRejected      = "admission.request.rejected"
+	AuditActionDevicePairingStarted          = "device.pairing.started"
+	AuditActionDevicePairingClaimed          = "device.pairing.claimed"
+	AuditActionDeviceRenamed                 = "device.renamed"
+	AuditActionDeviceRevoked                 = "device.revoked"
+	AuditActionPasswordSet                   = "identity.password.set"
+	AuditActionPasswordChanged               = "identity.password.changed"
+	AuditActionSensitiveConfirmationIssued   = "sensitive_operation.confirmation.issued"
+	AuditActionSensitiveConfirmationConsumed = "sensitive_operation.confirmation.consumed"
 )
 
 type AuditService struct {

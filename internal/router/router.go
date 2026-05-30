@@ -35,6 +35,8 @@ func Setup(
 	// Services (using injected repos)
 	auditRepo := repository.NewAuditRepo(db)
 	auditSvc := service.NewAuditService(auditRepo)
+	sensitiveOperationRepo := repository.NewSensitiveOperationRepo(db)
+	sensitiveOperationSvc := service.NewSensitiveOperationService(userRepo, sensitiveOperationRepo, auditSvc)
 	admissionRepo := repository.NewAdmissionRepo(db)
 	admissionSvc := service.NewAdmissionServiceWithRepo(userRepo, admissionRepo, cfg.Admission)
 	identitySvc := service.NewIdentityServiceWithAdmission(userRepo, cfg.JWT, signatureVerifier, admissionSvc)
@@ -88,6 +90,7 @@ func Setup(
 	knowledgeEntriesH := handler.NewKnowledgeEntriesHandler(knowledgeEntriesSvc)
 	objectH := handler.NewObjectHandler(objectSvc)
 	kbHubH := handler.NewKBHubHandler(kbHubSvc)
+	sensitiveOperationH := handler.NewSensitiveOperationHandler(sensitiveOperationSvc)
 	kbHubH.SetSearchService(kbSearchSvc)
 	kbHubH.SetBillingService(billingSvc)
 
@@ -154,6 +157,8 @@ func Setup(
 			protected.POST("/devices/pairing/start", pairingH.Start)
 			protected.GET("/users/me", identityH.GetProfile)
 			protected.PUT("/users/me", identityH.UpdateProfile)
+			protected.POST("/users/me/password", sensitiveOperationH.SetPassword)
+			protected.PUT("/users/me/password", sensitiveOperationH.ChangePassword)
 			protected.POST("/users/me/devices", identityH.PairDevice)
 			protected.GET("/users/me/devices", identityH.GetDevices)
 			protected.PUT("/users/me/devices/:device_id", identityH.RenameDevice)
@@ -168,6 +173,8 @@ func Setup(
 
 			protected.GET("/sync/events", syncH.GetEvents)
 			protected.POST("/sync/ack", syncH.AckEvents)
+
+			protected.POST("/sensitive-operations/confirmations", sensitiveOperationH.IssueConfirmation)
 
 			protected.GET("/skills/settings", skillSettingsH.List)
 			protected.PUT("/skills/settings/:skill_id", skillSettingsH.Update)
