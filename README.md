@@ -180,6 +180,12 @@ docker compose up -d
 ./scripts/smoke-kb-embedding-worker.sh
 ```
 
+BGE-M3 首次下载需要数 GB 空间。Docker Compose 默认把模型缓存 bind mount 到 `${EMBEDDING_MODEL_CACHE_DIR:-./.cache/embedding-models}`，避免 Docker named volume 空间不足；如需改位置：
+
+```bash
+EMBEDDING_MODEL_CACHE_DIR=/path/with/free-space docker compose up -d embedding-worker
+```
+
 不下载 BGE-M3 的端到端确定性 smoke（验证 publish → durable queue → Go worker → semantic search）：
 
 ```bash

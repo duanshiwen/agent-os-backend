@@ -32,6 +32,9 @@ coverage.html
 # === Docker ===
 docker-compose.override.yml
 
+# === Local model caches ===
+/.cache/
+
 # === Build ===
 /bin/
 /dist/

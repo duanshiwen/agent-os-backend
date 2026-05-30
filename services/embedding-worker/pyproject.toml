@@ -4,9 +4,17 @@ version = "0.1.0"
 description = "Local BGE-M3 embedding worker for AgentOS Backend"
 requires-python = ">=3.11"
 dependencies = [
-  "fastapi>=0.111.0",
-  "uvicorn[standard]>=0.30.0",
-  "sentence-transformers>=3.0.0",
+  "fastapi>=0.111,<1.0",
+  "uvicorn[standard]>=0.30,<1.0",
+  # Keep the local worker on a stable CPU-friendly inference stack.
+  # Unbounded sentence-transformers/torch can resolve to very new Torch builds
+  # that pull large CUDA dependency packages during Docker builds.
+  "sentence-transformers>=3.0,<4.0",
+  "transformers>=4.41,<5.0",
+  "huggingface-hub>=0.23,<1.0",
+  # transformers now requires torch>=2.6 for torch.load safety hardening
+  # (CVE-2025-32434), while the upper bound avoids latest CUDA-heavy wheels.
+  "torch>=2.6,<2.8",
 ]
 
 [tool.pytest.ini_options]

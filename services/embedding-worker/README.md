@@ -22,14 +22,21 @@ pip install .
 uvicorn app.main:app --host 0.0.0.0 --port 8091
 ```
 
-First run downloads the model into the HuggingFace cache.
+First run downloads the model into the HuggingFace cache. BGE-M3 is a multi-GB model, so make sure the cache location has several GB free.
 
 ## Docker
 
 ```bash
 docker build -t agentos-embedding-worker services/embedding-worker
-docker run -p 8091:8091 agentos-embedding-worker
+docker run -p 8091:8091 \
+  -e HF_HOME=/models/huggingface \
+  -e TRANSFORMERS_CACHE=/models/huggingface/transformers \
+  -e SENTENCE_TRANSFORMERS_HOME=/models/sentence-transformers \
+  -v "$(pwd)/.cache/embedding-models:/models" \
+  agentos-embedding-worker
 ```
+
+Docker Compose uses `${EMBEDDING_MODEL_CACHE_DIR:-./.cache/embedding-models}` as a host bind-mounted cache by default. This avoids Docker named-volume disk limits on local machines.
 
 ## Environment
 
