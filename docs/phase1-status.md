@@ -587,9 +587,74 @@ AUTO_MIGRATE=true go run ./cmd/server
 ./scripts/smoke-live-two-device-knowledge-sync.sh
 ```
 
+## M3.5 Async Semantic Search Pipeline
+
+M3.5 adds the first real semantic search pipeline for KB Hub without blocking snapshot publish on model inference.
+
+Implemented M3.5 additions:
+
+- PostgreSQL + pgvector semantic storage:
+  - `CREATE EXTENSION IF NOT EXISTS vector` is prepared before AutoMigrate in PostgreSQL mode;
+  - local Docker Compose uses `pgvector/pgvector:pg16`;
+  - `kb_search_embeddings.embedding` uses `vector(1024)` for BGE-M3 dense embeddings;
+- durable PostgreSQL embedding queue:
+  - `kb_embedding_jobs` is the task source of truth;
+  - job claiming uses `FOR UPDATE SKIP LOCKED` on PostgreSQL;
+  - statuses include `pending`, `processing`, `ready`, `retrying`, `failed`, `cancelled`, and `skipped`;
+  - retry/failure metadata is persisted with attempts, max attempts, backoff, worker lock, and last error;
+- snapshot publish integration:
+  - `kb_search_documents` remain the lexical/index source;
+  - snapshot indexing enqueues embedding jobs asynchronously when an embedding provider is configured;
+  - publish does not call model inference synchronously;
+- embedding providers:
+  - `disabled` for default safe startup;
+  - `deterministic` for ordinary Go tests and local contract coverage;
+  - `local_http` for the local Python model worker;
+- local Python embedding model worker:
+  - path: `services/embedding-worker`;
+  - model: `BAAI/bge-m3`;
+  - dimensions: `1024`;
+  - endpoints: `GET /health`, `GET /metadata`, `POST /embed`;
+- Go embedding job worker:
+  - command: `go run ./cmd/worker`;
+  - claims durable jobs, calls the provider, writes pgvector embeddings, and handles retry/backoff;
+- search behavior:
+  - `mode=semantic` uses query embedding + pgvector cosine distance when available;
+  - `mode=hybrid` merges lexical and semantic results;
+  - semantic unavailability is explicit and hybrid falls back to lexical rather than faking semantic results;
+  - responses can include embedding coverage and unavailable reason;
+- operational endpoints:
+  - `GET /api/v1/kb/collections/:id/snapshots/:snapshot_id/embedding-status`;
+  - `POST /api/v1/kb/collections/:id/snapshots/:snapshot_id/embedding-jobs/retry-failed`;
+- smoke helper:
+  - `scripts/smoke-kb-embedding-worker.sh` validates the local Python worker metadata and sample embedding shape.
+
+New M3.5 migration:
+
+```text
+migrations/016_kb_semantic_search_pgvector.sql
+```
+
+Latest local verification:
+
+```text
+go test ./...: 122 passed in 11 packages
+Docker Compose config validation: passed
+Live pgvector AutoMigrate probe: vector extension + kb_search_embeddings.embedding vector column verified
+Deterministic semantic pipeline smoke: passed
+```
+
+Deterministic semantic smoke script:
+
+```text
+scripts/smoke-kb-semantic-deterministic.sh
+```
+
+It validates publish → durable queue enqueue → Go worker processing → ready embedding coverage → semantic search result without downloading BGE-M3.
+
 ## Current Known Limitations
 
-Full M3 intentionally still does **not** include:
+Full M3 / M3.5 intentionally still does **not** include:
 
 - plugin marketplace / SAGE service routes;
 - multi-server federation or remote server authentication;
@@ -597,10 +662,12 @@ Full M3 intentionally still does **not** include:
 - full conversation history reconstruction solely from sync events;
 - production observability stack;
 - generic external sync write APIs;
-- real vector embedding provider integration.
+- chunk-level passage embeddings;
+- BGE-M3 sparse / multi-vector retrieval;
+- OpenAI/Cohere/Voyage or other paid/closed embedding providers as defaults.
 
-Semantic search is deliberately not faked. The M3 search service exposes the semantic boundary and returns explicit unavailability until a real embedding provider/index is configured.
+Semantic search is no longer faked: it is available only when a configured embedding provider and ready pgvector rows exist. Hybrid search degrades to lexical results and reports semantic unavailable reason / coverage when semantic indexing is not ready.
 
 ## Recommended Next Milestone
 
-Recommended next milestone is **M4 Plugin Marketplace + SAGE** after live full M3 smoke verification passes. If search quality becomes the priority before M4, the alternative next milestone is a dedicated semantic search provider integration with a real embedding/index backend and contract tests.
+Recommended next milestone is to live-smoke M3.5 with Docker Compose (`embedding-worker` + `embedding-job-worker`) and then proceed to **M4 Plugin Marketplace + SAGE**. If search quality becomes the priority before M4, the next search slice should add chunk-level passage embeddings and retrieval-quality evaluation rather than changing the provider architecture.

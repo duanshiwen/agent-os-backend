@@ -18,6 +18,7 @@ type Config struct {
 	Admission        AdmissionConfig
 	IdentityVerifier IdentityVerifierConfig
 	ObjectStorage    ObjectStorageConfig
+	Embedding        EmbeddingConfig
 }
 
 type AppConfig struct {
@@ -54,6 +55,15 @@ type ObjectStorageConfig struct {
 	DownloadTTLSecs int
 }
 
+type EmbeddingConfig struct {
+	Provider     string
+	Endpoint     string
+	Model        string
+	Dimensions   int
+	TimeoutSecs  int
+	MaxBatchSize int
+}
+
 func (d DatabaseConfig) DSN() string {
 	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s TimeZone=Asia/Shanghai", d.Host, d.Port, d.User, d.Password, d.DBName, d.SSLMode)
 }
@@ -79,6 +89,14 @@ func Load() (*Config, error) {
 			Bucket:          getEnv("OBJECT_STORAGE_BUCKET", "agentos-objects"),
 			UploadTTLSecs:   getEnvInt("OBJECT_UPLOAD_PRESIGN_TTL_SECONDS", 900),
 			DownloadTTLSecs: getEnvInt("OBJECT_DOWNLOAD_PRESIGN_TTL_SECONDS", 900),
+		},
+		Embedding: EmbeddingConfig{
+			Provider:     getEnv("EMBEDDING_PROVIDER", "disabled"),
+			Endpoint:     getEnv("EMBEDDING_ENDPOINT", "http://localhost:8091"),
+			Model:        getEnv("EMBEDDING_MODEL", "BAAI/bge-m3"),
+			Dimensions:   getEnvInt("EMBEDDING_DIMENSIONS", 1024),
+			TimeoutSecs:  getEnvInt("EMBEDDING_TIMEOUT_SECONDS", 30),
+			MaxBatchSize: getEnvInt("EMBEDDING_MAX_BATCH_SIZE", 16),
 		},
 	}
 	return cfg, cfg.Validate()
@@ -112,6 +130,23 @@ func (c *Config) Validate() error {
 	}
 	if c.ObjectStorage.DownloadTTLSecs <= 0 {
 		return fmt.Errorf("OBJECT_DOWNLOAD_PRESIGN_TTL_SECONDS must be positive")
+	}
+	switch c.Embedding.Provider {
+	case "disabled", "deterministic", "local_http":
+	default:
+		return fmt.Errorf("unsupported EMBEDDING_PROVIDER %q", c.Embedding.Provider)
+	}
+	if c.Embedding.Dimensions <= 0 {
+		return fmt.Errorf("EMBEDDING_DIMENSIONS must be positive")
+	}
+	if c.Embedding.TimeoutSecs <= 0 {
+		return fmt.Errorf("EMBEDDING_TIMEOUT_SECONDS must be positive")
+	}
+	if c.Embedding.MaxBatchSize <= 0 {
+		return fmt.Errorf("EMBEDDING_MAX_BATCH_SIZE must be positive")
+	}
+	if c.Embedding.Provider == "local_http" && strings.TrimSpace(c.Embedding.Endpoint) == "" {
+		return fmt.Errorf("EMBEDDING_ENDPOINT is required when EMBEDDING_PROVIDER=local_http")
 	}
 	return nil
 }

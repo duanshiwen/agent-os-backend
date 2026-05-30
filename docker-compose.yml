@@ -24,9 +24,57 @@ services:
         condition: service_healthy
     restart: on-failure
 
-  # === PostgreSQL 16 ===
+  # === AgentOS KB Embedding Job Worker (Go) ===
+  embedding-job-worker:
+    build:
+      context: .
+      target: dev-base
+    container_name: agentos-dev-embedding-job-worker
+    command: go run ./cmd/worker
+    volumes:
+      - ./:/app
+      - go-mod-cache:/go/pkg/mod
+    env_file:
+      - .env
+    environment:
+      PG_HOST: postgres
+      EMBEDDING_PROVIDER: local_http
+      EMBEDDING_ENDPOINT: http://embedding-worker:8091
+      EMBEDDING_MODEL: BAAI/bge-m3
+      EMBEDDING_DIMENSIONS: "1024"
+    networks:
+      - agentos-dev-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      embedding-worker:
+        condition: service_started
+    restart: on-failure
+
+  # === AgentOS Local Embedding Model Worker (BGE-M3) ===
+  embedding-worker:
+    build:
+      context: ./services/embedding-worker
+    container_name: agentos-dev-embedding-worker
+    ports:
+      - "8091:8091"
+    environment:
+      EMBEDDING_MODEL: BAAI/bge-m3
+      EMBEDDING_DEVICE: cpu
+      EMBEDDING_DIMENSIONS: "1024"
+      EMBEDDING_NORMALIZE: "true"
+      HF_HOME: /models/huggingface
+      TRANSFORMERS_CACHE: /models/huggingface/transformers
+      SENTENCE_TRANSFORMERS_HOME: /models/sentence-transformers
+    volumes:
+      - ${EMBEDDING_MODEL_CACHE_DIR:-./.cache/embedding-models}:/models
+    networks:
+      - agentos-dev-network
+    restart: on-failure
+
+  # === PostgreSQL 16 + pgvector ===
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: agentos-dev-postgres
     ports:
       - "${PG_PORT:-5432}:5432"
@@ -90,3 +138,4 @@ volumes:
   redis-data:
   minio-data:
   go-mod-cache:
+  embedding-model-cache:

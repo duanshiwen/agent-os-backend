@@ -24,9 +24,11 @@ const (
 )
 
 type KBSearchService struct {
-	searchRepo *repository.KBSearchRepo
-	kbRepo     *repository.KBHubRepo
-	billingSvc *KBBillingService
+	searchRepo        *repository.KBSearchRepo
+	embeddingRepo     *repository.KBEmbeddingRepo
+	embeddingProvider EmbeddingProvider
+	kbRepo            *repository.KBHubRepo
+	billingSvc        *KBBillingService
 }
 
 type KBSearchInput struct {
@@ -44,9 +46,20 @@ type KBSearchResult struct {
 	SemanticAvailable         bool                 `json:"semantic_available"`
 	SemanticUnavailableReason string               `json:"semantic_unavailable_reason,omitempty"`
 	Items                     []KBSearchResultItem `json:"items"`
+	EmbeddingCoverage         *float64             `json:"embedding_coverage,omitempty"`
 	Limit                     int                  `json:"limit"`
 	Offset                    int                  `json:"offset"`
 	Total                     int64                `json:"total"`
+}
+
+type KBEmbeddingStatus struct {
+	SnapshotID                uuid.UUID                       `json:"snapshot_id"`
+	Provider                  string                          `json:"provider"`
+	Model                     string                          `json:"model"`
+	Dimensions                int                             `json:"dimensions"`
+	ProviderHealth            *EmbeddingProviderHealth        `json:"provider_health,omitempty"`
+	ProviderUnavailableReason string                          `json:"provider_unavailable_reason,omitempty"`
+	Coverage                  *repository.KBEmbeddingCoverage `json:"coverage,omitempty"`
 }
 
 type KBSearchResultItem struct {
@@ -59,10 +72,68 @@ type KBSearchResultItem struct {
 	Tags            []string  `json:"tags"`
 	Tokens          int       `json:"tokens"`
 	Score           float64   `json:"score"`
+	LexicalScore    *float64  `json:"lexical_score,omitempty"`
+	SemanticScore   *float64  `json:"semantic_score,omitempty"`
 }
 
 func NewKBSearchService(searchRepo *repository.KBSearchRepo, kbRepo *repository.KBHubRepo, billingSvc *KBBillingService) *KBSearchService {
-	return &KBSearchService{searchRepo: searchRepo, kbRepo: kbRepo, billingSvc: billingSvc}
+	return &KBSearchService{searchRepo: searchRepo, kbRepo: kbRepo, billingSvc: billingSvc, embeddingProvider: DisabledEmbeddingProvider{model: DefaultEmbeddingModel, dimensions: DefaultEmbeddingDimensions}}
+}
+
+func (s *KBSearchService) SetEmbedding(repo *repository.KBEmbeddingRepo, provider EmbeddingProvider) {
+	s.embeddingRepo = repo
+	if provider != nil {
+		s.embeddingProvider = provider
+	}
+}
+
+type RetryKBEmbeddingJobsResult struct {
+	SnapshotID uuid.UUID `json:"snapshot_id"`
+	Provider   string    `json:"provider"`
+	Model      string    `json:"model"`
+	Retried    int64     `json:"retried"`
+}
+
+func (s *KBSearchService) RetryFailedEmbeddingJobs(snapshotID uuid.UUID) (*RetryKBEmbeddingJobsResult, error) {
+	if snapshotID == uuid.Nil {
+		return nil, fmt.Errorf("%w: snapshot_id is required", ErrKBInvalid)
+	}
+	if s.embeddingRepo == nil {
+		return nil, ErrKBSemanticSearchUnavailable
+	}
+	provider := s.embeddingProvider
+	if provider == nil {
+		provider = DisabledEmbeddingProvider{model: DefaultEmbeddingModel, dimensions: DefaultEmbeddingDimensions}
+	}
+	count, err := s.embeddingRepo.RetryFailedJobs(snapshotID, provider.Name(), provider.Model())
+	if err != nil {
+		return nil, err
+	}
+	return &RetryKBEmbeddingJobsResult{SnapshotID: snapshotID, Provider: provider.Name(), Model: provider.Model(), Retried: count}, nil
+}
+
+func (s *KBSearchService) EmbeddingStatus(ctx context.Context, snapshotID uuid.UUID) (*KBEmbeddingStatus, error) {
+	if snapshotID == uuid.Nil {
+		return nil, fmt.Errorf("%w: snapshot_id is required", ErrKBInvalid)
+	}
+	provider := s.embeddingProvider
+	if provider == nil {
+		provider = DisabledEmbeddingProvider{model: DefaultEmbeddingModel, dimensions: DefaultEmbeddingDimensions}
+	}
+	status := &KBEmbeddingStatus{SnapshotID: snapshotID, Provider: provider.Name(), Model: provider.Model(), Dimensions: provider.Dimensions()}
+	if health, err := provider.Health(ctx); err != nil {
+		status.ProviderUnavailableReason = err.Error()
+	} else {
+		status.ProviderHealth = health
+	}
+	if s.embeddingRepo != nil {
+		coverage, err := s.embeddingRepo.Coverage(snapshotID, provider.Name(), provider.Model())
+		if err != nil {
+			return nil, err
+		}
+		status.Coverage = coverage
+	}
+	return status, nil
 }
 
 func (s *KBSearchService) IndexSnapshot(ctx context.Context, collection *model.KBCollection, snapshot *model.KBSnapshot, entries []model.KBSnapshotEntry) error {
@@ -83,25 +154,30 @@ func (s *KBSearchService) IndexSnapshot(ctx context.Context, collection *model.K
 			Tags:            entry.Tags,
 			Metadata:        entry.Metadata,
 			ContentText:     strings.Join([]string{entry.Title, entry.Summary, entry.EntryID}, "\n"),
-			ContentHash:     snapshot.ContentHash,
+			ContentHash:     snapshotEntryContentHash(snapshot, entry),
 			Tokens:          entry.Tokens,
 			Status:          "active",
 			IndexedAt:       now,
 		})
 	}
+	if s.embeddingRepo != nil && s.embeddingProvider != nil && s.embeddingProvider.Name() != EmbeddingProviderDisabled {
+		return s.searchRepo.ReplaceSnapshotDocumentsWithEmbeddingJobs(snapshot.ID, docs, s.embeddingRepo, s.embeddingProvider.Name(), s.embeddingProvider.Model(), s.embeddingProvider.Dimensions())
+	}
 	return s.searchRepo.ReplaceSnapshotDocuments(snapshot.ID, docs)
 }
 
 func (s *KBSearchService) Search(ctx context.Context, input KBSearchInput) (*KBSearchResult, error) {
-	_ = ctx
 	mode := normalizeSearchMode(input.Mode)
 	if mode == KBSearchModeSemantic {
-		return nil, ErrKBSemanticSearchUnavailable
+		return s.searchSemantic(ctx, input)
 	}
 	if mode == KBSearchModeMetadata {
 		return s.searchMetadata(input)
 	}
-	result, err := s.searchLexical(input, mode == KBSearchModeHybrid)
+	if mode == KBSearchModeHybrid {
+		return s.searchHybrid(ctx, input)
+	}
+	result, err := s.searchLexical(input, false)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +231,8 @@ func (s *KBSearchService) searchLexical(input KBSearchInput, hybrid bool) (*KBSe
 	}
 	items := make([]KBSearchResultItem, 0, len(docs))
 	for _, doc := range docs {
-		items = append(items, KBSearchResultItem{CollectionID: doc.CollectionID, SnapshotID: doc.SnapshotID, SnapshotEntryID: doc.SnapshotEntryID, EntryID: doc.EntryID, Title: doc.Title, Summary: doc.Summary, Tags: []string(doc.Tags), Tokens: doc.Tokens, Score: lexicalScore(input.Q, doc)})
+		score := lexicalScore(input.Q, doc)
+		items = append(items, KBSearchResultItem{CollectionID: doc.CollectionID, SnapshotID: doc.SnapshotID, SnapshotEntryID: doc.SnapshotEntryID, EntryID: doc.EntryID, Title: doc.Title, Summary: doc.Summary, Tags: []string(doc.Tags), Tokens: doc.Tokens, Score: score, LexicalScore: float64Ptr(score)})
 	}
 	mode := KBSearchModeLexical
 	semanticReason := ""
@@ -164,6 +241,81 @@ func (s *KBSearchService) searchLexical(input KBSearchInput, hybrid bool) (*KBSe
 		semanticReason = ErrKBSemanticSearchUnavailable.Error()
 	}
 	return &KBSearchResult{Mode: string(mode), SemanticAvailable: false, SemanticUnavailableReason: semanticReason, Items: items, Limit: normalizeAPILimit(input.Limit), Offset: normalizeOffset(input.Offset), Total: total}, nil
+}
+
+func (s *KBSearchService) searchSemantic(ctx context.Context, input KBSearchInput) (*KBSearchResult, error) {
+	if s.embeddingRepo == nil || s.embeddingProvider == nil || s.embeddingProvider.Name() == EmbeddingProviderDisabled {
+		return nil, ErrKBSemanticSearchUnavailable
+	}
+	queryVector, err := s.embeddingProvider.EmbedTexts(ctx, []string{input.Q})
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrKBSemanticSearchUnavailable, err)
+	}
+	if len(queryVector) != 1 {
+		return nil, fmt.Errorf("%w: invalid query embedding response", ErrKBSemanticSearchUnavailable)
+	}
+	hits, err := s.searchRepo.SearchSemantic(repository.KBSearchSemanticQuery{Vector: queryVector[0].Vector, Provider: s.embeddingProvider.Name(), Model: s.embeddingProvider.Model(), CollectionID: input.CollectionID, SnapshotID: input.SnapshotID, Limit: input.Limit, Offset: input.Offset})
+	if err != nil {
+		return nil, err
+	}
+	items := make([]KBSearchResultItem, 0, len(hits))
+	for _, hit := range hits {
+		doc := hit.Document
+		items = append(items, KBSearchResultItem{CollectionID: doc.CollectionID, SnapshotID: doc.SnapshotID, SnapshotEntryID: doc.SnapshotEntryID, EntryID: doc.EntryID, Title: doc.Title, Summary: doc.Summary, Tags: []string(doc.Tags), Tokens: doc.Tokens, Score: hit.Score, SemanticScore: float64Ptr(hit.Score)})
+	}
+	result := &KBSearchResult{Mode: string(KBSearchModeSemantic), SemanticAvailable: len(items) > 0, Items: items, Limit: normalizeAPILimit(input.Limit), Offset: normalizeOffset(input.Offset), Total: int64(len(items))}
+	if input.SnapshotID != nil && *input.SnapshotID != uuid.Nil {
+		if coverage, err := s.embeddingRepo.Coverage(*input.SnapshotID, s.embeddingProvider.Name(), s.embeddingProvider.Model()); err == nil {
+			result.EmbeddingCoverage = &coverage.Coverage
+			if len(items) == 0 && coverage.ReadyEmbeddings == 0 {
+				result.SemanticAvailable = false
+				result.SemanticUnavailableReason = "no ready embeddings"
+			}
+		}
+	}
+	return result, nil
+}
+
+func (s *KBSearchService) searchHybrid(ctx context.Context, input KBSearchInput) (*KBSearchResult, error) {
+	lexical, err := s.searchLexical(input, true)
+	if err != nil {
+		return nil, err
+	}
+	lexical.Mode = string(KBSearchModeHybrid)
+	if s.embeddingRepo == nil || s.embeddingProvider == nil || s.embeddingProvider.Name() == EmbeddingProviderDisabled {
+		lexical.SemanticAvailable = false
+		lexical.SemanticUnavailableReason = ErrKBSemanticSearchUnavailable.Error()
+		return lexical, nil
+	}
+	semantic, err := s.searchSemantic(ctx, input)
+	if err != nil {
+		lexical.SemanticAvailable = false
+		lexical.SemanticUnavailableReason = err.Error()
+		return lexical, nil
+	}
+	byKey := map[string]int{}
+	for i, item := range lexical.Items {
+		byKey[item.SnapshotEntryID.String()] = i
+	}
+	for _, semItem := range semantic.Items {
+		if idx, ok := byKey[semItem.SnapshotEntryID.String()]; ok {
+			lex := lexical.Items[idx]
+			lexScore := lex.Score
+			semScore := semItem.Score
+			lexical.Items[idx].SemanticScore = float64Ptr(semScore)
+			lexical.Items[idx].Score = (0.3 * normalizeScore(lexScore)) + (0.7 * normalizeScore(semScore))
+			continue
+		}
+		semScore := semItem.Score
+		semItem.Score = 0.7 * normalizeScore(semScore)
+		semItem.SemanticScore = float64Ptr(semScore)
+		lexical.Items = append(lexical.Items, semItem)
+	}
+	lexical.SemanticAvailable = semantic.SemanticAvailable
+	lexical.SemanticUnavailableReason = semantic.SemanticUnavailableReason
+	lexical.EmbeddingCoverage = semantic.EmbeddingCoverage
+	lexical.Total = int64(len(lexical.Items))
+	return lexical, nil
 }
 
 func normalizeSearchMode(mode string) KBSearchMode {
@@ -195,6 +347,16 @@ func normalizeOffset(offset int) int {
 	return offset
 }
 
+func snapshotEntryContentHash(snapshot *model.KBSnapshot, entry model.KBSnapshotEntry) string {
+	if hash, ok := entry.Metadata["content_hash"].(string); ok && strings.TrimSpace(hash) != "" {
+		return hash
+	}
+	if strings.TrimSpace(snapshot.ContentHash) != "" {
+		return snapshot.ContentHash + ":" + entry.ID.String()
+	}
+	return entry.ID.String()
+}
+
 func lexicalScore(q string, doc model.KBSearchDocument) float64 {
 	q = strings.ToLower(strings.TrimSpace(q))
 	if q == "" {
@@ -211,6 +373,18 @@ func lexicalScore(q string, doc model.KBSearchDocument) float64 {
 		score += 1
 	}
 	return score
+}
+
+func float64Ptr(v float64) *float64 { return &v }
+
+func normalizeScore(v float64) float64 {
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
 }
 
 func firstCollectionID(items []KBSearchResultItem) uuid.UUID {

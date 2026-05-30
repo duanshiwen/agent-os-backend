@@ -122,6 +122,58 @@ func (h *KBHubHandler) GetSnapshot(c *gin.Context) {
 	response.OK(c, snapshot)
 }
 
+func (h *KBHubHandler) RetrySnapshotEmbeddingJobs(c *gin.Context) {
+	if h.searchSvc == nil {
+		response.InternalError(c, "kb search service not configured")
+		return
+	}
+	userID := middleware.MustGetUserID(c)
+	collectionID, ok := parseUUIDParam(c, "id")
+	if !ok {
+		return
+	}
+	snapshotID, ok := parseUUIDParam(c, "snapshot_id")
+	if !ok {
+		return
+	}
+	if _, err := h.svc.GetSnapshot(userID, collectionID, snapshotID); err != nil {
+		h.handleError(c, err)
+		return
+	}
+	result, err := h.searchSvc.RetryFailedEmbeddingJobs(snapshotID)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	response.OK(c, result)
+}
+
+func (h *KBHubHandler) GetSnapshotEmbeddingStatus(c *gin.Context) {
+	if h.searchSvc == nil {
+		response.InternalError(c, "kb search service not configured")
+		return
+	}
+	userID := middleware.MustGetUserID(c)
+	collectionID, ok := parseUUIDParam(c, "id")
+	if !ok {
+		return
+	}
+	snapshotID, ok := parseUUIDParam(c, "snapshot_id")
+	if !ok {
+		return
+	}
+	if _, err := h.svc.GetSnapshot(userID, collectionID, snapshotID); err != nil {
+		h.handleError(c, err)
+		return
+	}
+	status, err := h.searchSvc.EmbeddingStatus(c.Request.Context(), snapshotID)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	response.OK(c, status)
+}
+
 func (h *KBHubHandler) ListPublicCollections(c *gin.Context) {
 	input, ok := parseSearchCollectionsQuery(c)
 	if !ok {

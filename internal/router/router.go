@@ -1,6 +1,8 @@
 package router
 
 import (
+	"time"
+
 	"github.com/agent-os/backend/internal/config"
 	"github.com/agent-os/backend/internal/handler"
 	"github.com/agent-os/backend/internal/middleware"
@@ -60,7 +62,10 @@ func Setup(
 	billingRepo := repository.NewBillingRepo(db)
 	billingSvc := service.NewKBBillingService(billingRepo)
 	kbSearchRepo := repository.NewKBSearchRepo(db)
+	kbEmbeddingRepo := repository.NewKBEmbeddingRepo(db)
+	embeddingProvider := service.NewEmbeddingProvider(service.EmbeddingProviderConfig{Provider: cfg.Embedding.Provider, Endpoint: cfg.Embedding.Endpoint, Model: cfg.Embedding.Model, Dimensions: cfg.Embedding.Dimensions, Timeout: time.Duration(cfg.Embedding.TimeoutSecs) * time.Second, MaxBatchSize: cfg.Embedding.MaxBatchSize})
 	kbSearchSvc := service.NewKBSearchService(kbSearchRepo, kbHubRepo, billingSvc)
+	kbSearchSvc.SetEmbedding(kbEmbeddingRepo, embeddingProvider)
 	kbHubSvc := service.NewKBHubService(kbHubRepo, knowledgeEntriesRepo, objectSvc)
 	kbHubSvc.SetBillingService(billingSvc)
 	kbHubSvc.SetSearchService(kbSearchSvc)
@@ -192,6 +197,8 @@ func Setup(
 			protected.POST("/kb/collections/:id/snapshots", kbHubH.PublishSnapshot)
 			protected.GET("/kb/collections/:id/snapshots", kbHubH.ListSnapshots)
 			protected.GET("/kb/collections/:id/snapshots/:snapshot_id", kbHubH.GetSnapshot)
+			protected.GET("/kb/collections/:id/snapshots/:snapshot_id/embedding-status", kbHubH.GetSnapshotEmbeddingStatus)
+			protected.POST("/kb/collections/:id/snapshots/:snapshot_id/embedding-jobs/retry-failed", kbHubH.RetrySnapshotEmbeddingJobs)
 			protected.POST("/kb/collections/:id/install", kbHubH.InstallCollection)
 			protected.DELETE("/kb/collections/:id/install", kbHubH.CancelSubscription)
 			protected.POST("/kb/collections/:id/snapshots/:snapshot_id/manifest-download-url", kbHubH.CreateInstalledManifestDownloadURL)
