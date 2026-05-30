@@ -8,8 +8,9 @@ import (
 )
 
 type AdmissionHandler struct {
-	svc      *service.AdmissionService
-	auditSvc *service.AuditService
+	svc                   *service.AdmissionService
+	auditSvc              *service.AuditService
+	sensitiveOperationSvc *service.SensitiveOperationService
 }
 
 func NewAdmissionHandler(svc *service.AdmissionService) *AdmissionHandler {
@@ -18,6 +19,10 @@ func NewAdmissionHandler(svc *service.AdmissionService) *AdmissionHandler {
 
 func (h *AdmissionHandler) SetAuditService(auditSvc *service.AuditService) {
 	h.auditSvc = auditSvc
+}
+
+func (h *AdmissionHandler) SetSensitiveOperationService(svc *service.SensitiveOperationService) {
+	h.sensitiveOperationSvc = svc
 }
 
 // GET /api/v1/admin/admission/policy
@@ -54,7 +59,8 @@ func (h *AdmissionHandler) UpdatePolicy(c *gin.Context) {
 // PUT /api/v1/admin/admission/invitation-code
 func (h *AdmissionHandler) UpdateInvitationCode(c *gin.Context) {
 	var req struct {
-		InvitationCode string `json:"invitation_code" binding:"required"`
+		InvitationCode    string `json:"invitation_code" binding:"required"`
+		ConfirmationToken string `json:"confirmation_token" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, err.Error())
@@ -62,6 +68,15 @@ func (h *AdmissionHandler) UpdateInvitationCode(c *gin.Context) {
 	}
 
 	adminID := middleware.MustGetUserID(c)
+	if h.sensitiveOperationSvc == nil {
+		response.InternalError(c, "sensitive operation service unavailable")
+		return
+	}
+	if err := h.sensitiveOperationSvc.ConsumeConfirmation(adminID, req.ConfirmationToken, service.SensitiveOperationAdmissionInvitationUpdate, "admission.invitation_code.update"); err != nil {
+		h.recordAudit(c, service.AuditActionAdmissionInvitationCodeSet, "server_admission", "default", service.AuditOutcomeDenied, gin.H{"error": err.Error(), "reason": "confirmation_required"})
+		response.Forbidden(c, err.Error())
+		return
+	}
 	policy, err := h.svc.UpdateInvitationCode("default", req.InvitationCode, adminID)
 	if err != nil {
 		h.recordAudit(c, service.AuditActionAdmissionInvitationCodeSet, "server_admission", "default", service.AuditOutcomeFailure, gin.H{"error": err.Error()})

@@ -82,6 +82,7 @@ func Setup(
 	auditH := handler.NewAuditHandler(auditSvc)
 	admissionH := handler.NewAdmissionHandler(admissionSvc)
 	admissionH.SetAuditService(auditSvc)
+	admissionH.SetSensitiveOperationService(sensitiveOperationSvc)
 	convH := handler.NewConversationHandler(convSvc, msgSvc)
 	syncH := handler.NewSyncHandler(syncSvc)
 	pairingH := handler.NewDevicePairingHandler(pairingSvc)
