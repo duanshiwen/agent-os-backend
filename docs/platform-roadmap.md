@@ -254,13 +254,14 @@ federation handshake smoke
 audit hash-chain smoke
 ```
 
-## 11. Immediate Next Work After Stage 0
+## 11. Immediate Next Work After Stage 1 Core Hardening Pass
 
-The next implementation stage should start with Platform Core Hardening, but SAGE design should be prepared in parallel because governance and plugin models affect sync taxonomy, billing, audit, and federation.
+Stage 1 has completed the first platform core hardening closure pass: queryable audit events, device lifecycle hardening, password-backed sensitive operation confirmations, confirmation-gated device revoke/admission mutations, request ID propagation, `/ready`, and expired confirmation cleanup service support.
 
-Recommended first implementation targets after Stage 0:
+Recommended next implementation targets:
 
-1. admin bootstrap + admission/device audit events;
-2. sensitive-operation password confirmation;
-3. platform-wide audit event foundation;
-4. SAGE/Governance schema design docs before code.
+1. admin bootstrap and broader fine-grained admin role policy;
+2. audit hash-chain / tamper-evidence design and migration;
+3. active session invalidation for revoked devices;
+4. unified background job runner for cleanup, billing, embedding, and future moderation jobs;
+5. SAGE/Governance schema design docs before broad plugin code.

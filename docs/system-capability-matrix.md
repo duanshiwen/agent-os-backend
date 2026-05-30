@@ -14,7 +14,7 @@ Legend:
 
 ```text
 Backend: go test ./...
-Result: 122 passed in 11 packages
+Result: 135 passed in 11 packages
 
 Rust SDK: cargo test --workspace --all-targets --locked
 Result: 1560 passed, 2 ignored, 110 suites
@@ -30,13 +30,13 @@ Backend working tree at Stage 0 start had one existing README documentation diff
 | Identity | Ed25519 signature verification | ✅ | `POST /api/v1/auth/verify`; `SignatureVerifier`; FFI verifier | Version/export symbol release gate |
 | Identity | Rust FFI identity verifier | ✅ | `agentos_identity_verify_ed25519_challenge`; backend integration tests | Multi-platform bundled library release checks |
 | Identity | Direct registration disabled | ✅ | `/auth/register` returns Gone | None |
-| Admission | protocol / invitation / approval policies | ✅ | `AdmissionService`; admin routes; tests | Audit trail and admin bootstrap hardening |
-| Admission | Admin admission APIs | ✅ | policy get/update, invitation code, request approve/reject | Fine-grained admin audit and role policy |
-| Device | QR-only pairing start/claim | ✅ | `DevicePairingService`, one-time bcrypt token, QR hash | old-device confirmation / sensitive operation password flow |
+| Admission | protocol / invitation / approval policies | ✅ | `AdmissionService`; admin routes; tests; confirmation-gated policy updates | Admin bootstrap hardening |
+| Admission | Admin admission APIs | ✅ | policy get/update, invitation code, request approve/reject; invitation code updates require confirmation | Broader fine-grained role policy |
+| Device | QR-only pairing start/claim | ✅ | `DevicePairingService`, one-time bcrypt token, QR hash | old-device biometric UX on clients |
 | Device | Direct device create disabled | ✅ | `/users/me/devices` returns Gone | None |
-| Device | Device revoke / rename / trust | ⬜ | Device model exists | APIs, events, audit, active session invalidation |
+| Device | Device revoke / rename / trust | ✅ | rename/revoke APIs, active/revoked status, audit events, confirmation-gated revoke | Active session invalidation and richer trust posture |
 | User profile | Get/update self | ✅ | `/users/me`; emits `profile.updated` | Sensitive field policy |
-| Password | Password hash field | 🟡 | `users.password_hash` exists | setup/change/confirm routes; policy; tests |
+| Password | Password setup/change/confirmation | ✅ | password set/change routes; one-time sensitive operation confirmation tokens | Password reset/recovery policy |
 | Conversation | Private/group/agent conversation creation path | ✅ | `ConversationService`; routes | richer lifecycle events and moderation |
 | Messaging | Text message persistence | ✅ | `MessageService`; `messages` | edit/delete/reactions not complete |
 | Messaging | Offline fetch/ack foundation | ✅ | `offline_messages`; WS dispatcher | retention policy and delivery observability |
@@ -85,7 +85,8 @@ Backend working tree at Stage 0 start had one existing README documentation diff
 | Governance | Tool definition scanning | ⬜ | none | injection/typosquatting/capability mismatch scanner |
 | Governance | Response inspection | ⬜ | none | unsafe output / secret detection |
 | Governance | Approval receipts | ⬜ | none | user/admin approval record |
-| Audit | Append-only audit log | ⬜ | none | audit event model and hash chain |
+| Audit | Queryable audit event log | ✅ | `audit_events`; admin list endpoint; admission/device/sensitive-operation events | hash chain / tamper-evidence |
+| Security | Sensitive operation confirmation | ✅ | password-backed one-time confirmation tokens; device/admission enforcement | broaden to plugin grants, billing, federation admin operations |
 | Security | Kill switch | ⬜ | none | plugin/user/capability/server kill switches |
 | Federation | Local server list | ✅ | `user_server_connections` | local config only |
 | Federation | Server identity | ⬜ | none | server public key and trust records |
@@ -98,9 +99,11 @@ Backend working tree at Stage 0 start had one existing README documentation diff
 | Admin | KB admin/moderation | ⬜ | none | review/takedown/report APIs |
 | Admin | Plugin admin/review | ⬜ | none | review queue and revoke APIs |
 | Admin | Security/admin ops | ⬜ | none | audit/security/job dashboards |
-| Observability | `/health` | ✅ | database/redis/verifier checks | `/ready`, metrics, structured status |
-| Observability | Structured logging | ⬜ | standard log today | slog, request IDs, correlation IDs |
-| Release | Go unit/integration tests | ✅ | 25 test files, 122 passed | release-gate script |
+| Observability | `/health` | ✅ | database/redis/verifier checks | metrics and structured status |
+| Observability | `/ready` | ✅ | database readiness endpoint | broader dependency readiness policy |
+| Observability | Request IDs | ✅ | `X-Request-ID` middleware; generated or propagated | structured log integration |
+| Observability | Structured logging | ⬜ | standard log today | slog and correlation-aware logs |
+| Release | Go unit/integration tests | ✅ | 135 passed | release-gate script |
 | Release | Rust SDK tests | ✅ | 1560 passed | backend-pinned FFI artifact gate |
 | Release | Smoke scripts | 🟡 | many M2/M3 smoke scripts exist | unified full platform release gate |
 
