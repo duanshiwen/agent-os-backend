@@ -12,6 +12,9 @@ services:
       - go-mod-cache:/go/pkg/mod
     env_file:
       - .env
+    environment:
+      PG_HOST: postgres
+      REDIS_HOST: redis
     networks:
       - agentos-dev-network
     depends_on:
