@@ -206,11 +206,12 @@ updated_version="$(echo "$update_response" | jq -r '.data.version')"
 
 update_pull="$(api GET '/api/v1/sync/events?limit=100' "$TOKEN_B" '' 200)"
 assert_event "$update_pull" knowledge.updated "$ENTRY_ID"
+update_sequence="$(echo "$update_pull" | jq -r '.data.next_after_sequence')"
 ack_pull "$TOKEN_B" "$update_pull"
 
 echo "==> Device B stale update returns 409 and emits no event"
 api PUT "/api/v1/knowledge/entries/${ENTRY_ID}" "$TOKEN_B" "$(jq -cn --argjson base_version "$created_version" '{title:"stale",content_markdown:"# stale",summary:"stale",client_event_id:"live-stale-1",base_version:$base_version}')" 409 >/dev/null
-empty_after_conflict="$(api GET '/api/v1/sync/events?limit=100' "$TOKEN_A" '' 200)"
+empty_after_conflict="$(api GET "/api/v1/sync/events?after_sequence=${update_sequence}&limit=100" "$TOKEN_A" '' 200)"
 assert_event "$empty_after_conflict" '' '' 0
 
 echo "==> Device A deletes knowledge entry"
