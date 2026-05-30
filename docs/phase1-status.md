@@ -1,7 +1,18 @@
 # AgentOS Backend Phase 1 / Full M3 KB Hub Status
 
-Updated: 2026-05-30
-Branch: `feat/kb-hub-m3-full`
+Updated: 2026-05-31
+Branch: `main`
+Stage 0 reset: AgentOS Backend is now planned as a full platform completion program rather than MVP-only delivery. See `docs/platform-roadmap.md`, `docs/system-capability-matrix.md`, and `docs/architecture-boundaries.md` for the current platform baseline and architecture freeze.
+
+Latest local verification for Stage 0 baseline:
+
+```text
+Backend: go test ./...
+Result: 122 passed in 11 packages
+
+Rust SDK: cargo test --workspace --all-targets --locked
+Result: 1560 passed, 2 ignored, 110 suites
+```
 
 ## Summary
 

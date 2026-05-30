@@ -2,6 +2,15 @@
 
 Agent OS 联邦化网络的服务端进程（Go + Rust SDK FFI），提供身份接入、即时通讯、跨设备同步、知识库 Hub、插件市场和多服务器支持。
 
+## 平台规划文档
+
+Stage 0 已将 backend 从“分阶段 MVP”重新锁定为完整平台化交付路线。当前平台基线与架构边界见：
+
+- [`docs/platform-roadmap.md`](docs/platform-roadmap.md) — 一步到位平台完成路线图
+- [`docs/system-capability-matrix.md`](docs/system-capability-matrix.md) — 已实现 / 部分实现 / 待实现能力矩阵
+- [`docs/architecture-boundaries.md`](docs/architecture-boundaries.md) — Go/Rust、存储、同步、KB、SAGE、治理、联邦等边界冻结
+- [`docs/phase1-status.md`](docs/phase1-status.md) — 当前 Phase 1 → M3.5 实现状态和验证记录
+
 ## 快速开始
 
 ### 1. 环境准备
@@ -10,8 +19,21 @@ Agent OS 联邦化网络的服务端进程（Go + Rust SDK FFI），提供身份
 # 复制环境变量
 cp .env.example .env
 
-# 启动依赖服务（PostgreSQL + Redis + MinIO + 可选 embedding workers）
-docker compose up -d
+# 启动基础依赖服务（PostgreSQL + Redis + MinIO）
+# 不会下载 BGE-M3，适合普通 API / Go 开发。
+docker compose up -d postgres redis minio
+```
+
+如需同时在 Docker 中启动 API：
+
+```bash
+docker compose up -d api
+```
+
+如需启用真实 KB 语义搜索，再单独启动 embedding workers；首次启动会下载 BGE-M3 模型，耗时较长且需要数 GB 磁盘空间：
+
+```bash
+docker compose up -d embedding-worker embedding-job-worker
 ```
 
 ### 2. 运行
@@ -164,15 +186,17 @@ KB Hub semantic search 使用 PostgreSQL + pgvector 持久化 embedding，并通
 本地启用方式：
 
 ```bash
-# .env
+# .env：本机 go run ./cmd/server 时使用 localhost
 EMBEDDING_PROVIDER=local_http
 EMBEDDING_ENDPOINT=http://localhost:8091
 EMBEDDING_MODEL=BAAI/bge-m3
 EMBEDDING_DIMENSIONS=1024
 
-# 启动 API、PostgreSQL+pgvector、Redis、MinIO、embedding model worker、Go embedding job worker
-docker compose up -d
+# 启动 PostgreSQL+pgvector、Redis、MinIO、embedding model worker、Go embedding job worker
+docker compose up -d postgres redis minio embedding-worker embedding-job-worker
 ```
+
+如果 API 也运行在 Docker Compose 内，`embedding-job-worker` 已在 compose 中使用容器网络地址 `http://embedding-worker:8091`。
 
 手动检查真实 embedding worker（会触发/依赖本地 BGE-M3 环境）：
 
