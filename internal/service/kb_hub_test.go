@@ -242,8 +242,16 @@ func TestKBHubServiceFullM3MarketplacePricingAndSearch(t *testing.T) {
 	if search.Total != 1 || len(search.Items) != 1 || search.Items[0].EntryID != "strategy/blue-ocean" {
 		t.Fatalf("unexpected lexical search result: %+v", search)
 	}
-	if _, err := svc.searchSvc.Search(context.Background(), KBSearchInput{Q: "Blue Ocean", Mode: "semantic", Limit: 10}); err == nil || !strings.Contains(err.Error(), ErrKBSemanticSearchUnavailable.Error()) {
-		t.Fatalf("expected explicit semantic unavailable error, got %v", err)
+	worker := NewKBEmbeddingWorker(svc.searchSvc.embeddingRepo, svc.searchSvc.embeddingProvider, KBEmbeddingWorkerConfig{BatchSize: 8})
+	if err := worker.ProcessOnce(context.Background()); err != nil {
+		t.Fatalf("process embedding jobs: %v", err)
+	}
+	semantic, err := svc.searchSvc.Search(context.Background(), KBSearchInput{Q: "Blue Ocean", Mode: "semantic", SnapshotID: &detail.Snapshot.ID, Limit: 10})
+	if err != nil {
+		t.Fatalf("semantic search: %v", err)
+	}
+	if len(semantic.Items) != 1 || !semantic.SemanticAvailable {
+		t.Fatalf("expected deterministic semantic result, got %+v", semantic)
 	}
 }
 
@@ -253,14 +261,16 @@ func newKBHubServiceTestEnv(t *testing.T) (*KBHubService, *repository.KnowledgeE
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.UserKnowledgeEntry{}, &model.ObjectRecord{}, &model.KBCollection{}, &model.KBSnapshot{}, &model.KBSnapshotEntry{}, &model.KBSubscription{}, &model.KBUsageRecord{}, &model.KBSearchDocument{}, &model.BillingAccount{}, &model.BillingTransaction{}, &model.ContributorEarning{}); err != nil {
+	if err := db.AutoMigrate(&model.UserKnowledgeEntry{}, &model.ObjectRecord{}, &model.KBCollection{}, &model.KBSnapshot{}, &model.KBSnapshotEntry{}, &model.KBSubscription{}, &model.KBUsageRecord{}, &model.KBSearchDocument{}, &model.KBEmbeddingJob{}, &model.KBSearchEmbedding{}, &model.BillingAccount{}, &model.BillingTransaction{}, &model.ContributorEarning{}); err != nil {
 		t.Fatalf("migrate models: %v", err)
 	}
 	fake := &recordingObjectStorageBackend{fakeObjectStorageBackend: fakeObjectStorageBackend{head: ObjectHead{ContentHash: strings.Repeat("a", 64), ContentSize: 1}}}
 	objectSvc := NewObjectService(repository.NewObjectRecordsRepo(db), fake, config.ObjectStorageConfig{Bucket: "agentos-test", UploadTTLSecs: 900, DownloadTTLSecs: 900})
 	kbRepo := repository.NewKBHubRepo(db)
 	billingSvc := NewKBBillingService(repository.NewBillingRepo(db))
+	embeddingRepo := repository.NewKBEmbeddingRepo(db)
 	searchSvc := NewKBSearchService(repository.NewKBSearchRepo(db), kbRepo, billingSvc)
+	searchSvc.SetEmbedding(embeddingRepo, NewDeterministicEmbeddingProvider("BAAI/bge-m3", 1024))
 	svc := NewKBHubService(kbRepo, repository.NewKnowledgeEntriesRepo(db), objectSvc)
 	svc.SetBillingService(billingSvc)
 	svc.SetSearchService(searchSvc)

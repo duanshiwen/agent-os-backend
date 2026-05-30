@@ -1,6 +1,8 @@
 package router
 
 import (
+	"time"
+
 	"github.com/agent-os/backend/internal/config"
 	"github.com/agent-os/backend/internal/handler"
 	"github.com/agent-os/backend/internal/middleware"
@@ -60,7 +62,10 @@ func Setup(
 	billingRepo := repository.NewBillingRepo(db)
 	billingSvc := service.NewKBBillingService(billingRepo)
 	kbSearchRepo := repository.NewKBSearchRepo(db)
+	kbEmbeddingRepo := repository.NewKBEmbeddingRepo(db)
+	embeddingProvider := service.NewEmbeddingProvider(service.EmbeddingProviderConfig{Provider: cfg.Embedding.Provider, Endpoint: cfg.Embedding.Endpoint, Model: cfg.Embedding.Model, Dimensions: cfg.Embedding.Dimensions, Timeout: time.Duration(cfg.Embedding.TimeoutSecs) * time.Second, MaxBatchSize: cfg.Embedding.MaxBatchSize})
 	kbSearchSvc := service.NewKBSearchService(kbSearchRepo, kbHubRepo, billingSvc)
+	kbSearchSvc.SetEmbedding(kbEmbeddingRepo, embeddingProvider)
 	kbHubSvc := service.NewKBHubService(kbHubRepo, knowledgeEntriesRepo, objectSvc)
 	kbHubSvc.SetBillingService(billingSvc)
 	kbHubSvc.SetSearchService(kbSearchSvc)

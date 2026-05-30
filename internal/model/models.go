@@ -282,6 +282,42 @@ type KBSearchDocument struct {
 	IndexedAt       time.Time                   `gorm:"index" json:"indexed_at"`
 }
 
+type KBEmbeddingJob struct {
+	Base
+	SearchDocumentID uuid.UUID  `gorm:"type:uuid;index;not null;uniqueIndex:idx_kb_embedding_job_doc_provider_model_hash" json:"search_document_id"`
+	CollectionID     uuid.UUID  `gorm:"type:uuid;index;not null" json:"collection_id"`
+	SnapshotID       uuid.UUID  `gorm:"type:uuid;index;not null" json:"snapshot_id"`
+	SnapshotEntryID  uuid.UUID  `gorm:"type:uuid;index;not null" json:"snapshot_entry_id"`
+	Provider         string     `gorm:"not null;uniqueIndex:idx_kb_embedding_job_doc_provider_model_hash" json:"provider"`
+	Model            string     `gorm:"not null;uniqueIndex:idx_kb_embedding_job_doc_provider_model_hash" json:"model"`
+	Dimensions       int        `gorm:"not null;default:1024" json:"dimensions"`
+	ContentHash      string     `gorm:"index;not null;uniqueIndex:idx_kb_embedding_job_doc_provider_model_hash" json:"content_hash"`
+	Status           string     `gorm:"index;not null;default:pending" json:"status"`
+	Priority         int        `gorm:"index;not null;default:100" json:"priority"`
+	Attempts         int        `gorm:"not null;default:0" json:"attempts"`
+	MaxAttempts      int        `gorm:"not null;default:5" json:"max_attempts"`
+	AvailableAt      time.Time  `gorm:"index;not null" json:"available_at"`
+	LockedAt         *time.Time `json:"locked_at"`
+	LockedBy         string     `gorm:"index" json:"locked_by"`
+	LastError        string     `json:"last_error"`
+	StartedAt        *time.Time `json:"started_at"`
+	CompletedAt      *time.Time `json:"completed_at"`
+	FailedAt         *time.Time `json:"failed_at"`
+}
+
+type KBSearchEmbedding struct {
+	Base
+	SearchDocumentID uuid.UUID `gorm:"type:uuid;index;not null;uniqueIndex:idx_kb_search_embedding_doc_provider_model_hash" json:"search_document_id"`
+	CollectionID     uuid.UUID `gorm:"type:uuid;index;not null" json:"collection_id"`
+	SnapshotID       uuid.UUID `gorm:"type:uuid;index;not null" json:"snapshot_id"`
+	SnapshotEntryID  uuid.UUID `gorm:"type:uuid;index;not null" json:"snapshot_entry_id"`
+	Provider         string    `gorm:"not null;uniqueIndex:idx_kb_search_embedding_doc_provider_model_hash" json:"provider"`
+	Model            string    `gorm:"not null;uniqueIndex:idx_kb_search_embedding_doc_provider_model_hash" json:"model"`
+	Dimensions       int       `gorm:"not null;default:1024" json:"dimensions"`
+	ContentHash      string    `gorm:"index;not null;uniqueIndex:idx_kb_search_embedding_doc_provider_model_hash" json:"content_hash"`
+	Embedding        string    `gorm:"type:text;not null" json:"embedding"`
+}
+
 type Plugin struct {
 	Base
 	DeveloperID   uuid.UUID         `gorm:"type:uuid;index" json:"developer_id"`
@@ -336,5 +372,5 @@ type ContributorEarning struct {
 }
 
 func AllModels() []any {
-	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &UserAgentSetting{}, &UserServerConnection{}, &UserKnowledgeEntry{}, &ObjectRecord{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBUsageRecord{}, &KBSearchDocument{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}}
+	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &UserAgentSetting{}, &UserServerConnection{}, &UserKnowledgeEntry{}, &ObjectRecord{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBUsageRecord{}, &KBSearchDocument{}, &KBEmbeddingJob{}, &KBSearchEmbedding{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}}
 }

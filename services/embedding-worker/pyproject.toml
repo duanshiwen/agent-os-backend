@@ -1,0 +1,13 @@
+[project]
+name = "agentos-embedding-worker"
+version = "0.1.0"
+description = "Local BGE-M3 embedding worker for AgentOS Backend"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.111.0",
+  "uvicorn[standard]>=0.30.0",
+  "sentence-transformers>=3.0.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
