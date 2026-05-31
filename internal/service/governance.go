@@ -93,6 +93,22 @@ func (s *GovernanceService) CreateCapability(input CreateCapabilityInput) (*mode
 	return capability, nil
 }
 
+type GovernanceCapabilitiesPage struct {
+	Items  []model.CapabilityDefinition `json:"items"`
+	Limit  int                          `json:"limit"`
+	Offset int                          `json:"offset"`
+	Total  int64                        `json:"total"`
+}
+
+func (s *GovernanceService) ListCapabilities(limit, offset int) (*GovernanceCapabilitiesPage, error) {
+	limit, offset = normalizePage(limit, offset)
+	items, total, err := s.repo.ListCapabilities(limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	return &GovernanceCapabilitiesPage{Items: items, Limit: limit, Offset: offset, Total: total}, nil
+}
+
 type CreatePolicyRuleInput struct {
 	Name          string
 	Description   string
@@ -126,6 +142,22 @@ func (s *GovernanceService) CreatePolicyRule(input CreatePolicyRuleInput) (*mode
 		return nil, err
 	}
 	return rule, nil
+}
+
+type GovernancePolicyRulesPage struct {
+	Items  []model.PolicyRule `json:"items"`
+	Limit  int                `json:"limit"`
+	Offset int                `json:"offset"`
+	Total  int64              `json:"total"`
+}
+
+func (s *GovernanceService) ListPolicyRules(limit, offset int) (*GovernancePolicyRulesPage, error) {
+	limit, offset = normalizePage(limit, offset)
+	items, total, err := s.repo.ListPolicyRules(limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	return &GovernancePolicyRulesPage{Items: items, Limit: limit, Offset: offset, Total: total}, nil
 }
 
 type EvaluatePolicyInput struct {
@@ -241,6 +273,16 @@ func (s *GovernanceService) ConsumeApprovalReceipt(token, consumedBy string) (*m
 		return nil, ErrApprovalReceiptInvalid
 	}
 	return receipt, nil
+}
+
+func normalizePage(limit, offset int) (int, int) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return limit, offset
 }
 
 func normalizeOrDefault(value, fallback string) string {

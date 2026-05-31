@@ -29,6 +29,16 @@ func (r *GovernanceRepo) GetCapabilityByKey(key string) (*model.CapabilityDefini
 	return &capability, nil
 }
 
+func (r *GovernanceRepo) ListCapabilities(limit, offset int) ([]model.CapabilityDefinition, int64, error) {
+	var total int64
+	if err := r.db.Model(&model.CapabilityDefinition{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var items []model.CapabilityDefinition
+	err := r.db.Order("created_at DESC").Limit(limit).Offset(offset).Find(&items).Error
+	return items, total, err
+}
+
 func (r *GovernanceRepo) CreatePolicyRule(rule *model.PolicyRule) error {
 	return r.db.Create(rule).Error
 }
@@ -55,6 +65,16 @@ func (r *GovernanceRepo) FindMatchingPolicyRules(query PolicyRuleMatchQuery) ([]
 	var rules []model.PolicyRule
 	err := db.Order("priority ASC, created_at ASC").Find(&rules).Error
 	return rules, err
+}
+
+func (r *GovernanceRepo) ListPolicyRules(limit, offset int) ([]model.PolicyRule, int64, error) {
+	var total int64
+	if err := r.db.Model(&model.PolicyRule{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var items []model.PolicyRule
+	err := r.db.Order("priority ASC, created_at DESC").Limit(limit).Offset(offset).Find(&items).Error
+	return items, total, err
 }
 
 func (r *GovernanceRepo) CreatePolicyDecision(decision *model.PolicyDecision) error {

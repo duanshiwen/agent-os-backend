@@ -83,7 +83,20 @@ Rules:
 - token reuse fails;
 - `consumed_by` records the consuming device or actor marker.
 
-## 7. Current Non-Goals
+## 7. Admin APIs
+
+The first admin API slice exposes:
+
+- `POST /api/v1/admin/governance/capabilities`
+- `GET /api/v1/admin/governance/capabilities`
+- `POST /api/v1/admin/governance/policy-rules`
+- `GET /api/v1/admin/governance/policy-rules`
+- `POST /api/v1/admin/governance/kill-switches`
+- `POST /api/v1/admin/governance/evaluate`
+
+These routes are mounted under the existing admin route group and therefore inherit JWT authentication and admin authorization.
+
+## 8. Current Non-Goals
 
 - No policy DSL.
 - No remote/federated policy evaluation.
@@ -91,7 +104,7 @@ Rules:
 - No LLM-based scanner in the first foundation.
 - No external payment provider enforcement in this slice.
 
-## 8. Verification
+## 9. Verification
 
 Focused tests:
 
