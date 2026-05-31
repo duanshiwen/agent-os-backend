@@ -29,6 +29,7 @@ type SAGEPluginService struct {
 	syncSvc               *SyncService
 	auditSvc              *AuditService
 	sensitiveOperationSvc *SensitiveOperationService
+	objectSvc             *ObjectService
 }
 
 func NewSAGEPluginService(repo *repository.SAGEPluginRepo) *SAGEPluginService {
@@ -39,18 +40,21 @@ func (s *SAGEPluginService) SetAuditService(auditSvc *AuditService) { s.auditSvc
 func (s *SAGEPluginService) SetSensitiveOperationService(svc *SensitiveOperationService) {
 	s.sensitiveOperationSvc = svc
 }
+func (s *SAGEPluginService) SetObjectService(objectSvc *ObjectService) { s.objectSvc = objectSvc }
 
 type CreateSAGEPluginInput struct {
-	PluginKey   string `json:"plugin_key"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Category    string `json:"category"`
-	HomepageURL string `json:"homepage_url"`
-	ManifestURL string `json:"manifest_url"`
+	PluginKey    string     `json:"plugin_key"`
+	Name         string     `json:"name"`
+	Description  string     `json:"description"`
+	Category     string     `json:"category"`
+	IconObjectID *uuid.UUID `json:"icon_object_id"`
+	HomepageURL  string     `json:"homepage_url"`
+	ManifestURL  string     `json:"manifest_url"`
 }
 type SubmitSAGEPluginVersionInput struct {
-	Version  string         `json:"version"`
-	Manifest map[string]any `json:"manifest"`
+	Version         string         `json:"version"`
+	Manifest        map[string]any `json:"manifest"`
+	PackageObjectID *uuid.UUID     `json:"package_object_id"`
 }
 type ReviewSAGEPluginInput struct {
 	Decision         string   `json:"decision"`
@@ -92,10 +96,24 @@ type SubmitSAGEExecutionReportInput struct {
 	Metering          map[string]any `json:"metering"`
 }
 
+type SAGECatalogPluginAsset struct {
+	ObjectID    uuid.UUID `json:"object_id"`
+	Filename    string    `json:"filename"`
+	ContentType string    `json:"content_type"`
+	ContentHash string    `json:"content_hash"`
+	ContentSize int64     `json:"content_size"`
+}
+
+type SAGECatalogPlugin struct {
+	model.SAGEPlugin
+	IconAsset    *SAGECatalogPluginAsset `json:"icon_asset,omitempty"`
+	PackageAsset *SAGECatalogPluginAsset `json:"package_asset,omitempty"`
+}
+
 type SAGECatalogPage struct {
-	Items         []model.SAGEPlugin `json:"items"`
-	Limit, Offset int                `json:"limit"`
-	Total         int64              `json:"total"`
+	Items         []SAGECatalogPlugin `json:"items"`
+	Limit, Offset int                 `json:"limit"`
+	Total         int64               `json:"total"`
 }
 type SAGEPolicyBundle struct {
 	PluginKey           string            `json:"plugin_key"`
@@ -124,7 +142,14 @@ func (s *SAGEPluginService) CreatePlugin(developerID uuid.UUID, input CreateSAGE
 	if pluginKey == "" || name == "" {
 		return nil, fmt.Errorf("%w: plugin_key and name are required", ErrSAGEInvalid)
 	}
-	plugin := &model.SAGEPlugin{PluginKey: pluginKey, DeveloperID: developerID, Name: name, Description: strings.TrimSpace(input.Description), Category: strings.TrimSpace(input.Category), HomepageURL: strings.TrimSpace(input.HomepageURL), ManifestURL: strings.TrimSpace(input.ManifestURL), Status: repository.SAGEPluginStatusDraft, ReviewStatus: repository.SAGEReviewStatusPending, Visibility: "private", RiskLevel: "unknown", TrustLevel: "unverified"}
+	if input.IconObjectID != nil {
+		icon, err := s.requireActiveOwnedAsset(developerID, *input.IconObjectID, "icon", []string{"image/"})
+		if err != nil {
+			return nil, err
+		}
+		input.IconObjectID = &icon.ID
+	}
+	plugin := &model.SAGEPlugin{PluginKey: pluginKey, DeveloperID: developerID, Name: name, Description: strings.TrimSpace(input.Description), Category: strings.TrimSpace(input.Category), IconObjectID: input.IconObjectID, HomepageURL: strings.TrimSpace(input.HomepageURL), ManifestURL: strings.TrimSpace(input.ManifestURL), Status: repository.SAGEPluginStatusDraft, ReviewStatus: repository.SAGEReviewStatusPending, Visibility: "private", RiskLevel: "unknown", TrustLevel: "unverified"}
 	if err := s.repo.CreatePlugin(plugin); err != nil {
 		return nil, err
 	}
@@ -151,6 +176,13 @@ func (s *SAGEPluginService) SubmitVersion(developerID, pluginID uuid.UUID, input
 	if version == "" {
 		return nil, nil, fmt.Errorf("%w: version is required", ErrSAGEInvalid)
 	}
+	if input.PackageObjectID != nil {
+		pkg, err := s.requireActiveOwnedAsset(developerID, *input.PackageObjectID, "package", []string{"application/zip", "application/gzip", "application/x-tar", "application/octet-stream"})
+		if err != nil {
+			return nil, nil, err
+		}
+		input.PackageObjectID = &pkg.ID
+	}
 	now := time.Now().UTC()
 	status := repository.SAGEVersionStatusSubmitted
 	validationStatus := repository.SAGEValidationStatusValid
@@ -158,7 +190,7 @@ func (s *SAGEPluginService) SubmitVersion(developerID, pluginID uuid.UUID, input
 		status = repository.SAGEVersionStatusDraft
 		validationStatus = repository.SAGEValidationStatusInvalid
 	}
-	v := &model.SAGEPluginVersion{PluginID: plugin.ID, Version: version, SAGEVersion: result.Manifest.SAGEVersion, ManifestHash: result.ManifestHash, ManifestSnapshot: datatypes.JSONMap(result.Snapshot), ValidationStatus: validationStatus, ValidationErrors: datatypes.JSONSlice[string](result.Errors), ValidationWarnings: datatypes.JSONSlice[string](result.Warnings), RiskSummary: datatypes.JSONMap(result.RiskSummary), PermissionSummary: datatypes.JSONMap(result.PermissionSummary), Status: status}
+	v := &model.SAGEPluginVersion{PluginID: plugin.ID, Version: version, SAGEVersion: result.Manifest.SAGEVersion, ManifestHash: result.ManifestHash, ManifestSnapshot: datatypes.JSONMap(result.Snapshot), PackageObjectID: input.PackageObjectID, ValidationStatus: validationStatus, ValidationErrors: datatypes.JSONSlice[string](result.Errors), ValidationWarnings: datatypes.JSONSlice[string](result.Warnings), RiskSummary: datatypes.JSONMap(result.RiskSummary), PermissionSummary: datatypes.JSONMap(result.PermissionSummary), Status: status}
 	if result.Valid {
 		v.SubmittedAt = &now
 	}
@@ -279,14 +311,22 @@ func (s *SAGEPluginService) SearchCatalog(q, category string, limit, offset int)
 	if offset < 0 {
 		offset = 0
 	}
-	return &SAGECatalogPage{Items: items, Limit: limit, Offset: offset, Total: total}, nil
+	catalogItems := make([]SAGECatalogPlugin, 0, len(items))
+	for _, item := range items {
+		catalogItem, err := s.enrichCatalogPlugin(&item)
+		if err != nil {
+			return nil, err
+		}
+		catalogItems = append(catalogItems, *catalogItem)
+	}
+	return &SAGECatalogPage{Items: catalogItems, Limit: limit, Offset: offset, Total: total}, nil
 }
-func (s *SAGEPluginService) GetCatalogPlugin(pluginKey string) (*model.SAGEPlugin, error) {
+func (s *SAGEPluginService) GetCatalogPlugin(pluginKey string) (*SAGECatalogPlugin, error) {
 	p, err := s.repo.GetPublishedPluginByKey(pluginKey)
 	if err != nil {
 		return nil, ErrSAGEPluginNotFound
 	}
-	return p, nil
+	return s.enrichCatalogPlugin(p)
 }
 
 func (s *SAGEPluginService) InstallPlugin(userID uuid.UUID, deviceID, pluginKey string, input InstallSAGEPluginInput) (*model.SAGEPluginInstallation, error) {
@@ -547,6 +587,58 @@ func (s *SAGEPluginService) DeveloperMetrics(developerID uuid.UUID, pluginID uui
 		rate = float64(completed) / float64(inv)
 	}
 	return &SAGEDeveloperMetrics{PluginKey: plugin.PluginKey, Period: "all_time", Invocations: inv, Completed: completed, Failed: failed, SuccessRate: rate, TokensUsed: tokens}, nil
+}
+
+func (s *SAGEPluginService) requireActiveOwnedAsset(ownerID uuid.UUID, objectID uuid.UUID, assetKind string, allowedContentTypes []string) (*model.ObjectRecord, error) {
+	if s.objectSvc == nil {
+		return nil, fmt.Errorf("%w: object service unavailable", ErrSAGEInvalid)
+	}
+	record, err := s.objectSvc.RequireActiveOwnedObject(ownerID, objectID)
+	if err != nil {
+		return nil, err
+	}
+	if !strings.HasPrefix(strings.TrimSpace(record.Scope), "sage-plugin-") {
+		return nil, fmt.Errorf("%w: %s object scope must start with sage-plugin-", ErrSAGEInvalid, assetKind)
+	}
+	for _, allowed := range allowedContentTypes {
+		if strings.HasSuffix(allowed, "/") {
+			if strings.HasPrefix(record.ContentType, allowed) {
+				return record, nil
+			}
+			continue
+		}
+		if record.ContentType == allowed {
+			return record, nil
+		}
+	}
+	return nil, fmt.Errorf("%w: unsupported %s content type %s", ErrSAGEInvalid, assetKind, record.ContentType)
+}
+
+func (s *SAGEPluginService) enrichCatalogPlugin(plugin *model.SAGEPlugin) (*SAGECatalogPlugin, error) {
+	item := &SAGECatalogPlugin{SAGEPlugin: *plugin}
+	if s.objectSvc == nil {
+		return item, nil
+	}
+	if plugin.IconObjectID != nil {
+		record, err := s.objectSvc.RequireActiveOwnedObject(plugin.DeveloperID, *plugin.IconObjectID)
+		if err == nil {
+			item.IconAsset = catalogAssetFromObject(record)
+		}
+	}
+	if plugin.ApprovedVersionID != nil {
+		version, err := s.repo.GetVersion(*plugin.ApprovedVersionID)
+		if err == nil && version.PackageObjectID != nil {
+			record, err := s.objectSvc.RequireActiveOwnedObject(plugin.DeveloperID, *version.PackageObjectID)
+			if err == nil {
+				item.PackageAsset = catalogAssetFromObject(record)
+			}
+		}
+	}
+	return item, nil
+}
+
+func catalogAssetFromObject(record *model.ObjectRecord) *SAGECatalogPluginAsset {
+	return &SAGECatalogPluginAsset{ObjectID: record.ID, Filename: record.Filename, ContentType: record.ContentType, ContentHash: record.ContentHash, ContentSize: record.ContentSize}
 }
 
 func (s *SAGEPluginService) recordPluginSync(userID uuid.UUID, deviceID, installationID, operation string, payload map[string]any) {

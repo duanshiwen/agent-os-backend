@@ -788,9 +788,15 @@ plugin.permission_revoked
 
 These events are verified both by `TestSAGEPluginServiceEmitsPluginSyncEvents` and by the public sync pull assertions inside `scripts/smoke-sage-plugin-runtime.sh`.
 
+SAGE plugin icon/package object binding is now complete for the Stage 3A slice:
+
+- plugin `icon_object_id` validates an active developer-owned ObjectService object with image content type;
+- version `package_object_id` validates an active developer-owned ObjectService object with package content type;
+- public catalog responses expose safe `icon_asset` / `package_asset` metadata without leaking storage bucket/key;
+- covered by `TestSAGEPluginServiceBindsActiveOwnedIconAndPackageAssets`, invalid binding tests, and live `scripts/smoke-sage-plugin-runtime.sh` object upload assertions.
+
 Current M4 gaps:
 
-- plugin icon/package object storage binding is not yet complete;
 - richer manifest governance scans such as injection and typosquatting checks are still pending;
 - Backend still intentionally does not execute third-party Flow definitions or host plugin code;
 - real payment, refund, tax, and settlement integration remains out of scope for the foundation.

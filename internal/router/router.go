@@ -80,6 +80,7 @@ func Setup(
 	sagePluginSvc.SetSyncService(syncSvc)
 	sagePluginSvc.SetAuditService(auditSvc)
 	sagePluginSvc.SetSensitiveOperationService(sensitiveOperationSvc)
+	sagePluginSvc.SetObjectService(objectSvc)
 
 	// Handlers
 	readinessH := handler.NewReadinessHandler(db)

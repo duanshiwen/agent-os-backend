@@ -220,6 +220,17 @@ func (s *ObjectService) GetObject(ownerID uuid.UUID, objectID uuid.UUID) (*model
 	return s.getOwned(ownerID, objectID)
 }
 
+func (s *ObjectService) RequireActiveOwnedObject(ownerID uuid.UUID, objectID uuid.UUID) (*model.ObjectRecord, error) {
+	record, err := s.getOwned(ownerID, objectID)
+	if err != nil {
+		return nil, err
+	}
+	if record.Status != repository.ObjectStatusActive {
+		return nil, ErrObjectNotActive
+	}
+	return record, nil
+}
+
 func (s *ObjectService) CreateDownloadURL(ctx context.Context, ownerID uuid.UUID, objectID uuid.UUID, input CreateDownloadURLInput) (*DownloadURLResponse, error) {
 	record, err := s.getOwned(ownerID, objectID)
 	if err != nil {

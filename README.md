@@ -385,7 +385,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 #### SAGE Plugin Runtime / Control-Plane Smoke
 
-SAGE Backend 是开放平台控制面，不执行第三方插件 Flow。可用自包含 smoke 验证 developer submit → admin review → user install/grant → policy bundle → mock client flow call → invocation/report → developer metrics：
+SAGE Backend 是开放平台控制面，不执行第三方插件 Flow。可用自包含 smoke 验证 object upload → icon/package binding → developer submit → admin review → user install/grant → sync events → policy bundle → mock client flow call → invocation/report → developer metrics：
 
 ```bash
 # 需要 PostgreSQL/Redis/MinIO 与后端 API 已启动。
@@ -393,7 +393,7 @@ SAGE Backend 是开放平台控制面，不执行第三方插件 Flow。可用�
 BASE_URL=http://localhost:8080 ./scripts/smoke-sage-plugin-runtime.sh
 ```
 
-该 smoke 会在本地 PostgreSQL 中把临时 smoke 用户标记为 admin，以覆盖 review route。正式产品仍需要独立 admin bootstrap 策略。
+该 smoke 会通过 ObjectService / MinIO 上传插件 icon 与 package mock 资产，并验证 catalog 只返回安全资产 metadata（object id、filename、content type、hash、size）。它也会在本地 PostgreSQL 中把临时 smoke 用户标记为 admin，以覆盖 review route。正式产品仍需要独立 admin bootstrap 策略。
 
 #### WebSocket
 

@@ -76,9 +76,9 @@ Backend working tree at Stage 0 start had one existing README documentation diff
 | Search | Hybrid fallback | ✅ | semantic unavailable is explicit | quality scoring / rerank |
 | Search | Chunk-level passage embeddings | ⬜ | entry-level documents only | chunk tables, chunk jobs, passage retrieval |
 | Queue | Embedding durable queue | ✅ | `kb_embedding_jobs`; `FOR UPDATE SKIP LOCKED`; optional in-process worker in unified runner | persisted job history / dead-lettering |
-| Plugin | SAGE Open Platform models | ✅ | `sage_*` models and migration `022_sage_plugin_open_platform.sql` | richer lifecycle states and asset bindings |
+| Plugin | SAGE Open Platform models | ✅ | `sage_*` models and migrations `022_sage_plugin_open_platform.sql`, `023_sage_plugin_asset_bindings.sql` | richer lifecycle states |
 | Plugin | Marketplace registry | ✅ | developer create plugin, submit versions, public catalog, repository/service/handler tests | developer profile polish and richer catalog ranking |
-| Plugin | Plugin package storage | ⬜ | object storage foundation can support it, but SAGE asset binding is not implemented | package/icon object records and review workflow |
+| Plugin | Plugin package/icon storage | ✅ | ObjectService/MinIO-backed icon and package bindings; active developer-owned object validation; safe catalog asset metadata | review-time asset scanning and signing |
 | Plugin | SAGE Manifest | ✅ | `SAGEManifestValidator`, manifest hash, permission/risk summaries, validation tests | stronger schema evolution and compatibility policy |
 | Plugin | Runtime Flow contract | ✅ | mock plugin server + `scripts/smoke-sage-plugin-runtime.sh`; Backend intentionally does not execute Flow | real AgentOS Client integration |
 | Plugin | Execution Report | ✅ | invocation and execution report APIs, usage ledger / metrics foundation | idempotency hardening and billing integration |

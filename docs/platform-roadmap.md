@@ -44,7 +44,7 @@ Current backend implementation includes:
 Current known major gaps:
 
 - SAGE Plugin Open Platform backend foundation is implemented: registry, manifest validation, review/catalog, installation/grants, policy bundle, invocation/report, and developer metrics.
-- SAGE runtime/control-plane smoke is implemented via `scripts/smoke-sage-plugin-runtime.sh`; plugin lifecycle/permission state sync is implemented via `plugin.*` sync events. Remaining SAGE gaps are plugin icon/package object storage, richer governance scanning, and production policy operations.
+- SAGE runtime/control-plane smoke is implemented via `scripts/smoke-sage-plugin-runtime.sh`; plugin lifecycle/permission state sync and icon/package object bindings are implemented. Remaining SAGE gaps are richer governance scanning and production policy operations.
 - Multi-server federation is not implemented beyond local user server-list sync.
 - Governance/policy/audit is not yet a platform-wide control plane.
 - Production observability, admin operations, release gates, and background job unification are incomplete.
@@ -181,9 +181,9 @@ Primary workstreams:
    - verified by service tests and `scripts/smoke-sage-plugin-runtime.sh` public sync pull assertions.
 
 3. Plugin assets
-   - package/icon object storage using `ObjectService` / MinIO;
-   - developer-owned active object validation;
-   - catalog-safe icon metadata or short-lived download URLs.
+   - implemented package/icon object storage using `ObjectService` / MinIO;
+   - developer-owned active object validation for icon/package bindings;
+   - catalog-safe asset metadata for icon/package records.
 
 4. Governance hardening
    - injection scan and typosquatting scan;

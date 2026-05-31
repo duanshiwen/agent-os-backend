@@ -138,6 +138,29 @@ print(msg + '.' + b64(sig))
 PY
 }
 
+upload_object() {
+  local scope="$1"
+  local filename="$2"
+  local content_type="$3"
+  local content="$4"
+  local file_path sha size intent object_id upload_url completed
+  file_path="$KEY_DIR/${filename}"
+  printf '%s' "$content" > "$file_path"
+  sha="$(shasum -a 256 "$file_path" | awk '{print $1}')"
+  size="$(wc -c < "$file_path" | tr -d ' ')"
+  intent="$(api POST /api/v1/objects/upload-intents "$TOKEN" "$(jq -cn --arg scope "$scope" --arg filename "$filename" --arg content_type "$content_type" --arg sha "$sha" --argjson size "$size" '{scope:$scope,filename:$filename,content_type:$content_type,content_size:$size,sha256:$sha}')" 201)"
+  object_id="$(echo "$intent" | jq -r '.data.object.id')"
+  upload_url="$(echo "$intent" | jq -r '.data.upload_url')"
+  curl -sS -X PUT -H "Content-Type: ${content_type}" --data-binary "@${file_path}" "$upload_url" >/dev/null
+  completed="$(api POST "/api/v1/objects/uploads/${object_id}/complete" "$TOKEN" "$(jq -cn --arg hash "$sha" --argjson size "$size" '{observed_hash:$hash,observed_size:$size}')" 200)"
+  if [[ "$(echo "$completed" | jq -r '.data.status')" != "active" ]]; then
+    echo "expected uploaded object ${object_id} to be active" >&2
+    echo "$completed" | jq >&2
+    exit 1
+  fi
+  echo "$object_id"
+}
+
 start_mock_server() {
   if curl -fsS http://127.0.0.1:18080/sage/health >/dev/null 2>&1; then
     echo "==> Reusing existing mock SAGE Plugin Server on :18080"
@@ -179,12 +202,21 @@ plugin_name="$(echo "$manifest" | jq -r '.name')"
 unique_key="${plugin_key}.smoke.${RUN_ID}"
 manifest="$(echo "$manifest" | jq --arg key "$unique_key" '.plugin_key=$key | .endpoints.manifest="http://127.0.0.1:18080/.well-known/sage-plugin.json" | .endpoints.flow="http://127.0.0.1:18080/sage/flow" | .endpoints.callback="http://127.0.0.1:18080/sage/callback" | .endpoints.health="http://127.0.0.1:18080/sage/health"')"
 
+echo "==> Developer uploads plugin icon/package assets"
+icon_object_id="$(upload_object sage-plugin-icons "hotel-${RUN_ID}.svg" image/svg+xml '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="#2563eb"/><text x="16" y="21" font-size="14" text-anchor="middle" fill="white">H</text></svg>')"
+package_object_id="$(upload_object sage-plugin-packages "hotel-${RUN_ID}.zip" application/zip 'mock plugin package bytes')"
+
 echo "==> Developer creates plugin draft"
-plugin_resp="$(api POST /api/v1/sage/plugins "$TOKEN" "$(jq -cn --arg plugin_key "$unique_key" --arg name "$plugin_name" '{plugin_key:$plugin_key,name:$name,description:"SAGE runtime smoke plugin",manifest_url:"http://127.0.0.1:18080/.well-known/sage-plugin.json"}')" 201)"
+plugin_resp="$(api POST /api/v1/sage/plugins "$TOKEN" "$(jq -cn --arg plugin_key "$unique_key" --arg name "$plugin_name" --arg icon_object_id "$icon_object_id" '{plugin_key:$plugin_key,name:$name,description:"SAGE runtime smoke plugin",icon_object_id:$icon_object_id,manifest_url:"http://127.0.0.1:18080/.well-known/sage-plugin.json"}')" 201)"
 plugin_id="$(echo "$plugin_resp" | jq -r '.data.id')"
+if [[ "$(echo "$plugin_resp" | jq -r '.data.icon_object_id')" != "$icon_object_id" ]]; then
+  echo "plugin did not bind icon object" >&2
+  echo "$plugin_resp" | jq >&2
+  exit 1
+fi
 
 echo "==> Developer submits manifest version"
-version_resp="$(api POST "/api/v1/sage/plugins/${plugin_id}/versions" "$TOKEN" "$(jq -n --argjson manifest "$manifest" '{manifest:$manifest}')" 201)"
+version_resp="$(api POST "/api/v1/sage/plugins/${plugin_id}/versions" "$TOKEN" "$(jq -n --argjson manifest "$manifest" --arg package_object_id "$package_object_id" '{manifest:$manifest,package_object_id:$package_object_id}')" 201)"
 version_id="$(echo "$version_resp" | jq -r '.data.version.id')"
 valid="$(echo "$version_resp" | jq -r '.data.validation.valid')"
 if [[ "$valid" != "true" ]]; then
@@ -196,8 +228,14 @@ fi
 echo "==> Admin approves plugin version"
 api POST "/api/v1/admin/sage/plugins/${plugin_id}/versions/${version_id}/review" "$ADMIN_TOKEN" '{"decision":"approved","reason":"runtime contract smoke"}' 200 >/dev/null
 
-echo "==> Public catalog exposes approved plugin"
-api GET "/api/v1/sage/catalog/plugins/${unique_key}" '' '' 200 | jq '{id:.data.id, plugin_key:.data.plugin_key, status:.data.status, review_status:.data.review_status}'
+echo "==> Public catalog exposes approved plugin and safe asset metadata"
+catalog_resp="$(api GET "/api/v1/sage/catalog/plugins/${unique_key}" '' '' 200)"
+echo "$catalog_resp" | jq '{id:.data.id, plugin_key:.data.plugin_key, status:.data.status, review_status:.data.review_status, icon_asset:.data.icon_asset, package_asset:.data.package_asset}'
+if [[ "$(echo "$catalog_resp" | jq -r '.data.icon_asset.object_id')" != "$icon_object_id" || "$(echo "$catalog_resp" | jq -r '.data.package_asset.object_id')" != "$package_object_id" ]]; then
+  echo "catalog did not expose expected safe icon/package asset metadata" >&2
+  echo "$catalog_resp" | jq >&2
+  exit 1
+fi
 
 echo "==> User installs plugin and grants low-risk permission"
 install_resp="$(api POST "/api/v1/sage/catalog/plugins/${unique_key}/install" "$TOKEN" '{}' 201)"
