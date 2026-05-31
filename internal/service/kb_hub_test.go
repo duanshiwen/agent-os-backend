@@ -16,7 +16,7 @@ import (
 )
 
 func TestKBHubServicePublishesImmutableSnapshot(t *testing.T) {
-	svc, knowledgeRepo, fake, ownerID := newKBHubServiceTestEnv(t)
+	svc, knowledgeRepo, fake, ownerID, _ := newKBHubServiceTestEnv(t)
 	ctx := context.Background()
 
 	entry := &model.UserKnowledgeEntry{
@@ -78,7 +78,7 @@ func TestKBHubServicePublishesImmutableSnapshot(t *testing.T) {
 }
 
 func TestKBHubServiceRejectsEmptySnapshot(t *testing.T) {
-	svc, _, _, ownerID := newKBHubServiceTestEnv(t)
+	svc, _, _, ownerID, _ := newKBHubServiceTestEnv(t)
 	collection, err := svc.CreateCollection(ownerID, CreateKBCollectionInput{Name: "Empty KB"})
 	if err != nil {
 		t.Fatalf("create collection: %v", err)
@@ -90,7 +90,7 @@ func TestKBHubServiceRejectsEmptySnapshot(t *testing.T) {
 }
 
 func TestKBHubServicePublicReadManifestAndInstall(t *testing.T) {
-	svc, knowledgeRepo, _, ownerID := newKBHubServiceTestEnv(t)
+	svc, knowledgeRepo, _, ownerID, _ := newKBHubServiceTestEnv(t)
 	consumerID := uuid.New()
 	if err := knowledgeRepo.Create(&model.UserKnowledgeEntry{UserID: ownerID, EntryID: "notes/public", Title: "Public", ContentMarkdown: "# Public", Summary: "public", Status: repository.KnowledgeEntryStatusActive, Version: 1, ContentHash: strings.Repeat("c", 64)}); err != nil {
 		t.Fatalf("create knowledge entry: %v", err)
@@ -146,7 +146,7 @@ func TestKBHubServicePublicReadManifestAndInstall(t *testing.T) {
 }
 
 func TestKBHubServiceInstalledAccessAndCancel(t *testing.T) {
-	svc, knowledgeRepo, _, ownerID := newKBHubServiceTestEnv(t)
+	svc, knowledgeRepo, _, ownerID, _ := newKBHubServiceTestEnv(t)
 	consumerID := uuid.New()
 	strangerID := uuid.New()
 	if err := knowledgeRepo.Create(&model.UserKnowledgeEntry{UserID: ownerID, EntryID: "notes/access", Title: "Access", ContentMarkdown: "# Access", Summary: "access", Status: repository.KnowledgeEntryStatusActive, Version: 1, ContentHash: strings.Repeat("d", 64)}); err != nil {
@@ -208,7 +208,7 @@ func TestKBHubServiceInstalledAccessAndCancel(t *testing.T) {
 }
 
 func TestKBHubServiceFullM3MarketplacePricingAndSearch(t *testing.T) {
-	svc, knowledgeRepo, _, ownerID := newKBHubServiceTestEnv(t)
+	svc, knowledgeRepo, _, ownerID, _ := newKBHubServiceTestEnv(t)
 	if err := knowledgeRepo.Create(&model.UserKnowledgeEntry{UserID: ownerID, EntryID: "strategy/blue-ocean", Title: "Blue Ocean Strategy", ContentMarkdown: "# Blue Ocean\n\nValue innovation", Summary: "Create uncontested market space", Status: repository.KnowledgeEntryStatusActive, Version: 1, ContentHash: strings.Repeat("e", 64)}); err != nil {
 		t.Fatalf("create knowledge entry: %v", err)
 	}
@@ -262,13 +262,13 @@ func TestKBHubServiceFullM3MarketplacePricingAndSearch(t *testing.T) {
 	}
 }
 
-func newKBHubServiceTestEnv(t *testing.T) (*KBHubService, *repository.KnowledgeEntriesRepo, *recordingObjectStorageBackend, uuid.UUID) {
+func newKBHubServiceTestEnv(t *testing.T) (*KBHubService, *repository.KnowledgeEntriesRepo, *recordingObjectStorageBackend, uuid.UUID, *gorm.DB) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+strings.ReplaceAll(t.Name(), "/", "_")+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.UserKnowledgeEntry{}, &model.ObjectRecord{}, &model.KBCollection{}, &model.KBSnapshot{}, &model.KBSnapshotEntry{}, &model.KBSubscription{}, &model.KBModerationReport{}, &model.KBUsageRecord{}, &model.KBSearchDocument{}, &model.KBEmbeddingJob{}, &model.KBSearchEmbedding{}, &model.KBBillingPlan{}, &model.KBInvoice{}, &model.KBInvoiceItem{}, &model.ContributorPayoutPeriod{}, &model.KBRefund{}, &model.KBBillingDispute{}, &model.BillingAccount{}, &model.BillingTransaction{}, &model.ContributorEarning{}); err != nil {
+	if err := db.AutoMigrate(&model.UserKnowledgeEntry{}, &model.ObjectRecord{}, &model.KBCollection{}, &model.KBSnapshot{}, &model.KBSnapshotEntry{}, &model.KBSubscription{}, &model.KBModerationReport{}, &model.KBUsageRecord{}, &model.KBSearchDocument{}, &model.KBEmbeddingJob{}, &model.KBSearchEmbedding{}, &model.KBBillingPlan{}, &model.KBInvoice{}, &model.KBInvoiceItem{}, &model.ContributorPayoutPeriod{}, &model.KBRefund{}, &model.KBBillingDispute{}, &model.BillingAccount{}, &model.BillingTransaction{}, &model.ContributorEarning{}, &model.CapabilityDefinition{}, &model.PolicyRule{}, &model.PolicyDecision{}, &model.ApprovalReceipt{}, &model.KillSwitch{}, &model.GovernanceScanResult{}); err != nil {
 		t.Fatalf("migrate models: %v", err)
 	}
 	fake := &recordingObjectStorageBackend{fakeObjectStorageBackend: fakeObjectStorageBackend{head: ObjectHead{ContentHash: strings.Repeat("a", 64), ContentSize: 1}}}
@@ -281,7 +281,7 @@ func newKBHubServiceTestEnv(t *testing.T) (*KBHubService, *repository.KnowledgeE
 	svc := NewKBHubService(kbRepo, repository.NewKnowledgeEntriesRepo(db), objectSvc)
 	svc.SetBillingService(billingSvc)
 	svc.SetSearchService(searchSvc)
-	return svc, repository.NewKnowledgeEntriesRepo(db), fake, uuid.New()
+	return svc, repository.NewKnowledgeEntriesRepo(db), fake, uuid.New(), db
 }
 
 type recordedPut struct {

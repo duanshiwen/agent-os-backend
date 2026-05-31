@@ -20,6 +20,7 @@ type Config struct {
 	ObjectStorage    ObjectStorageConfig
 	Embedding        EmbeddingConfig
 	Background       BackgroundConfig
+	Governance       GovernanceConfig
 }
 
 type AppConfig struct {
@@ -77,6 +78,13 @@ type BackgroundConfig struct {
 	EmbeddingWorkerPollIntervalSeconds   int
 }
 
+type GovernanceConfig struct {
+	EnforcementMode       string
+	SAGEEnforcementMode   string
+	ObjectEnforcementMode string
+	KBEnforcementMode     string
+}
+
 func (d DatabaseConfig) DSN() string {
 	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s TimeZone=Asia/Shanghai", d.Host, d.Port, d.User, d.Password, d.DBName, d.SSLMode)
 }
@@ -121,6 +129,12 @@ func Load() (*Config, error) {
 			EmbeddingWorkerID:                    getEnv("BACKGROUND_EMBEDDING_WORKER_ID", ""),
 			EmbeddingWorkerBatchSize:             getEnvInt("BACKGROUND_EMBEDDING_WORKER_BATCH_SIZE", 8),
 			EmbeddingWorkerPollIntervalSeconds:   getEnvInt("BACKGROUND_EMBEDDING_WORKER_POLL_INTERVAL_SECONDS", 2),
+		},
+		Governance: GovernanceConfig{
+			EnforcementMode:       getEnv("GOVERNANCE_ENFORCEMENT_MODE", "observe"),
+			SAGEEnforcementMode:   getEnv("GOVERNANCE_ENFORCEMENT_SAGE_MODE", ""),
+			ObjectEnforcementMode: getEnv("GOVERNANCE_ENFORCEMENT_OBJECT_MODE", ""),
+			KBEnforcementMode:     getEnv("GOVERNANCE_ENFORCEMENT_KB_MODE", ""),
 		},
 	}
 	return cfg, cfg.Validate()
@@ -190,7 +204,32 @@ func (c *Config) Validate() error {
 	if c.Background.EmbeddingWorkerPollIntervalSeconds <= 0 {
 		return fmt.Errorf("BACKGROUND_EMBEDDING_WORKER_POLL_INTERVAL_SECONDS must be positive")
 	}
+	if !isGovernanceEnforcementMode(c.Governance.EnforcementMode, false) {
+		return fmt.Errorf("unsupported GOVERNANCE_ENFORCEMENT_MODE %q", c.Governance.EnforcementMode)
+	}
+	if !isGovernanceEnforcementMode(c.Governance.SAGEEnforcementMode, true) {
+		return fmt.Errorf("unsupported GOVERNANCE_ENFORCEMENT_SAGE_MODE %q", c.Governance.SAGEEnforcementMode)
+	}
+	if !isGovernanceEnforcementMode(c.Governance.ObjectEnforcementMode, true) {
+		return fmt.Errorf("unsupported GOVERNANCE_ENFORCEMENT_OBJECT_MODE %q", c.Governance.ObjectEnforcementMode)
+	}
+	if !isGovernanceEnforcementMode(c.Governance.KBEnforcementMode, true) {
+		return fmt.Errorf("unsupported GOVERNANCE_ENFORCEMENT_KB_MODE %q", c.Governance.KBEnforcementMode)
+	}
 	return nil
+}
+
+func isGovernanceEnforcementMode(mode string, allowEmpty bool) bool {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == "" {
+		return allowEmpty
+	}
+	switch mode {
+	case "disabled", "observe", "enforce":
+		return true
+	default:
+		return false
+	}
 }
 
 func getEnv(key, fallback string) string {

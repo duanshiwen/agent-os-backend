@@ -810,3 +810,16 @@ Current Stage 3A gaps:
 ## Recommended Next Milestone
 
 Recommended next milestone is **Stage 3A: SAGE Client-Ready Platform Slice**: first live-smoke M3.5 with Docker Compose (`embedding-worker` + `embedding-job-worker`), then add a SAGE runtime contract smoke covering plugin submit/review/install/grant/policy-bundle/invocation/report. In parallel, add SAGE install/grant sync events and keep chunk-level passage embeddings as the next search-quality slice after the real BGE-M3 operational gate is verified.
+
+## Stage 4B Governance Enforcement Integration
+
+Implemented Stage 4B additions on the backend branch:
+
+- reusable `GovernanceEnforcer` with `disabled` / `observe` / `enforce` modes;
+- default governance enforcement mode set to `observe`;
+- approval receipt create/consume HTTP APIs;
+- SAGE permission grant and invocation governance evaluation;
+- object upload/download/delete governance evaluation;
+- KB review/takedown, pricing, and snapshot lifecycle governance evaluation;
+- deterministic SAGE manifest scanner with persisted findings;
+- `scripts/smoke-governance-enforcement.sh` and release-gate hook.

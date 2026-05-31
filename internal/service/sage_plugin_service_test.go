@@ -19,7 +19,7 @@ func newSAGETestService(t *testing.T) (*SAGEPluginService, *gorm.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.ObjectRecord{}, &model.SAGEPlugin{}, &model.SAGEPluginVersion{}, &model.SAGEPluginReview{}, &model.SAGEPluginInstallation{}, &model.SAGEPluginPermissionGrant{}, &model.SAGEPluginInvocation{}, &model.SAGEPluginExecutionReport{}, &model.SAGEPluginUsageLedger{}, &model.SyncEvent{}, &model.SyncCursor{}, &model.SyncSequence{}); err != nil {
+	if err := db.AutoMigrate(&model.ObjectRecord{}, &model.SAGEPlugin{}, &model.SAGEPluginVersion{}, &model.SAGEPluginReview{}, &model.SAGEPluginInstallation{}, &model.SAGEPluginPermissionGrant{}, &model.SAGEPluginInvocation{}, &model.SAGEPluginExecutionReport{}, &model.SAGEPluginUsageLedger{}, &model.SyncEvent{}, &model.SyncCursor{}, &model.SyncSequence{}, &model.CapabilityDefinition{}, &model.PolicyRule{}, &model.PolicyDecision{}, &model.ApprovalReceipt{}, &model.KillSwitch{}, &model.GovernanceScanResult{}); err != nil {
 		t.Fatal(err)
 	}
 	return NewSAGEPluginService(repository.NewSAGEPluginRepo(db)), db
@@ -275,5 +275,38 @@ func TestSAGEPluginServicePolicyBundleAndReport(t *testing.T) {
 	}
 	if metrics.Invocations != 1 || metrics.Completed != 1 || metrics.TokensUsed != 10 {
 		t.Fatalf("unexpected metrics: %#v", metrics)
+	}
+}
+
+func TestSAGEPluginServiceGovernanceObserveRecordsGrantAndInvocationDecisions(t *testing.T) {
+	svc, db := newSAGETestService(t)
+	governance := NewGovernanceService(repository.NewGovernanceRepo(db))
+	if _, err := governance.CreatePolicyRule(CreatePolicyRuleInput{Name: "Observe deny SAGE grant", CapabilityKey: "plugin.api.call", SubjectType: GovernanceSubjectSAGEPermissionGrant, Effect: GovernanceDecisionDeny, Priority: 1, Status: GovernanceStatusActive}); err != nil {
+		t.Fatalf("create grant rule: %v", err)
+	}
+	if _, err := governance.CreatePolicyRule(CreatePolicyRuleInput{Name: "Observe deny SAGE invocation", CapabilityKey: "sage.invocation.create", SubjectType: GovernanceSubjectSAGEInvocation, Effect: GovernanceDecisionDeny, Priority: 1, Status: GovernanceStatusActive}); err != nil {
+		t.Fatalf("create invocation rule: %v", err)
+	}
+	svc.SetGovernanceEnforcer(NewGovernanceEnforcer(governance, GovernanceEnforcementConfig{}))
+	developerID := uuid.New()
+	userID := uuid.New()
+	plugin, _ := createApprovedSAGEPlugin(t, svc, developerID)
+	inst, err := svc.InstallPlugin(userID, "device-a", plugin.PluginKey, InstallSAGEPluginInput{})
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	grant, err := svc.GrantPermission(userID, "device-a", inst.ID, GrantSAGEPermissionInput{PermissionKey: "plugin.api.call"})
+	if err != nil {
+		t.Fatalf("observe mode should not block grant: %v", err)
+	}
+	if grant.Status != repository.SAGEGrantStatusActive {
+		t.Fatalf("expected active grant, got %#v", grant)
+	}
+	inv, err := svc.CreateInvocation(userID, "device-a", CreateSAGEInvocationInput{PluginKey: plugin.PluginKey, ClientRequestID: "governance-req-1", UserIntent: "find hotels"})
+	if err != nil {
+		t.Fatalf("observe mode should not block invocation: %v", err)
+	}
+	if inv.PolicyDecision["mode"] != GovernanceEnforcementModeObserve || inv.PolicyDecision["would_have_blocked"] != true {
+		t.Fatalf("expected invocation to carry observe policy hint, got %#v", inv.PolicyDecision)
 	}
 }

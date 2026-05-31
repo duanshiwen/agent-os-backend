@@ -12,7 +12,7 @@ import (
 )
 
 func TestKBBillingEntitlementPlanAndSubscriptionPeriods(t *testing.T) {
-	svc, knowledgeRepo, _, ownerID := newKBHubServiceTestEnv(t)
+	svc, knowledgeRepo, _, ownerID, _ := newKBHubServiceTestEnv(t)
 	consumerID := uuid.New()
 	if err := knowledgeRepo.Create(&model.UserKnowledgeEntry{UserID: ownerID, EntryID: "billing/plan", Title: "Plan", ContentMarkdown: "# Plan", Status: repository.KnowledgeEntryStatusActive, Version: 1, ContentHash: strings.Repeat("4", 64)}); err != nil {
 		t.Fatalf("create knowledge: %v", err)
@@ -62,7 +62,7 @@ func TestKBBillingEntitlementPlanAndSubscriptionPeriods(t *testing.T) {
 }
 
 func TestKBBillingInvoiceRefundDisputeAndPayout(t *testing.T) {
-	svc, _, _, ownerID := newKBHubServiceTestEnv(t)
+	svc, _, _, ownerID, _ := newKBHubServiceTestEnv(t)
 	userID := uuid.New()
 	collectionID := uuid.New()
 	snapshotID := uuid.New()

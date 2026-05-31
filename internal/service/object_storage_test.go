@@ -16,7 +16,7 @@ import (
 )
 
 func TestObjectServiceUploadCompleteDownloadAndDeleteLifecycle(t *testing.T) {
-	svc, fake, ownerID := newObjectServiceTestEnv(t)
+	svc, fake, ownerID, _ := newObjectServiceTestEnv(t)
 	ctx := context.Background()
 
 	intent, err := svc.CreateUploadIntent(ctx, ownerID, CreateUploadIntentInput{
@@ -66,7 +66,7 @@ func TestObjectServiceUploadCompleteDownloadAndDeleteLifecycle(t *testing.T) {
 }
 
 func TestObjectServiceRejectsMismatchedUploadCompletion(t *testing.T) {
-	svc, fake, ownerID := newObjectServiceTestEnv(t)
+	svc, fake, ownerID, _ := newObjectServiceTestEnv(t)
 	intent, err := svc.CreateUploadIntent(context.Background(), ownerID, CreateUploadIntentInput{Scope: "attachments", Filename: "a.txt", ContentType: "text/plain", ContentSize: 5, SHA256: strings.Repeat("b", 64)})
 	if err != nil {
 		t.Fatalf("create upload intent: %v", err)
@@ -84,7 +84,7 @@ func TestObjectServiceRejectsMismatchedUploadCompletion(t *testing.T) {
 }
 
 func TestObjectServiceRequiresActiveObjectForDownload(t *testing.T) {
-	svc, _, ownerID := newObjectServiceTestEnv(t)
+	svc, _, ownerID, _ := newObjectServiceTestEnv(t)
 	intent, err := svc.CreateUploadIntent(context.Background(), ownerID, CreateUploadIntentInput{Scope: "attachments", Filename: "a.txt", ContentType: "text/plain", ContentSize: 5, SHA256: strings.Repeat("d", 64)})
 	if err != nil {
 		t.Fatalf("create upload intent: %v", err)
@@ -95,7 +95,7 @@ func TestObjectServiceRequiresActiveObjectForDownload(t *testing.T) {
 }
 
 func TestObjectServiceEnforcesOwner(t *testing.T) {
-	svc, _, ownerID := newObjectServiceTestEnv(t)
+	svc, _, ownerID, _ := newObjectServiceTestEnv(t)
 	intent, err := svc.CreateUploadIntent(context.Background(), ownerID, CreateUploadIntentInput{Scope: "attachments", Filename: "a.txt", ContentType: "text/plain", ContentSize: 5, SHA256: strings.Repeat("e", 64)})
 	if err != nil {
 		t.Fatalf("create upload intent: %v", err)
@@ -107,7 +107,7 @@ func TestObjectServiceEnforcesOwner(t *testing.T) {
 }
 
 func TestObjectServiceValidatesUploadIntent(t *testing.T) {
-	svc, _, ownerID := newObjectServiceTestEnv(t)
+	svc, _, ownerID, _ := newObjectServiceTestEnv(t)
 	_, err := svc.CreateUploadIntent(context.Background(), ownerID, CreateUploadIntentInput{Scope: "attachments", Filename: "a.txt", ContentSize: 5, SHA256: "short"})
 	if err == nil || !strings.Contains(err.Error(), "sha256") {
 		t.Fatalf("expected sha validation error, got %v", err)
@@ -118,18 +118,18 @@ func TestObjectServiceValidatesUploadIntent(t *testing.T) {
 	}
 }
 
-func newObjectServiceTestEnv(t *testing.T) (*ObjectService, *fakeObjectStorageBackend, uuid.UUID) {
+func newObjectServiceTestEnv(t *testing.T) (*ObjectService, *fakeObjectStorageBackend, uuid.UUID, *gorm.DB) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+strings.ReplaceAll(t.Name(), "/", "_")+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.ObjectRecord{}); err != nil {
+	if err := db.AutoMigrate(&model.ObjectRecord{}, &model.CapabilityDefinition{}, &model.PolicyRule{}, &model.PolicyDecision{}, &model.ApprovalReceipt{}, &model.KillSwitch{}, &model.GovernanceScanResult{}); err != nil {
 		t.Fatalf("migrate object records: %v", err)
 	}
 	fake := &fakeObjectStorageBackend{}
 	cfg := config.ObjectStorageConfig{Bucket: "agentos-test", UploadTTLSecs: 900, DownloadTTLSecs: 900}
-	return NewObjectService(repository.NewObjectRecordsRepo(db), fake, cfg), fake, uuid.New()
+	return NewObjectService(repository.NewObjectRecordsRepo(db), fake, cfg), fake, uuid.New(), db
 }
 
 type fakeObjectStorageBackend struct {
@@ -183,4 +183,21 @@ func (f *fakeObjectStorageBackend) ReadObject(ctx context.Context, bucket, key s
 	_ = key
 	_ = maxBytes
 	return nil, nil
+}
+
+func TestObjectServiceGovernanceObserveRecordsUploadDecisionWithoutBlocking(t *testing.T) {
+	svc, _, ownerID, db := newObjectServiceTestEnv(t)
+	governance := NewGovernanceService(repository.NewGovernanceRepo(db))
+	if _, err := governance.CreatePolicyRule(CreatePolicyRuleInput{Name: "Observe deny object upload", CapabilityKey: "object.upload.sage_plugin_package", SubjectType: GovernanceSubjectObjectOperation, Effect: GovernanceDecisionDeny, Priority: 1, Status: GovernanceStatusActive}); err != nil {
+		t.Fatalf("create policy rule: %v", err)
+	}
+	svc.SetGovernanceEnforcer(NewGovernanceEnforcer(governance, GovernanceEnforcementConfig{}))
+
+	intent, err := svc.CreateUploadIntent(context.Background(), ownerID, CreateUploadIntentInput{Scope: "sage-plugin-package", Filename: "plugin.zip", ContentType: "application/zip", ContentSize: 12, SHA256: strings.Repeat("a", 64)})
+	if err != nil {
+		t.Fatalf("observe mode should not block upload intent: %v", err)
+	}
+	if intent.Object == nil || intent.Object.Status != repository.ObjectStatusPending {
+		t.Fatalf("expected pending object intent, got %#v", intent)
+	}
 }

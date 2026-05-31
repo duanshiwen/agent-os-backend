@@ -491,3 +491,31 @@ agent-os-backend/
 │ libagentos_ffi │ │ PostgreSQL等   │
 └────────────────┘ └────────────────┘
 ```
+
+### Governance Enforcement Modes
+
+Stage 4B governance enforcement is enabled in safe rollout mode by default:
+
+```bash
+GOVERNANCE_ENFORCEMENT_MODE=observe
+```
+
+Supported values are:
+
+- `disabled` — skip governance evaluation and allow execution;
+- `observe` — evaluate and persist policy decisions without blocking business execution;
+- `enforce` — block denied operations and require valid approval receipts for approval-gated operations.
+
+Domain-specific overrides are available:
+
+```bash
+GOVERNANCE_ENFORCEMENT_SAGE_MODE=enforce
+GOVERNANCE_ENFORCEMENT_OBJECT_MODE=observe
+GOVERNANCE_ENFORCEMENT_KB_MODE=disabled
+```
+
+When a local stack is running, verify governance evaluation and audit-chain compatibility with:
+
+```bash
+BASE_URL=http://localhost:8080 ./scripts/smoke-governance-enforcement.sh
+```

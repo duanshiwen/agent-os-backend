@@ -117,3 +117,26 @@ Full backend tests:
 ```bash
 go test ./...
 ```
+
+## Stage 4B Governance Enforcement Integration
+
+Stage 4B connects the governance plane to real backend execution surfaces through `GovernanceEnforcer`. The enforcer supports three modes:
+
+- `disabled`: skip evaluation and allow execution;
+- `observe`: evaluate and persist `policy_decisions`, but do not block business execution;
+- `enforce`: block `deny`, require approval for `require_user_approval` / `require_admin_approval`, and consume one-time approval receipts.
+
+The default backend configuration is `GOVERNANCE_ENFORCEMENT_MODE=observe`, so Stage 4B is safe to roll out while collecting would-block evidence.
+
+| Surface | Subject Type | Capability Key Pattern | Enforcement Point |
+|---|---|---|---|
+| SAGE permission grant | `sage_permission_grant` | permission key, e.g. `sage.permission.payments.write` | `SAGEPluginService.GrantPermission` |
+| SAGE invocation | `sage_invocation` | `sage.invocation.create` or first permission used | `SAGEPluginService.CreateInvocation` |
+| Object upload | `object_operation` | `object.upload.<scope>` | `ObjectService.CreateUploadIntent` |
+| Object download | `object_operation` | `object.download.<scope>` | `ObjectService.CreateDownloadURL` |
+| Object delete | `object_operation` | `object.delete.<scope>` | `ObjectService.DeleteObject` |
+| KB review/takedown | `kb_operation` | `kb.collection.review.<status>` | `KBHubService.ReviewCollection` |
+| KB pricing | `kb_operation` | `kb.collection.pricing.update` | `KBHubService.UpdateCollectionPricing` |
+| KB snapshot lifecycle | `kb_operation` | `kb.snapshot.archive` / `kb.snapshot.restore` | `KBHubService.ArchiveSnapshot` / `RestoreSnapshot` |
+
+Domain-specific overrides are available via `GOVERNANCE_ENFORCEMENT_SAGE_MODE`, `GOVERNANCE_ENFORCEMENT_OBJECT_MODE`, and `GOVERNANCE_ENFORCEMENT_KB_MODE`.

@@ -34,6 +34,8 @@ func newGovernanceHandlerTestRouter(t *testing.T) *gin.Engine {
 	admin.POST("/governance/policy-rules", h.CreatePolicyRule)
 	admin.POST("/governance/kill-switches", h.CreateKillSwitch)
 	admin.POST("/governance/evaluate", h.Evaluate)
+	admin.POST("/governance/approval-receipts", h.CreateApprovalReceipt)
+	r.POST("/api/v1/governance/approval-receipts/consume", h.ConsumeApprovalReceipt)
 	return r
 }
 
@@ -123,5 +125,54 @@ func TestGovernanceHandlerKillSwitchOverridesPolicy(t *testing.T) {
 	}
 	if evalResp.Data.Decision != service.GovernanceDecisionDeny {
 		t.Fatalf("expected deny from kill switch, got %+v", evalResp)
+	}
+}
+
+func TestGovernanceHandlerApprovalReceiptRoutes(t *testing.T) {
+	r := newGovernanceHandlerTestRouter(t)
+	actorID := "11111111-1111-1111-1111-111111111111"
+
+	evalRec := httptest.NewRecorder()
+	r.ServeHTTP(evalRec, httptest.NewRequest(http.MethodPost, "/api/v1/admin/governance/evaluate", bytes.NewBufferString(`{"actor_user_id":"`+actorID+`","subject_type":"sage_permission_grant","subject_id":"grant-1","capability_key":"sage.permission.payments.write","risk_level":"high"}`)))
+	if evalRec.Code != http.StatusOK {
+		t.Fatalf("expected evaluate 200, got %d body=%s", evalRec.Code, evalRec.Body.String())
+	}
+	var evalResp struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(evalRec.Body.Bytes(), &evalResp); err != nil {
+		t.Fatalf("decode evaluate: %v", err)
+	}
+
+	createRec := httptest.NewRecorder()
+	createBody := `{"policy_decision_id":"` + evalResp.Data.ID + `","actor_user_id":"` + actorID + `","subject_type":"sage_permission_grant","subject_id":"grant-1","capability_key":"sage.permission.payments.write","decision":"require_user_approval","expires_in_seconds":900}`
+	r.ServeHTTP(createRec, httptest.NewRequest(http.MethodPost, "/api/v1/admin/governance/approval-receipts", bytes.NewBufferString(createBody)))
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected create receipt 201, got %d body=%s", createRec.Code, createRec.Body.String())
+	}
+	var createResp struct {
+		Data struct {
+			ApprovalToken string `json:"approval_token"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(createRec.Body.Bytes(), &createResp); err != nil {
+		t.Fatalf("decode create: %v", err)
+	}
+	if createResp.Data.ApprovalToken == "" {
+		t.Fatalf("expected approval token, got %+v", createResp)
+	}
+
+	consumeBody := `{"approval_token":"` + createResp.Data.ApprovalToken + `","consumed_by":"device-a"}`
+	consumeRec := httptest.NewRecorder()
+	r.ServeHTTP(consumeRec, httptest.NewRequest(http.MethodPost, "/api/v1/governance/approval-receipts/consume", bytes.NewBufferString(consumeBody)))
+	if consumeRec.Code != http.StatusOK {
+		t.Fatalf("expected consume 200, got %d body=%s", consumeRec.Code, consumeRec.Body.String())
+	}
+	reuseRec := httptest.NewRecorder()
+	r.ServeHTTP(reuseRec, httptest.NewRequest(http.MethodPost, "/api/v1/governance/approval-receipts/consume", bytes.NewBufferString(consumeBody)))
+	if reuseRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected reuse 400, got %d body=%s", reuseRec.Code, reuseRec.Body.String())
 	}
 }
