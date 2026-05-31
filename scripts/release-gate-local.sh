@@ -52,6 +52,8 @@ if [[ "$RUN_LIVE_SMOKES" == "1" ]]; then
   BASE_URL="$BASE_URL" ./scripts/smoke-sage-plugin-runtime.sh
   echo "==> Governance enforcement smoke"
   BASE_URL="$BASE_URL" ./scripts/smoke-governance-enforcement.sh
+  echo "==> Governance enforce-readiness smoke"
+  BASE_URL="$BASE_URL" ./scripts/smoke-governance-enforce-readiness.sh
 else
   echo "==> Skipping live smokes (set RUN_LIVE_SMOKES=1 with a running local stack)"
 fi

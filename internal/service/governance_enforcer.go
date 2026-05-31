@@ -77,7 +77,14 @@ func (e *GovernanceEnforcer) Enforce(input GovernanceEnforcementInput) (*Governa
 		if consumedBy == "" {
 			consumedBy = strings.TrimSpace(input.ActorDeviceID)
 		}
-		receipt, err := e.governance.ConsumeApprovalReceipt(input.ApprovalToken, consumedBy)
+		receipt, err := e.governance.ConsumeApprovalReceiptForOperation(ConsumeApprovalReceiptInput{
+			Token:         input.ApprovalToken,
+			ConsumedBy:    consumedBy,
+			ActorUserID:   input.ActorUserID,
+			SubjectType:   input.SubjectType,
+			SubjectID:     input.SubjectID,
+			CapabilityKey: input.CapabilityKey,
+		})
 		if err != nil {
 			if mode == GovernanceEnforcementModeObserve {
 				return &GovernanceEnforcementResult{Allowed: true, Mode: mode, WouldHaveBlocked: true}, nil

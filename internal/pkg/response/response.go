@@ -12,6 +12,12 @@ type Response struct {
 	Data    any    `json:"data,omitempty"`
 }
 
+type ErrorBody struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Details any    `json:"details,omitempty"`
+}
+
 func OK(c *gin.Context, data any) {
 	c.JSON(http.StatusOK, Response{
 		Code:    0,
@@ -40,6 +46,12 @@ func Error(c *gin.Context, httpStatus int, msg string) {
 	c.JSON(httpStatus, Response{
 		Code:    httpStatus,
 		Message: msg,
+	})
+}
+
+func ErrorWithCode(c *gin.Context, httpStatus int, code, msg string, details any) {
+	c.JSON(httpStatus, gin.H{
+		"error": ErrorBody{Code: code, Message: msg, Details: details},
 	})
 }
 

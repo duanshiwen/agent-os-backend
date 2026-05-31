@@ -114,6 +114,9 @@ func parseObjectIDParam(c *gin.Context) (uuid.UUID, bool) {
 }
 
 func (h *ObjectHandler) handleError(c *gin.Context, err error) {
+	if handleGovernanceError(c, err) {
+		return
+	}
 	switch {
 	case errors.Is(err, service.ErrObjectNotFound):
 		response.NotFound(c, err.Error())

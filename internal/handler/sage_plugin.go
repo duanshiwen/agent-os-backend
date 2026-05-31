@@ -257,6 +257,9 @@ func (h *SAGEPluginHandler) DeveloperMetrics(c *gin.Context) {
 }
 
 func (h *SAGEPluginHandler) handleError(c *gin.Context, err error) {
+	if handleGovernanceError(c, err) {
+		return
+	}
 	switch {
 	case errors.Is(err, service.ErrSAGEPluginNotFound), errors.Is(err, service.ErrSAGEVersionNotFound), errors.Is(err, service.ErrSAGEInstallationNotFound):
 		response.NotFound(c, err.Error())

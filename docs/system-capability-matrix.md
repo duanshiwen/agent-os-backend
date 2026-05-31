@@ -14,7 +14,7 @@ Legend:
 
 ```text
 Backend: go test ./...
-Result: 150 passed in 11 packages
+Result: 180 passed in 11 packages
 
 Rust SDK: cargo test --workspace --all-targets --locked
 Result: 1560 passed, 2 ignored, 110 suites
@@ -83,29 +83,29 @@ Backend working tree at Stage 0 start had one existing README documentation diff
 | Plugin | Runtime Flow contract | ✅ | mock plugin server + `scripts/smoke-sage-plugin-runtime.sh`; Backend intentionally does not execute Flow | real AgentOS Client integration |
 | Plugin | Execution Report | ✅ | invocation and execution report APIs, usage ledger / metrics foundation | idempotency hardening and billing integration |
 | Plugin | Installation / grants | ✅ | install/uninstall/enable/disable/grant/revoke APIs, high-risk grants use sensitive confirmation, `plugin.*` sync events | richer grant scopes and real AgentOS Client integration |
-| Governance | Capability taxonomy | ⬜ | none | platform-wide capability model |
-| Governance | Policy engine | ⬜ | none | allow/approval/deny decisions |
-| Governance | Tool definition scanning | ⬜ | none | injection/typosquatting/capability mismatch scanner |
+| Governance | Capability taxonomy | ✅ | `capability_definitions`; admin create/list APIs; tests | ongoing taxonomy quality and product naming |
+| Governance | Policy engine | ✅ | `policy_rules`, `policy_decisions`; allow/approval/deny decisions; enforcer modes disabled/observe/enforce | policy DSL and richer condition evaluation deferred |
+| Governance | Tool definition scanning | 🟡 | `governance_scan_results`; SAGE manifest scanner persists findings; admin list/resolve APIs | richer scanner coverage, typosquatting quality, and LLM-assisted review deferred |
 | Governance | Response inspection | ⬜ | none | unsafe output / secret detection |
-| Governance | Approval receipts | ⬜ | none | user/admin approval record |
+| Governance | Approval receipts | ✅ | one-time expiring receipts; token hash storage; Stage 4C actor/subject/capability-bound consume path | frontend approval UX and admin approval workflow polish |
 | Audit | Queryable audit event log | ✅ | `audit_events`; admin list endpoint; admission/device/sensitive-operation events | hash chain / tamper-evidence |
 | Security | Sensitive operation confirmation | ✅ | password-backed one-time confirmation tokens; device/admission enforcement | broaden to plugin grants, billing, and high-risk admin operations |
-| Security | Kill switch | ⬜ | none | plugin/user/capability/server-local kill switches |
+| Security | Kill switch | ✅ | `kill_switches`; admin create API; policy evaluation override | richer admin revoke/expire/list operations |
 | Server config | Local server list sync | ✅ | `user_server_connections` and `/servers` routes | local configuration only; not Federation |
 | Deferred scope | Federation / multi-server networking | 🚫 | intentionally removed from current roadmap | no server discovery, signed server handshake, remote plugin discovery, remote KB discovery, or cross-server sync |
 | Deferred scope | Cross-server DB replication | 🚫 | intentionally not part of design | preserve single-server product boundary |
 | Admin | Admission admin | ✅ | admin admission routes | broader admin console API |
 | Admin | KB admin/moderation | ✅ | review list, review/takedown, report list/resolve, subscription expiry API | reviewer roles and moderation dashboard |
 | Admin | Plugin admin/review | ✅ | SAGE review queue, approve/reject/request_changes, suspend APIs | richer reviewer roles and policy dashboards |
-| Admin | Security/admin ops | 🟡 | audit listing plus unified background runner foundation and background job admin APIs | job dashboards and richer job-specific controls |
+| Admin | Security/admin ops | 🟡 | audit listing, governance admin read/summary/scan-resolve APIs, unified background runner foundation, and background job admin APIs | dashboards and richer role policy |
 | Observability | `/health` | ✅ | database/redis/verifier checks | metrics and structured status |
 | Observability | `/ready` | ✅ | database readiness endpoint | broader dependency readiness policy |
 | Observability | Request IDs | ✅ | `X-Request-ID` middleware; generated or propagated | structured log integration |
 | Observability | Structured logging | ⬜ | standard log today | slog and correlation-aware logs |
 | Ops | Background job runner | ✅ | offline cleanup, sync cleanup, sensitive confirmation cleanup, KB subscription expiry, optional embedding worker, persisted run history, admin run-once trigger | embedding worker per-batch telemetry |
-| Release | Go unit/integration tests | ✅ | 155 passed | CI automation wrapper |
+| Release | Go unit/integration tests | ✅ | 180 passed | CI automation wrapper |
 | Release | Rust SDK tests | ✅ | 1560 passed | backend-pinned FFI artifact gate |
-| Release | Smoke scripts | ✅ | `scripts/release-gate-local.sh` runs tests/syntax checks plus optional migration apply, object storage, SAGE, and real local_http semantic smokes | CI full platform release gate |
+| Release | Smoke scripts | ✅ | `scripts/release-gate-local.sh` runs tests/syntax checks plus optional migration apply, object storage, SAGE, governance enforcement, governance enforce-readiness, and real local_http semantic smokes | CI full platform release gate |
 
 ## 3. Existing API Surface Summary
 
@@ -144,7 +144,8 @@ Admin:
 - admission policy;
 - invitation code;
 - admission request list/approve/reject;
-- SAGE plugin review queue, review decision, and suspend APIs.
+- SAGE plugin review queue, review decision, and suspend APIs;
+- governance capabilities, policy rules, kill switches, evaluate, summary, policy decisions, approval receipts, scan result list/resolve APIs.
 
 ## 4. Stage 0 Decisions from Matrix
 

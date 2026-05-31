@@ -904,6 +904,9 @@ func parseIntQuery(c *gin.Context, key string, fallback int) int {
 }
 
 func (h *KBHubHandler) handleError(c *gin.Context, err error) {
+	if handleGovernanceError(c, err) {
+		return
+	}
 	switch {
 	case errors.Is(err, service.ErrKBCollectionNotFound), errors.Is(err, service.ErrKBSnapshotNotFound):
 		response.NotFound(c, err.Error())

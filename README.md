@@ -494,7 +494,7 @@ agent-os-backend/
 
 ### Governance Enforcement Modes
 
-Stage 4B governance enforcement is enabled in safe rollout mode by default:
+Stage 4C governance enforcement is enabled in safe rollout mode by default:
 
 ```bash
 GOVERNANCE_ENFORCEMENT_MODE=observe
@@ -514,8 +514,40 @@ GOVERNANCE_ENFORCEMENT_OBJECT_MODE=observe
 GOVERNANCE_ENFORCEMENT_KB_MODE=disabled
 ```
 
+Governance errors returned by SAGE, Object, and KB surfaces include stable machine-readable codes:
+
+- `governance_denied`
+- `governance_approval_required`
+- `governance_approval_invalid`
+
+Stage 4C approval receipt consumption is bound to actor, subject type, subject id, and capability key when used through `GovernanceEnforcer`, so an approval token for one operation cannot authorize another operation.
+
+Admin governance APIs:
+
+| 方法 | 路径 | 描述 |
+|------|------|------|
+| POST | `/api/v1/admin/governance/capabilities` | 创建 capability definition |
+| GET | `/api/v1/admin/governance/capabilities` | 查看 capability definitions |
+| POST | `/api/v1/admin/governance/policy-rules` | 创建 policy rule |
+| GET | `/api/v1/admin/governance/policy-rules` | 查看 policy rules |
+| POST | `/api/v1/admin/governance/kill-switches` | 创建 kill switch |
+| POST | `/api/v1/admin/governance/evaluate` | 手动评估并持久化 policy decision |
+| GET | `/api/v1/admin/governance/summary?window=24` | 查看治理汇总窗口 |
+| GET | `/api/v1/admin/governance/policy-decisions` | 查看 policy decisions，支持 subject/capability/decision/risk 过滤 |
+| GET | `/api/v1/admin/governance/policy-decisions/:id` | 查看单个 policy decision |
+| POST | `/api/v1/admin/governance/approval-receipts` | 创建 approval receipt，并只在响应中返回一次 raw token |
+| GET | `/api/v1/admin/governance/approval-receipts` | 查看 approval receipts，不暴露 raw token |
+| GET | `/api/v1/admin/governance/scan-results` | 查看 scanner findings |
+| POST | `/api/v1/admin/governance/scan-results/:id/resolve` | 标记 scanner finding resolved |
+
 When a local stack is running, verify governance evaluation and audit-chain compatibility with:
 
 ```bash
 BASE_URL=http://localhost:8080 ./scripts/smoke-governance-enforcement.sh
+```
+
+To verify enforce-mode denial behavior, stable error codes, admin evidence APIs, and governance summary:
+
+```bash
+BASE_URL=http://localhost:8080 ./scripts/smoke-governance-enforce-readiness.sh
 ```
