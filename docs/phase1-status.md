@@ -19,7 +19,7 @@ Latest local verification for Stage 1 branch:
 
 ```text
 Backend: go test ./...
-Result: 137 passed in 11 packages
+Result: 139 passed in 11 packages
 
 Rust SDK: cargo test --workspace --all-targets --locked
 Result: 1560 passed, 2 ignored, 110 suites
@@ -703,7 +703,18 @@ Stage 2 adds the first production-governance closure around KB Hub:
 - subscription `expires_at` support and admin-triggerable expiry cleanup;
 - audit events for KB review/report/snapshot lifecycle/subscription expiry.
 
-Stage 2 intentionally still leaves full billing invoices/payouts, per-plan entitlement variants, unified background scheduling, and chunk-level search quality for later work.
+Stage 2 billing/entitlement work now adds:
+
+- collection entitlement mode and billing interval;
+- versioned KB billing plans;
+- subscription entitlement type, renewal status, current period, and grant reason;
+- invoice and invoice item records;
+- refund request and admin resolution;
+- billing dispute open and admin resolution;
+- contributor payout period aggregation and admin paid marker;
+- audit events for billing plan, invoice, refund, dispute, and payout operations.
+
+Stage 2 still leaves external payment integration, automated renewal collection, tax/export documents, entitlement revocation policy, unified background scheduling, and chunk-level search quality for later work.
 
 ## Recommended Next Milestone
 

@@ -278,12 +278,18 @@ func (r *KBHubRepo) UpsertSubscription(subscription *model.KBSubscription) error
 		return err
 	}
 	return r.db.Model(&existing).Updates(map[string]any{
-		"snapshot_id":    subscription.SnapshotID,
-		"track_mode":     subscription.TrackMode,
-		"pinned_version": subscription.PinnedVersion,
-		"status":         subscription.Status,
-		"started_at":     subscription.StartedAt,
-		"expires_at":     subscription.ExpiresAt,
+		"snapshot_id":          subscription.SnapshotID,
+		"track_mode":           subscription.TrackMode,
+		"pinned_version":       subscription.PinnedVersion,
+		"status":               subscription.Status,
+		"started_at":           subscription.StartedAt,
+		"expires_at":           subscription.ExpiresAt,
+		"entitlement_type":     subscription.EntitlementType,
+		"renewal_status":       subscription.RenewalStatus,
+		"current_period_start": subscription.CurrentPeriodStart,
+		"current_period_end":   subscription.CurrentPeriodEnd,
+		"granted_by":           subscription.GrantedBy,
+		"grant_reason":         subscription.GrantReason,
 	}).Error
 }
 
@@ -341,7 +347,7 @@ func KBContentDownloadOperations() []string {
 func nowUTC() time.Time { return time.Now().UTC() }
 
 func (r *KBHubRepo) ExpireSubscriptions(now time.Time) (int64, error) {
-	result := r.db.Model(&model.KBSubscription{}).Where("status = ? AND expires_at IS NOT NULL AND expires_at <= ?", "active", now.UTC()).Update("status", "expired")
+	result := r.db.Model(&model.KBSubscription{}).Where("status = ? AND expires_at IS NOT NULL AND expires_at <= ?", "active", now.UTC()).Updates(map[string]any{"status": "expired", "renewal_status": "expired"})
 	return result.RowsAffected, result.Error
 }
 

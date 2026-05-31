@@ -209,6 +209,13 @@ func Setup(
 
 			protected.GET("/billing/account", kbHubH.GetBillingAccount)
 			protected.GET("/billing/transactions", kbHubH.ListBillingTransactions)
+			protected.GET("/billing/invoices", kbHubH.ListBillingInvoices)
+			protected.GET("/billing/invoices/:invoice_id", kbHubH.GetBillingInvoice)
+			protected.POST("/billing/refunds", kbHubH.RequestBillingRefund)
+			protected.GET("/billing/refunds", kbHubH.ListBillingRefunds)
+			protected.POST("/billing/disputes", kbHubH.OpenBillingDispute)
+			protected.GET("/billing/disputes", kbHubH.ListBillingDisputes)
+			protected.GET("/billing/payout-periods", kbHubH.ListContributorPayoutPeriods)
 
 			protected.POST("/kb/collections", kbHubH.CreateCollection)
 			protected.GET("/kb/collections", kbHubH.ListCollections)
@@ -217,6 +224,7 @@ func Setup(
 			protected.POST("/kb/collections/:id/reports", kbHubH.ReportCollection)
 			protected.GET("/kb/collections/:id/stats", kbHubH.GetCollectionStats)
 			protected.GET("/kb/collections/:id/earnings", kbHubH.ListContributorEarnings)
+			protected.GET("/kb/collections/:id/billing-plans", kbHubH.ListCollectionBillingPlans)
 			protected.POST("/kb/collections/:id/snapshots", kbHubH.PublishSnapshot)
 			protected.GET("/kb/collections/:id/snapshots", kbHubH.ListSnapshots)
 			protected.GET("/kb/collections/:id/snapshots/:snapshot_id", kbHubH.GetSnapshot)
@@ -251,6 +259,11 @@ func Setup(
 			admin.GET("/kb/moderation/reports", kbHubH.AdminListModerationReports)
 			admin.POST("/kb/moderation/reports/:report_id/resolve", kbHubH.AdminResolveModerationReport)
 			admin.POST("/kb/subscriptions/expire", kbHubH.AdminExpireSubscriptions)
+			admin.POST("/kb/billing/invoices", kbHubH.AdminCreateBillingInvoice)
+			admin.POST("/kb/billing/invoices/:invoice_id/pay", kbHubH.AdminMarkInvoicePaid)
+			admin.POST("/kb/billing/refunds/:refund_id/resolve", kbHubH.AdminResolveRefund)
+			admin.POST("/kb/billing/disputes/:dispute_id/resolve", kbHubH.AdminResolveDispute)
+			admin.POST("/kb/billing/payout-periods/:payout_id/pay", kbHubH.AdminMarkPayoutPaid)
 		}
 	}
 
