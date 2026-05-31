@@ -523,6 +523,10 @@ type AuditEvent struct {
 	UserAgent     string            `json:"user_agent"`
 	Metadata      datatypes.JSONMap `gorm:"type:jsonb" json:"metadata"`
 	OccurredAt    time.Time         `gorm:"index;not null" json:"occurred_at"`
+	Sequence      int64             `gorm:"uniqueIndex;not null;default:0" json:"sequence"`
+	PreviousHash  string            `gorm:"index;not null" json:"previous_hash"`
+	EventHash     string            `gorm:"index;not null" json:"event_hash"`
+	HashAlgorithm string            `gorm:"not null;default:sha256" json:"hash_algorithm"`
 }
 
 type CapabilityDefinition struct {

@@ -1,6 +1,10 @@
 package service
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -14,6 +18,16 @@ const (
 	AuditOutcomeSuccess = "success"
 	AuditOutcomeFailure = "failure"
 	AuditOutcomeDenied  = "denied"
+)
+
+const (
+	AuditGenesisHash              = "GENESIS"
+	AuditHashAlgorithmSHA256      = "sha256"
+	AuditChainBreakHashMismatch   = "hash_mismatch"
+	AuditChainBreakLinkMismatch   = "link_mismatch"
+	AuditChainBreakSequenceGap    = "sequence_gap"
+	AuditChainBreakMissingHash    = "missing_hash"
+	AuditChainBreakUnsupportedAlg = "unsupported_hash_algorithm"
 )
 
 const (
@@ -82,6 +96,26 @@ type AuditEventsPage struct {
 	Total  int64              `json:"total"`
 }
 
+type VerifyAuditHashChainInput struct {
+	Limit int
+}
+
+type AuditHashChainVerification struct {
+	Valid       bool                  `json:"valid"`
+	Checked     int                   `json:"checked"`
+	HeadHash    string                `json:"head_hash"`
+	HeadSequence int64                 `json:"head_sequence"`
+	Breaks      []AuditHashChainBreak `json:"breaks"`
+}
+
+type AuditHashChainBreak struct {
+	Sequence int64     `json:"sequence"`
+	EventID  uuid.UUID `json:"event_id"`
+	Reason   string    `json:"reason"`
+	Expected string    `json:"expected"`
+	Actual   string    `json:"actual"`
+}
+
 func NewAuditService(repo *repository.AuditRepo) *AuditService {
 	return &AuditService{repo: repo}
 }
@@ -116,7 +150,24 @@ func (s *AuditService) Record(input RecordAuditEventInput) (*model.AuditEvent, e
 	if event.Metadata == nil {
 		event.Metadata = datatypes.JSONMap{}
 	}
-	if err := s.repo.Create(event); err != nil {
+	if event.ID == uuid.Nil {
+		event.ID = uuid.New()
+	}
+	if err := s.repo.AppendHashChained(event, func(previous *model.AuditEvent, nextSequence int64) error {
+		event.Sequence = nextSequence
+		event.HashAlgorithm = AuditHashAlgorithmSHA256
+		if previous == nil {
+			event.PreviousHash = AuditGenesisHash
+		} else {
+			event.PreviousHash = previous.EventHash
+		}
+		hash, err := computeAuditEventHash(event)
+		if err != nil {
+			return err
+		}
+		event.EventHash = hash
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 	return event, nil
@@ -140,4 +191,78 @@ func (s *AuditService) List(input ListAuditEventsInput) (*AuditEventsPage, error
 		return nil, err
 	}
 	return &AuditEventsPage{Items: events, Limit: limit, Offset: input.Offset, Total: total}, nil
+}
+
+func (s *AuditService) VerifyHashChain(input VerifyAuditHashChainInput) (*AuditHashChainVerification, error) {
+	if s == nil || s.repo == nil {
+		return &AuditHashChainVerification{Valid: true}, nil
+	}
+	events, err := s.repo.ListHashChain(input.Limit)
+	if err != nil {
+		return nil, err
+	}
+	result := &AuditHashChainVerification{Valid: true, Checked: len(events)}
+	previousHash := AuditGenesisHash
+	previousSequence := int64(0)
+	for _, event := range events {
+		if event.HashAlgorithm != AuditHashAlgorithmSHA256 {
+			result.addBreak(event, AuditChainBreakUnsupportedAlg, AuditHashAlgorithmSHA256, event.HashAlgorithm)
+			continue
+		}
+		if event.Sequence != previousSequence+1 {
+			result.addBreak(event, AuditChainBreakSequenceGap, fmt.Sprintf("%d", previousSequence+1), fmt.Sprintf("%d", event.Sequence))
+		}
+		if event.PreviousHash != previousHash {
+			result.addBreak(event, AuditChainBreakLinkMismatch, previousHash, event.PreviousHash)
+		}
+		if event.EventHash == "" || event.PreviousHash == "" {
+			result.addBreak(event, AuditChainBreakMissingHash, "non-empty hashes", "empty hash")
+		} else {
+			expectedHash, err := computeAuditEventHash(&event)
+			if err != nil {
+				return nil, err
+			}
+			if event.EventHash != expectedHash {
+				result.addBreak(event, AuditChainBreakHashMismatch, expectedHash, event.EventHash)
+			}
+		}
+		previousHash = event.EventHash
+		previousSequence = event.Sequence
+		result.HeadHash = event.EventHash
+		result.HeadSequence = event.Sequence
+	}
+	return result, nil
+}
+
+func (r *AuditHashChainVerification) addBreak(event model.AuditEvent, reason, expected, actual string) {
+	r.Valid = false
+	r.Breaks = append(r.Breaks, AuditHashChainBreak{Sequence: event.Sequence, EventID: event.ID, Reason: reason, Expected: expected, Actual: actual})
+}
+
+func computeAuditEventHash(event *model.AuditEvent) (string, error) {
+	actorUserID := ""
+	if event.ActorUserID != nil {
+		actorUserID = event.ActorUserID.String()
+	}
+	payload := map[string]any{
+		"id":              event.ID.String(),
+		"sequence":        event.Sequence,
+		"previous_hash":   event.PreviousHash,
+		"actor_user_id":   actorUserID,
+		"actor_device_id": event.ActorDeviceID,
+		"action":          event.Action,
+		"resource_type":   event.ResourceType,
+		"resource_id":     event.ResourceID,
+		"outcome":         event.Outcome,
+		"ip_address":      event.IPAddress,
+		"user_agent":      event.UserAgent,
+		"metadata":        event.Metadata,
+		"occurred_at":     event.OccurredAt.UTC().Format(time.RFC3339Nano),
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(encoded)
+	return hex.EncodeToString(sum[:]), nil
 }
