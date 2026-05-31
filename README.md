@@ -7,6 +7,7 @@ Agent OS 单服务器服务端进程（Go + Rust SDK FFI），提供身份接入
 Stage 0 已将 backend 从“分阶段 MVP”重新锁定为完整平台化交付路线。当前平台基线与架构边界见：
 
 - [`docs/platform-roadmap.md`](docs/platform-roadmap.md) — 一步到位平台完成路线图
+- [`docs/stage5a-client-ready-platform-slice.md`](docs/stage5a-client-ready-platform-slice.md) — 当前 Stage 5A 客户端可接入平台切片计划
 - [`docs/system-capability-matrix.md`](docs/system-capability-matrix.md) — 已实现 / 部分实现 / 待实现能力矩阵
 - [`docs/architecture-boundaries.md`](docs/architecture-boundaries.md) — Go/Rust、存储、同步、KB、SAGE、治理、对象存储等边界冻结
 - [`docs/phase1-status.md`](docs/phase1-status.md) — 当前 Phase 1 → M3.5 / Stage 2 实现状态和验证记录

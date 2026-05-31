@@ -109,7 +109,63 @@ func TestFFIKnowledgeSyncBridgeIntegration(t *testing.T) {
 	}
 }
 
+func TestFFIClientReadySyncBridgeIntegration(t *testing.T) {
+	verifier, err := NewFFIVerifier("")
+	if err != nil {
+		t.Fatalf("new ffi verifier: %v", err)
+	}
+	defer verifier.Close()
+
+	var applyPullResponse func(projectionJSON string, pullResponseJSON string, errorOut **byte) *byte
+	purego.RegisterLibFunc(&applyPullResponse, verifier.handle, "agentos_apply_sync_pull_response_json")
+
+	pullResponse, err := os.ReadFile("testdata/stage5a_client_ready_sync_pull_response.json")
+	if err != nil {
+		t.Fatalf("read Stage 5A sync fixture: %v", err)
+	}
+
+	var errPtr *byte
+	out := applyPullResponse("", string(pullResponse), &errPtr)
+	if errPtr != nil {
+		defer verifier.freeString(errPtr)
+		t.Fatalf("apply client-ready sync pull response returned error: %s", cStringToGo(errPtr))
+	}
+	if out == nil {
+		t.Fatal("expected client-ready sync bridge output")
+	}
+	defer verifier.freeString(out)
+
+	projection := decodeClientReadyBridgeProjection(t, cStringToGo(out))
+	if projection.Cursor.LastAppliedSequence != 4 {
+		t.Fatalf("expected cursor sequence 4, got %+v", projection.Cursor)
+	}
+	if _, ok := projection.Skills["superpowers"]; !ok {
+		t.Fatalf("expected superpowers skill projection, got %+v", projection.Skills)
+	}
+	plugin, ok := projection.Plugins["installation-1"]
+	if !ok || plugin["plugin_key"] != "com.example.hotel" {
+		t.Fatalf("expected installed plugin projection, got %+v", projection.Plugins)
+	}
+	permission, ok := projection.PluginPermissions["grant-1"]
+	if !ok || permission["permission_key"] != "plugin.api.call" {
+		t.Fatalf("expected plugin permission projection, got %+v", projection.PluginPermissions)
+	}
+	if _, ok := projection.Knowledge.Entries["notes/stage5a"]; !ok {
+		t.Fatalf("expected knowledge projection entry, got %+v", projection.Knowledge.Entries)
+	}
+}
+
 func decodeKnowledgeBridgeProjection(t *testing.T, bridgeResponseJSON string) knowledgeBridgeProjection {
+	projection := decodeBridgeProjectionJSON[knowledgeBridgeProjection](t, bridgeResponseJSON)
+	return projection
+}
+
+func decodeClientReadyBridgeProjection(t *testing.T, bridgeResponseJSON string) clientReadyBridgeProjection {
+	projection := decodeBridgeProjectionJSON[clientReadyBridgeProjection](t, bridgeResponseJSON)
+	return projection
+}
+
+func decodeBridgeProjectionJSON[T any](t *testing.T, bridgeResponseJSON string) T {
 	t.Helper()
 	var bridgeResponse struct {
 		OK   bool   `json:"ok"`
@@ -122,9 +178,9 @@ func decodeKnowledgeBridgeProjection(t *testing.T, bridgeResponseJSON string) kn
 		t.Fatalf("expected successful bridge response, got %+v", bridgeResponse)
 	}
 
-	var projection knowledgeBridgeProjection
+	var projection T
 	if err := json.Unmarshal([]byte(bridgeResponse.JSON), &projection); err != nil {
-		t.Fatalf("decode knowledge projection JSON: %v; projection=%s", err, bridgeResponse.JSON)
+		t.Fatalf("decode projection JSON: %v; projection=%s", err, bridgeResponse.JSON)
 	}
 	return projection
 }
@@ -134,6 +190,16 @@ type knowledgeBridgeProjection struct {
 		LastAppliedSequence uint64 `json:"last_applied_sequence"`
 	} `json:"cursor"`
 	Entries map[string]knowledgeBridgeEntry `json:"entries"`
+}
+
+type clientReadyBridgeProjection struct {
+	Cursor struct {
+		LastAppliedSequence uint64 `json:"last_applied_sequence"`
+	} `json:"cursor"`
+	Knowledge         knowledgeBridgeProjection     `json:"knowledge"`
+	Skills            map[string]map[string]any     `json:"skills"`
+	Plugins           map[string]map[string]any     `json:"plugins"`
+	PluginPermissions map[string]map[string]any     `json:"plugin_permissions"`
 }
 
 type knowledgeBridgeEntry struct {

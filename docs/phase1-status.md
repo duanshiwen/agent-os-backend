@@ -15,11 +15,11 @@ Stage 1 Platform Core Hardening is now underway and has completed the first secu
 - `/ready` readiness endpoint;
 - expired sensitive confirmation cleanup service method.
 
-Latest local verification on `main`:
+Latest local verification on `stage5a-client-ready-platform-slice`:
 
 ```text
 Backend: go test ./...
-Result: 150 passed in 11 packages
+Result: 183 passed in 11 packages
 
 Rust SDK: cargo test --workspace --all-targets --locked
 Result: 1560 passed, 2 ignored, 110 suites
@@ -809,7 +809,17 @@ Current Stage 3A gaps:
 
 ## Recommended Next Milestone
 
-Recommended next milestone is **Stage 3A: SAGE Client-Ready Platform Slice**: first live-smoke M3.5 with Docker Compose (`embedding-worker` + `embedding-job-worker`), then add a SAGE runtime contract smoke covering plugin submit/review/install/grant/policy-bundle/invocation/report. In parallel, add SAGE install/grant sync events and keep chunk-level passage embeddings as the next search-quality slice after the real BGE-M3 operational gate is verified.
+Recommended next milestone is **Stage 5A: Client-Ready Platform Slice**. Stage 3A foundations are already implemented: SAGE runtime/control-plane smoke exists, plugin lifecycle sync events exist, icon/package object binding exists, and release-gate hooks exist.
+
+Stage 5A should now focus on client integration readiness:
+
+1. Reality Lock 2.0: keep requirements, roadmap, status docs, tests, and architecture boundaries aligned with the real codebase;
+2. SDK Client Sync Bridge expansion: extend `agentos-client-bridge` / `agentos-ffi` beyond knowledge-only reduction so AgentOS Client can consume backend sync pull envelopes for plugin, skill, agent, server, and knowledge projections;
+3. SAGE Client Runtime Contract Gate: freeze policy bundle semantics, validate approval-required / denied governance paths, and keep Backend as the control plane rather than a Flow executor;
+4. Release Gate 1.0: add client-ready evidence paths alongside Go tests, migration gate, object/SAGE/governance smokes, and optional local_http semantic smoke;
+5. Follow-up quality slices: chunk-level KB passage retrieval and Governance 4E production policy operations.
+
+Stage 5A plan: `docs/stage5a-client-ready-platform-slice.md`.
 
 ## Stage 4B Governance Enforcement Integration
 
