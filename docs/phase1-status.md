@@ -1,7 +1,7 @@
 # AgentOS Backend Phase 1 / Full M3 KB Hub Status
 
 Updated: 2026-05-31
-Branch: `stage1-sensitive-confirmation-enforcement`
+Branch: `main`
 Stage 0 reset: AgentOS Backend is now planned as a full platform completion program rather than MVP-only delivery. See `docs/platform-roadmap.md`, `docs/system-capability-matrix.md`, and `docs/architecture-boundaries.md` for the current platform baseline and architecture freeze.
 
 Stage 1 Platform Core Hardening is now underway and has completed the first security/audit closure pass:
@@ -15,11 +15,11 @@ Stage 1 Platform Core Hardening is now underway and has completed the first secu
 - `/ready` readiness endpoint;
 - expired sensitive confirmation cleanup service method.
 
-Latest local verification for Stage 1 branch:
+Latest local verification on `main`:
 
 ```text
 Backend: go test ./...
-Result: 141 passed in 11 packages
+Result: 150 passed in 11 packages
 
 Rust SDK: cargo test --workspace --all-targets --locked
 Result: 1560 passed, 2 ignored, 110 suites
@@ -660,7 +660,7 @@ migrations/016_kb_semantic_search_pgvector.sql
 Latest local verification:
 
 ```text
-go test ./...: 122 passed in 11 packages
+go test ./...: 150 passed in 11 packages
 Docker Compose config validation: passed
 Live pgvector AutoMigrate probe: vector extension + kb_search_embeddings.embedding vector column verified
 Deterministic semantic pipeline smoke: passed
@@ -674,11 +674,26 @@ scripts/smoke-kb-semantic-deterministic.sh
 
 It validates publish → durable queue enqueue → Go worker processing → ready embedding coverage → semantic search result without downloading BGE-M3.
 
+Real BGE-M3 / `local_http` semantic smoke script:
+
+```text
+scripts/smoke-kb-semantic-local-http.sh
+```
+
+Latest verified result on `main`:
+
+```text
+scripts/smoke-kb-embedding-worker.sh: passed
+scripts/smoke-kb-semantic-local-http.sh: passed
+Coverage progression: coverage=0 ready=0 pending=1 failed=0 → coverage=1 ready=1 pending=0 failed=0
+Semantic query returned entry: notes/kb-semantic-local-1780209235
+```
+
 ## Current Known Limitations
 
-Full M3 / M3.5 intentionally still does **not** include:
+Full M3 / M3.5 intentionally did not include SAGE routes, but `main` now includes the M4 SAGE Plugin Open Platform foundation. Current platform limitations are:
 
-- plugin marketplace / SAGE service routes;
+- SAGE client runtime integration beyond backend policy bundle / invocation report contract;
 - multi-server federation or remote server authentication;
 - a full client-side merge engine;
 - full conversation history reconstruction solely from sync events;
@@ -726,6 +741,48 @@ Stage 2 background job runner work now adds:
 
 Stage 2 still leaves external payment integration, automated renewal collection policy, tax/export documents, entitlement revocation policy, persisted job execution history, admin job trigger/list APIs, and chunk-level search quality for later work.
 
+## M4 SAGE Plugin Open Platform Foundation
+
+M4 foundation is now implemented on `main` in commit `73105c1 feat: add SAGE plugin open platform foundation`. The backend acts as the SAGE open-platform control plane, not as a third-party plugin code executor.
+
+Implemented M4 additions:
+
+- Manifest v1 JSON validator with required fields, reverse-DNS `plugin_key`, endpoint validation, permission taxonomy, risk summary, and manifest hash;
+- SAGE plugin registry for developer draft creation and manifest version submission;
+- immutable manifest snapshot records with validation errors/warnings, permission summary, and risk summary;
+- admin review queue and review decisions: approve, reject/request changes, suspend/takedown;
+- public catalog APIs for approved plugins;
+- user installation lifecycle: install, uninstall, enable, disable;
+- permission grants and revocations, with high-risk grants routed through sensitive-operation confirmation;
+- policy bundle API for AgentOS Client runtime consumption;
+- invocation and execution report APIs for client-side runtime audit and usage reporting;
+- developer metrics foundation;
+- SAGE audit events for plugin creation, version submission, review, install/grant, invocation, and report flows.
+
+Runtime/control-plane smoke is now available:
+
+```text
+scripts/smoke-sage-plugin-runtime.sh
+```
+
+Latest verified result on `main`:
+
+```text
+SAGE plugin runtime/control-plane smoke passed.
+Path: create plugin → submit manifest → admin approve → catalog → install → grant → policy bundle → mock flow call → invocation → report → developer metrics
+Metrics: invocations=1 completed=1 tokens_used=42
+```
+
+The smoke also hardened client contract JSON tags for SAGE request inputs, policy bundle fields, and developer metrics fields.
+
+Current M4 gaps:
+
+- plugin install/grant state still needs sync event coverage for multi-device clients;
+- plugin icon/package object storage binding is not yet complete;
+- richer manifest governance scans such as injection and typosquatting checks are still pending;
+- Backend still intentionally does not execute third-party Flow definitions or host plugin code;
+- real payment, refund, tax, and settlement integration remains out of scope for the foundation.
+
 ## Recommended Next Milestone
 
-Recommended next milestone is to live-smoke M3.5 with Docker Compose (`embedding-worker` + `embedding-job-worker`) and then proceed to **M4 Plugin Marketplace + SAGE**. If search quality becomes the priority before M4, the next search slice should add chunk-level passage embeddings and retrieval-quality evaluation rather than changing the provider architecture.
+Recommended next milestone is **Stage 3A: SAGE Client-Ready Platform Slice**: first live-smoke M3.5 with Docker Compose (`embedding-worker` + `embedding-job-worker`), then add a SAGE runtime contract smoke covering plugin submit/review/install/grant/policy-bundle/invocation/report. In parallel, add SAGE install/grant sync events and keep chunk-level passage embeddings as the next search-quality slice after the real BGE-M3 operational gate is verified.

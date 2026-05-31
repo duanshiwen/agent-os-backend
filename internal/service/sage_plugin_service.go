@@ -41,15 +41,23 @@ func (s *SAGEPluginService) SetSensitiveOperationService(svc *SensitiveOperation
 }
 
 type CreateSAGEPluginInput struct {
-	PluginKey, Name, Description, Category, HomepageURL, ManifestURL string `json:",omitempty"`
+	PluginKey   string `json:"plugin_key"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Category    string `json:"category"`
+	HomepageURL string `json:"homepage_url"`
+	ManifestURL string `json:"manifest_url"`
 }
 type SubmitSAGEPluginVersionInput struct {
 	Version  string         `json:"version"`
 	Manifest map[string]any `json:"manifest"`
 }
 type ReviewSAGEPluginInput struct {
-	Decision, Reason                                  string   `json:"decision"`
-	SecurityFindings, PrivacyFindings, PolicyFindings []string `json:"security_findings"`
+	Decision         string   `json:"decision"`
+	Reason           string   `json:"reason"`
+	SecurityFindings []string `json:"security_findings"`
+	PrivacyFindings  []string `json:"privacy_findings"`
+	PolicyFindings   []string `json:"policy_findings"`
 }
 type InstallSAGEPluginInput struct {
 	TrackMode string `json:"track_mode"`
@@ -61,21 +69,27 @@ type GrantSAGEPermissionInput struct {
 	ExpiresAt         *time.Time     `json:"expires_at"`
 }
 type CreateSAGEInvocationInput struct {
-	PluginKey                                                string         `json:"plugin_key"`
-	InstallationID                                           *uuid.UUID     `json:"installation_id"`
-	ClientRequestID, UserIntent, FlowID, FlowHash, RiskLevel string         `json:"client_request_id"`
-	PermissionsUsed                                          []string       `json:"permissions_used"`
-	PolicyDecision                                           map[string]any `json:"policy_decision"`
+	PluginKey       string         `json:"plugin_key"`
+	InstallationID  *uuid.UUID     `json:"installation_id"`
+	ClientRequestID string         `json:"client_request_id"`
+	UserIntent      string         `json:"user_intent"`
+	FlowID          string         `json:"flow_id"`
+	FlowHash        string         `json:"flow_hash"`
+	RiskLevel       string         `json:"risk_level"`
+	PermissionsUsed []string       `json:"permissions_used"`
+	PolicyDecision  map[string]any `json:"policy_decision"`
 }
 type SubmitSAGEExecutionReportInput struct {
-	ClientReportID, Status, FlowID string         `json:"client_report_id"`
-	StepsCompleted                 []string       `json:"steps_completed"`
-	StepSummaries                  map[string]any `json:"step_summaries"`
-	Errors                         []string       `json:"errors"`
-	UserConfirmations              []string       `json:"user_confirmations"`
-	PluginCallbacks                []string       `json:"plugin_callbacks"`
-	TokensUsed                     int            `json:"tokens_used"`
-	Metering                       map[string]any `json:"metering"`
+	ClientReportID    string         `json:"client_report_id"`
+	Status            string         `json:"status"`
+	FlowID            string         `json:"flow_id"`
+	StepsCompleted    []string       `json:"steps_completed"`
+	StepSummaries     map[string]any `json:"step_summaries"`
+	Errors            []string       `json:"errors"`
+	UserConfirmations []string       `json:"user_confirmations"`
+	PluginCallbacks   []string       `json:"plugin_callbacks"`
+	TokensUsed        int            `json:"tokens_used"`
+	Metering          map[string]any `json:"metering"`
 }
 
 type SAGECatalogPage struct {
@@ -84,19 +98,24 @@ type SAGECatalogPage struct {
 	Total         int64              `json:"total"`
 }
 type SAGEPolicyBundle struct {
-	PluginKey, Version, PolicyBundleVersion string            `json:"plugin_key"`
-	ManifestSnapshot                        datatypes.JSONMap `json:"manifest_snapshot"`
-	GrantedPermissions                      []map[string]any  `json:"granted_permissions"`
-	DeniedPermissions                       []string          `json:"denied_permissions"`
-	RuntimeGuards                           []map[string]any  `json:"runtime_guards"`
-	Reporting                               map[string]any    `json:"reporting"`
+	PluginKey           string            `json:"plugin_key"`
+	Version             string            `json:"version"`
+	PolicyBundleVersion string            `json:"policy_bundle_version"`
+	ManifestSnapshot    datatypes.JSONMap `json:"manifest_snapshot"`
+	GrantedPermissions  []map[string]any  `json:"granted_permissions"`
+	DeniedPermissions   []string          `json:"denied_permissions"`
+	RuntimeGuards       []map[string]any  `json:"runtime_guards"`
+	Reporting           map[string]any    `json:"reporting"`
 }
 type SAGEDeveloperMetrics struct {
-	PluginKey, Period              string  `json:"plugin_key"`
-	Invocations, Completed, Failed int64   `json:"invocations"`
-	SuccessRate                    float64 `json:"success_rate"`
-	TokensUsed                     int64   `json:"tokens_used"`
-	EstimatedRevenue               int64   `json:"estimated_revenue"`
+	PluginKey        string  `json:"plugin_key"`
+	Period           string  `json:"period"`
+	Invocations      int64   `json:"invocations"`
+	Completed        int64   `json:"completed"`
+	Failed           int64   `json:"failed"`
+	SuccessRate      float64 `json:"success_rate"`
+	TokensUsed       int64   `json:"tokens_used"`
+	EstimatedRevenue int64   `json:"estimated_revenue"`
 }
 
 func (s *SAGEPluginService) CreatePlugin(developerID uuid.UUID, input CreateSAGEPluginInput) (*model.SAGEPlugin, error) {
