@@ -288,7 +288,33 @@ curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
   http://localhost:8080/api/v1/admin/kb/billing/invoices
 ```
 
-仍未包含真实外部支付通道、自动扣款、税务/发票导出和统一 background scheduler。
+仍未包含真实外部支付通道、自动扣款、税务/发票导出。
+
+#### Unified Background Job Runner（Stage 2）
+
+服务端现在内置统一 background job runner，用于承载周期性维护任务。当前覆盖：
+
+- offline message cleanup；
+- sync event cleanup；
+- expired sensitive operation confirmation cleanup；
+- KB subscription expiry cleanup；
+- 可选的 in-process KB embedding worker。
+
+默认配置：
+
+| 环境变量 | 默认值 | 描述 |
+|----------|--------|------|
+| `BACKGROUND_RUN_ON_START` | `false` | 服务启动时是否立即执行一次维护任务 |
+| `BACKGROUND_OFFLINE_CLEANUP_INTERVAL_SECONDS` | `3600` | offline message cleanup 间隔 |
+| `BACKGROUND_SYNC_CLEANUP_INTERVAL_SECONDS` | `21600` | sync event cleanup 间隔 |
+| `BACKGROUND_SENSITIVE_CONFIRMATION_INTERVAL_SECONDS` | `900` | sensitive confirmation cleanup 间隔 |
+| `BACKGROUND_KB_SUBSCRIPTION_EXPIRY_INTERVAL_SECONDS` | `900` | KB subscription expiry cleanup 间隔 |
+| `BACKGROUND_EMBEDDING_WORKER_ENABLED` | `false` | 是否在 API server 进程内启动 embedding worker |
+| `BACKGROUND_EMBEDDING_WORKER_ID` | 自动生成 | in-process embedding worker ID |
+| `BACKGROUND_EMBEDDING_WORKER_BATCH_SIZE` | `8` | embedding worker batch size |
+| `BACKGROUND_EMBEDDING_WORKER_POLL_INTERVAL_SECONDS` | `2` | embedding worker poll interval |
+
+生产部署建议仍优先使用独立 worker 进程运行 embedding pipeline；`BACKGROUND_EMBEDDING_WORKER_ENABLED=true` 主要用于单机开发、测试或轻量部署。
 
 #### KB Hub 语义搜索（M3.5）
 

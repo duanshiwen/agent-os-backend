@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/agent-os/backend/internal/config"
 	"github.com/agent-os/backend/internal/repository"
@@ -57,16 +58,47 @@ func main() {
 	userRepo := repository.NewUserRepo(db)
 	convRepo := repository.NewConversationRepo(db)
 	syncRepo := repository.NewSyncRepo(db)
+	auditRepo := repository.NewAuditRepo(db)
+	sensitiveOperationRepo := repository.NewSensitiveOperationRepo(db)
+	knowledgeEntriesRepo := repository.NewKnowledgeEntriesRepo(db)
+	objectRecordsRepo := repository.NewObjectRecordsRepo(db)
+	kbHubRepo := repository.NewKBHubRepo(db)
+	billingRepo := repository.NewBillingRepo(db)
+	kbEmbeddingRepo := repository.NewKBEmbeddingRepo(db)
 
 	// Initialize services
 	msgService := service.NewMessageService(convRepo, userRepo)
 	syncService := service.NewSyncService(syncRepo, hub)
+	auditSvc := service.NewAuditService(auditRepo)
+	sensitiveOperationSvc := service.NewSensitiveOperationService(userRepo, sensitiveOperationRepo, auditSvc)
+	billingSvc := service.NewKBBillingService(billingRepo)
+	objectStorageCfg := cfg.ObjectStorage
+	if objectStorageCfg.Endpoint == "" {
+		objectStorageCfg = config.ObjectStorageConfig{Endpoint: "localhost:9000", PublicEndpoint: "localhost:9000", AccessKey: "minioadmin", SecretKey: "minioadmin", Bucket: "agentos-objects", UploadTTLSecs: 900, DownloadTTLSecs: 900}
+	}
+	objectStorageBackend, err := service.NewMinIOStorageService(objectStorageCfg)
+	if err != nil {
+		log.Fatalf("Failed to init object storage: %v", err)
+	}
+	objectSvc := service.NewObjectService(objectRecordsRepo, objectStorageBackend, objectStorageCfg)
+	kbHubSvc := service.NewKBHubService(kbHubRepo, knowledgeEntriesRepo, objectSvc)
+	kbHubSvc.SetBillingService(billingSvc)
 
 	// Inject sync service into message service (avoids import cycle)
 	msgService.SetSyncService(syncService)
 
 	// Start background tasks
-	bgTasks := service.NewBackgroundTasks(msgService, syncService)
+	embeddingProvider := service.NewEmbeddingProvider(service.EmbeddingProviderConfig{Provider: cfg.Embedding.Provider, Endpoint: cfg.Embedding.Endpoint, Model: cfg.Embedding.Model, Dimensions: cfg.Embedding.Dimensions, Timeout: time.Duration(cfg.Embedding.TimeoutSecs) * time.Second, MaxBatchSize: cfg.Embedding.MaxBatchSize})
+	embeddingWorker := service.NewKBEmbeddingWorker(kbEmbeddingRepo, embeddingProvider, service.KBEmbeddingWorkerConfig{WorkerID: cfg.Background.EmbeddingWorkerID, BatchSize: cfg.Background.EmbeddingWorkerBatchSize, PollInterval: time.Duration(cfg.Background.EmbeddingWorkerPollIntervalSeconds) * time.Second})
+	bgTasks := service.NewBackgroundTasksWithConfig(service.BackgroundTasksConfig{
+		OfflineMessageCleanupInterval:        time.Duration(cfg.Background.OfflineMessageCleanupIntervalSeconds) * time.Second,
+		SyncEventCleanupInterval:             time.Duration(cfg.Background.SyncEventCleanupIntervalSeconds) * time.Second,
+		SensitiveConfirmationCleanupInterval: time.Duration(cfg.Background.SensitiveConfirmationIntervalSeconds) * time.Second,
+		KBSubscriptionExpiryInterval:         time.Duration(cfg.Background.KBSubscriptionExpiryIntervalSeconds) * time.Second,
+		EmbeddingWorkerEnabled:               cfg.Background.EmbeddingWorkerEnabled,
+		EmbeddingWorkerPollInterval:          time.Duration(cfg.Background.EmbeddingWorkerPollIntervalSeconds) * time.Second,
+		RunOnStart:                           cfg.Background.RunOnStart,
+	}, msgService, syncService, sensitiveOperationSvc, kbHubSvc, embeddingWorker)
 	bgTasks.Start(ctx)
 	log.Println("Background tasks started")
 
