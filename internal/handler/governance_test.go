@@ -55,6 +55,7 @@ func newGovernanceHandlerTestRouterWithDB(t *testing.T) (*gin.Engine, *gorm.DB) 
 	admin.GET("/governance/policy-decisions/:id", h.GetPolicyDecision)
 	admin.POST("/governance/approval-receipts", h.CreateApprovalReceipt)
 	admin.GET("/governance/approval-receipts", h.ListApprovalReceipts)
+	admin.POST("/governance/approval-receipts/:id/revoke", h.RevokeApprovalReceipt)
 	admin.GET("/governance/scan-results", h.ListScanResults)
 	admin.POST("/governance/scan-results/:id/resolve", func(c *gin.Context) {
 		c.Set("user_id", mustParseUUID(t, "22222222-2222-2222-2222-222222222222"))
@@ -292,6 +293,48 @@ func TestGovernanceHandlerScanResultListAndResolve(t *testing.T) {
 	}
 }
 
+func TestGovernanceHandlerErrorIncludesStableDetails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	decisionID := mustParseUUID(t, "44444444-4444-4444-4444-444444444444")
+	err := &service.GovernanceEnforcementError{
+		Cause:  service.ErrGovernanceDenied,
+		Input:  service.GovernanceEnforcementInput{SubjectType: service.GovernanceSubjectObjectOperation, SubjectID: "scope-a", CapabilityKey: "object.upload.scope_a", RiskLevel: service.GovernanceRiskMedium},
+		Result: &service.GovernanceEnforcementResult{Decision: &model.PolicyDecision{Base: model.Base{ID: decisionID}, SubjectType: service.GovernanceSubjectObjectOperation, SubjectID: "scope-a", CapabilityKey: "object.upload.scope_a", RiskLevel: service.GovernanceRiskMedium, Decision: service.GovernanceDecisionDeny, Reason: "matched policy rule"}},
+	}
+	r := gin.New()
+	r.GET("/blocked", func(c *gin.Context) {
+		if !handleGovernanceError(c, err) {
+			t.Fatalf("expected governance error to be handled")
+		}
+	})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/blocked", nil))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected forbidden, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+			Details struct {
+				PolicyDecisionID string `json:"policy_decision_id"`
+				SubjectType      string `json:"subject_type"`
+				SubjectID        string `json:"subject_id"`
+				CapabilityKey    string `json:"capability_key"`
+				RiskLevel        string `json:"risk_level"`
+				Decision         string `json:"decision"`
+				Reason           string `json:"reason"`
+			} `json:"details"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if body.Error.Code != GovernanceErrorCodeDenied || body.Error.Details.PolicyDecisionID != decisionID.String() || body.Error.Details.CapabilityKey != "object.upload.scope_a" || body.Error.Details.Decision != service.GovernanceDecisionDeny {
+		t.Fatalf("unexpected governance error body: %+v", body)
+	}
+}
+
 func TestGovernanceHandlerApprovalReceiptRoutes(t *testing.T) {
 	r := newGovernanceHandlerTestRouter(t)
 	actorID := "11111111-1111-1111-1111-111111111111"
@@ -338,5 +381,66 @@ func TestGovernanceHandlerApprovalReceiptRoutes(t *testing.T) {
 	r.ServeHTTP(reuseRec, httptest.NewRequest(http.MethodPost, "/api/v1/governance/approval-receipts/consume", bytes.NewBufferString(consumeBody)))
 	if reuseRec.Code != http.StatusBadRequest {
 		t.Fatalf("expected reuse 400, got %d body=%s", reuseRec.Code, reuseRec.Body.String())
+	}
+}
+
+func TestGovernanceHandlerRevokeApprovalReceipt(t *testing.T) {
+	r := newGovernanceHandlerTestRouter(t)
+	actorID := "11111111-1111-1111-1111-111111111111"
+
+	evalRec := httptest.NewRecorder()
+	r.ServeHTTP(evalRec, httptest.NewRequest(http.MethodPost, "/api/v1/admin/governance/evaluate", bytes.NewBufferString(`{"actor_user_id":"`+actorID+`","subject_type":"sage_permission_grant","subject_id":"grant-2","capability_key":"sage.permission.payments.write","risk_level":"high"}`)))
+	if evalRec.Code != http.StatusOK {
+		t.Fatalf("expected evaluate 200, got %d body=%s", evalRec.Code, evalRec.Body.String())
+	}
+	var evalResp struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(evalRec.Body.Bytes(), &evalResp); err != nil {
+		t.Fatalf("decode evaluate: %v", err)
+	}
+
+	createRec := httptest.NewRecorder()
+	createBody := `{"policy_decision_id":"` + evalResp.Data.ID + `","actor_user_id":"` + actorID + `","subject_type":"sage_permission_grant","subject_id":"grant-2","capability_key":"sage.permission.payments.write","decision":"require_user_approval","expires_in_seconds":900}`
+	r.ServeHTTP(createRec, httptest.NewRequest(http.MethodPost, "/api/v1/admin/governance/approval-receipts", bytes.NewBufferString(createBody)))
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected create receipt 201, got %d body=%s", createRec.Code, createRec.Body.String())
+	}
+	var createResp struct {
+		Data struct {
+			ApprovalToken string `json:"approval_token"`
+			Receipt       struct {
+				ID string `json:"id"`
+			} `json:"receipt"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(createRec.Body.Bytes(), &createResp); err != nil {
+		t.Fatalf("decode create: %v", err)
+	}
+
+	revokeRec := httptest.NewRecorder()
+	r.ServeHTTP(revokeRec, httptest.NewRequest(http.MethodPost, "/api/v1/admin/governance/approval-receipts/"+createResp.Data.Receipt.ID+"/revoke", bytes.NewBufferString(`{"reason":"operator cancelled"}`)))
+	if revokeRec.Code != http.StatusOK {
+		t.Fatalf("expected revoke 200, got %d body=%s", revokeRec.Code, revokeRec.Body.String())
+	}
+	var revokeResp struct {
+		Data struct {
+			Status string `json:"status"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(revokeRec.Body.Bytes(), &revokeResp); err != nil {
+		t.Fatalf("decode revoke: %v", err)
+	}
+	if revokeResp.Data.Status != service.GovernanceApprovalRevoked {
+		t.Fatalf("expected revoked receipt, got %+v", revokeResp)
+	}
+
+	consumeBody := `{"approval_token":"` + createResp.Data.ApprovalToken + `","consumed_by":"device-a"}`
+	consumeRec := httptest.NewRecorder()
+	r.ServeHTTP(consumeRec, httptest.NewRequest(http.MethodPost, "/api/v1/governance/approval-receipts/consume", bytes.NewBufferString(consumeBody)))
+	if consumeRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected revoked token consume 400, got %d body=%s", consumeRec.Code, consumeRec.Body.String())
 	}
 }

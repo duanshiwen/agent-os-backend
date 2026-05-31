@@ -234,6 +234,33 @@ func (r *GovernanceRepo) CountApprovalReceiptsSince(since time.Time) (int64, []G
 	return total, byStatus, nil
 }
 
+func (r *GovernanceRepo) RevokeApprovalReceipt(id uuid.UUID, reason string, now time.Time) (*model.ApprovalReceipt, error) {
+	var receipt model.ApprovalReceipt
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&receipt, "id = ?", id).Error; err != nil {
+			return err
+		}
+		if receipt.Status != "pending" {
+			return gorm.ErrInvalidData
+		}
+		receipt.Status = "revoked"
+		metadata := map[string]any(receipt.Metadata)
+		if metadata == nil {
+			metadata = map[string]any{}
+		}
+		metadata["revoked_at"] = now.Format(time.RFC3339)
+		if reason != "" {
+			metadata["revocation_reason"] = reason
+		}
+		receipt.Metadata = metadata
+		return tx.Save(&receipt).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &receipt, nil
+}
+
 type ApprovalReceiptConsumeConstraints struct {
 	ActorUserID   *uuid.UUID
 	SubjectType   string

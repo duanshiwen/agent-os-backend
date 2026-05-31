@@ -74,6 +74,13 @@ func TestGovernanceEnforcerBlocksDenyDecisionInEnforceMode(t *testing.T) {
 	if !errors.Is(err, ErrGovernanceDenied) {
 		t.Fatalf("expected ErrGovernanceDenied, got result=%+v err=%v", result, err)
 	}
+	var enforcementErr *GovernanceEnforcementError
+	if !errors.As(err, &enforcementErr) {
+		t.Fatalf("expected GovernanceEnforcementError, got %T", err)
+	}
+	if enforcementErr.Result == nil || enforcementErr.Result.Decision == nil || enforcementErr.Result.Decision.CapabilityKey != "object.upload.sage_plugin_package" {
+		t.Fatalf("expected wrapped decision details, got %+v", enforcementErr)
+	}
 	if result == nil || result.Allowed || !result.WouldHaveBlocked {
 		t.Fatalf("expected blocked result, got %+v", result)
 	}
@@ -104,6 +111,13 @@ func TestGovernanceEnforcerRequiresApprovalOnlyInEnforceMode(t *testing.T) {
 	})
 	if !errors.Is(err, ErrGovernanceApprovalRequired) {
 		t.Fatalf("expected approval required, got result=%+v err=%v", result, err)
+	}
+	var enforcementErr *GovernanceEnforcementError
+	if !errors.As(err, &enforcementErr) {
+		t.Fatalf("expected GovernanceEnforcementError, got %T", err)
+	}
+	if enforcementErr.Result == nil || enforcementErr.Result.ApprovalReceipt == nil || enforcementErr.Result.ApprovalToken == "" {
+		t.Fatalf("expected wrapped approval receipt/token details, got %+v", enforcementErr)
 	}
 	if result == nil || result.ApprovalReceipt == nil || result.ApprovalToken == "" {
 		t.Fatalf("expected approval receipt/token in enforce mode, got %+v", result)
