@@ -318,6 +318,18 @@ type KBSearchDocument struct {
 	IndexedAt       time.Time                   `gorm:"index" json:"indexed_at"`
 }
 
+type BackgroundJobRun struct {
+	Base
+	JobName      string            `gorm:"index;not null" json:"job_name"`
+	Trigger      string            `gorm:"index;not null" json:"trigger"`
+	Status       string            `gorm:"index;not null" json:"status"`
+	StartedAt    time.Time         `gorm:"index;not null" json:"started_at"`
+	FinishedAt   *time.Time        `gorm:"index" json:"finished_at"`
+	DurationMs   int64             `json:"duration_ms"`
+	ErrorMessage string            `gorm:"type:text" json:"error_message"`
+	Metadata     datatypes.JSONMap `gorm:"type:jsonb" json:"metadata"`
+}
+
 type KBEmbeddingJob struct {
 	Base
 	SearchDocumentID uuid.UUID  `gorm:"type:uuid;index;not null;uniqueIndex:idx_kb_embedding_job_doc_provider_model_hash" json:"search_document_id"`
@@ -514,5 +526,5 @@ type AuditEvent struct {
 }
 
 func AllModels() []any {
-	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &UserAgentSetting{}, &UserServerConnection{}, &UserKnowledgeEntry{}, &ObjectRecord{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBModerationReport{}, &KBUsageRecord{}, &KBSearchDocument{}, &KBEmbeddingJob{}, &KBSearchEmbedding{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &SAGEPlugin{}, &SAGEPluginVersion{}, &SAGEPluginReview{}, &SAGEPluginInstallation{}, &SAGEPluginPermissionGrant{}, &SAGEPluginInvocation{}, &SAGEPluginExecutionReport{}, &SAGEPluginUsageLedger{}, &KBBillingPlan{}, &KBInvoice{}, &KBInvoiceItem{}, &ContributorPayoutPeriod{}, &KBRefund{}, &KBBillingDispute{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}, &SensitiveOperationConfirmation{}, &AuditEvent{}}
+	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &UserAgentSetting{}, &UserServerConnection{}, &UserKnowledgeEntry{}, &ObjectRecord{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBModerationReport{}, &KBUsageRecord{}, &KBSearchDocument{}, &BackgroundJobRun{}, &KBEmbeddingJob{}, &KBSearchEmbedding{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &SAGEPlugin{}, &SAGEPluginVersion{}, &SAGEPluginReview{}, &SAGEPluginInstallation{}, &SAGEPluginPermissionGrant{}, &SAGEPluginInvocation{}, &SAGEPluginExecutionReport{}, &SAGEPluginUsageLedger{}, &KBBillingPlan{}, &KBInvoice{}, &KBInvoiceItem{}, &ContributorPayoutPeriod{}, &KBRefund{}, &KBBillingDispute{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}, &SensitiveOperationConfirmation{}, &AuditEvent{}}
 }

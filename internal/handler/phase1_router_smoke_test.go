@@ -425,7 +425,7 @@ func newPhase1RouterSmokeEnv(t *testing.T) *phase1RouterSmokeEnv {
 		Admission: config.AdmissionConfig{PolicyType: "protocol"},
 	}
 
-	r := router.Setup(cfg, db, redis.NewClient(&redis.Options{Addr: "127.0.0.1:0"}), hub, userRepo, convRepo, syncRepo, msgSvc, syncSvc, &phase1RouterSmokeVerifier{})
+	r := router.Setup(cfg, db, redis.NewClient(&redis.Options{Addr: "127.0.0.1:0"}), hub, userRepo, convRepo, syncRepo, msgSvc, syncSvc, &phase1RouterSmokeVerifier{}, nil)
 	return &phase1RouterSmokeEnv{router: r, msgSvc: msgSvc}
 }
 

@@ -65,6 +65,7 @@ func main() {
 	kbHubRepo := repository.NewKBHubRepo(db)
 	billingRepo := repository.NewBillingRepo(db)
 	kbEmbeddingRepo := repository.NewKBEmbeddingRepo(db)
+	backgroundJobRunRepo := repository.NewBackgroundJobRunRepo(db)
 
 	// Initialize services
 	msgService := service.NewMessageService(convRepo, userRepo)
@@ -99,11 +100,12 @@ func main() {
 		EmbeddingWorkerPollInterval:          time.Duration(cfg.Background.EmbeddingWorkerPollIntervalSeconds) * time.Second,
 		RunOnStart:                           cfg.Background.RunOnStart,
 	}, msgService, syncService, sensitiveOperationSvc, kbHubSvc, embeddingWorker)
+	bgTasks.SetJobRunRepo(backgroundJobRunRepo)
 	bgTasks.Start(ctx)
 	log.Println("Background tasks started")
 
 	// Setup routes
-	r := router.Setup(cfg, db, rdb, hub, userRepo, convRepo, syncRepo, msgService, syncService, signatureVerifier)
+	r := router.Setup(cfg, db, rdb, hub, userRepo, convRepo, syncRepo, msgService, syncService, signatureVerifier, bgTasks)
 
 	// Graceful shutdown
 	quit := make(chan os.Signal, 1)

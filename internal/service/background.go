@@ -5,6 +5,10 @@ import (
 	"log"
 	"sync"
 	"time"
+
+	"github.com/agent-os/backend/internal/model"
+	"github.com/agent-os/backend/internal/repository"
+	"gorm.io/datatypes"
 )
 
 const (
@@ -41,6 +45,7 @@ type BackgroundTasks struct {
 	sensitiveOperationService *SensitiveOperationService
 	kbHubService              *KBHubService
 	embeddingWorker           *KBEmbeddingWorker
+	jobRunRepo                *repository.BackgroundJobRunRepo
 	config                    BackgroundTasksConfig
 }
 
@@ -66,6 +71,10 @@ func NewBackgroundTasksWithConfig(cfg BackgroundTasksConfig, msgService *Message
 		embeddingWorker:           embeddingWorker,
 		config:                    cfg,
 	}
+}
+
+func (bt *BackgroundTasks) SetJobRunRepo(repo *repository.BackgroundJobRunRepo) {
+	bt.jobRunRepo = repo
 }
 
 func normalizeBackgroundConfig(cfg BackgroundTasksConfig) BackgroundTasksConfig {
@@ -110,7 +119,7 @@ func (bt *BackgroundTasks) RunOnce(ctx context.Context) map[string]error {
 	results := map[string]error{}
 	for _, job := range bt.jobs() {
 		if job.Enabled && job.run != nil {
-			results[job.Name] = job.run(ctx)
+			results[job.Name] = bt.executeJob(ctx, job, "manual")
 		}
 	}
 	return results
@@ -165,7 +174,7 @@ func (bt *BackgroundTasks) startPeriodicJob(ctx context.Context, job backgroundJ
 	go func() {
 		log.Printf("background: %s started (every %s)", job.Name, job.Interval)
 		if job.RunOnStart {
-			_ = job.run(ctx)
+			_ = bt.executeJob(ctx, job, "startup")
 		}
 		ticker := time.NewTicker(job.Interval)
 		defer ticker.Stop()
@@ -175,10 +184,37 @@ func (bt *BackgroundTasks) startPeriodicJob(ctx context.Context, job backgroundJ
 				log.Printf("background: %s stopped", job.Name)
 				return
 			case <-ticker.C:
-				_ = job.run(ctx)
+				_ = bt.executeJob(ctx, job, "scheduled")
 			}
 		}
 	}()
+}
+
+func (bt *BackgroundTasks) executeJob(ctx context.Context, job backgroundJob, trigger string) error {
+	started := time.Now().UTC()
+	var run *model.BackgroundJobRun
+	if bt.jobRunRepo != nil {
+		run = &model.BackgroundJobRun{JobName: job.Name, Trigger: trigger, Status: repository.BackgroundJobRunStatusRunning, StartedAt: started, Metadata: datatypes.JSONMap{}}
+		if err := bt.jobRunRepo.Create(run); err != nil {
+			log.Printf("background: %s failed to record run start: %v", job.Name, err)
+			run = nil
+		}
+	}
+	err := job.run(ctx)
+	finished := time.Now().UTC()
+	if run != nil {
+		run.FinishedAt = &finished
+		run.DurationMs = finished.Sub(started).Milliseconds()
+		run.Status = repository.BackgroundJobRunStatusSuccess
+		if err != nil {
+			run.Status = repository.BackgroundJobRunStatusFailed
+			run.ErrorMessage = err.Error()
+		}
+		if updateErr := bt.jobRunRepo.Update(run); updateErr != nil {
+			log.Printf("background: %s failed to record run finish: %v", job.Name, updateErr)
+		}
+	}
+	return err
 }
 
 func logBackgroundCount(jobName string, count int64, err error) {

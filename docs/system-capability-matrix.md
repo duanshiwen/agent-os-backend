@@ -101,15 +101,15 @@ Backend working tree at Stage 0 start had one existing README documentation diff
 | Admin | Admission admin | ✅ | admin admission routes | broader admin console API |
 | Admin | KB admin/moderation | ✅ | review list, review/takedown, report list/resolve, subscription expiry API | reviewer roles and moderation dashboard |
 | Admin | Plugin admin/review | ✅ | SAGE review queue, approve/reject/request_changes, suspend APIs | richer reviewer roles and policy dashboards |
-| Admin | Security/admin ops | 🟡 | audit listing plus unified background runner foundation | job dashboards and manual job trigger APIs |
+| Admin | Security/admin ops | 🟡 | audit listing plus unified background runner foundation and background job admin APIs | job dashboards and richer job-specific controls |
 | Observability | `/health` | ✅ | database/redis/verifier checks | metrics and structured status |
 | Observability | `/ready` | ✅ | database readiness endpoint | broader dependency readiness policy |
 | Observability | Request IDs | ✅ | `X-Request-ID` middleware; generated or propagated | structured log integration |
 | Observability | Structured logging | ⬜ | standard log today | slog and correlation-aware logs |
-| Ops | Background job runner | ✅ | offline cleanup, sync cleanup, sensitive confirmation cleanup, KB subscription expiry, optional embedding worker | persisted job execution history and admin triggers |
-| Release | Go unit/integration tests | ✅ | 150 passed | release-gate script |
+| Ops | Background job runner | ✅ | offline cleanup, sync cleanup, sensitive confirmation cleanup, KB subscription expiry, optional embedding worker, persisted run history, admin run-once trigger | embedding worker per-batch telemetry |
+| Release | Go unit/integration tests | ✅ | 155 passed | CI migration apply gate |
 | Release | Rust SDK tests | ✅ | 1560 passed | backend-pinned FFI artifact gate |
-| Release | Smoke scripts | 🟡 | M2/M3 semantic and SAGE runtime smoke scripts exist | unified full platform release gate |
+| Release | Smoke scripts | ✅ | `scripts/release-gate-local.sh` runs tests/syntax checks plus optional object storage, SAGE, and real local_http semantic smokes | CI full platform release gate |
 
 ## 3. Existing API Surface Summary
 
