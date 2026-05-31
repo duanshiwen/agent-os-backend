@@ -4,6 +4,7 @@ set -euo pipefail
 BASE_URL="${BASE_URL:-http://localhost:8080}"
 RUN_LIVE_SMOKES="${RUN_LIVE_SMOKES:-0}"
 RUN_LOCAL_HTTP_SEMANTIC="${RUN_LOCAL_HTTP_SEMANTIC:-0}"
+RUN_MIGRATION_GATE="${RUN_MIGRATION_GATE:-0}"
 EMBEDDING_ENDPOINT="${EMBEDDING_ENDPOINT:-http://localhost:8091}"
 
 require_tool() {
@@ -30,6 +31,13 @@ done
 
 echo "==> Python syntax checks"
 python3 -m py_compile examples/sage-plugins/hotel-booking/mock_server.py
+
+if [[ "$RUN_MIGRATION_GATE" == "1" ]]; then
+  echo "==> PostgreSQL migration apply gate"
+  ./scripts/check-migrations-local.sh
+else
+  echo "==> Skipping PostgreSQL migration apply gate (set RUN_MIGRATION_GATE=1)"
+fi
 
 if [[ "$RUN_LIVE_SMOKES" == "1" ]]; then
   require_tool curl

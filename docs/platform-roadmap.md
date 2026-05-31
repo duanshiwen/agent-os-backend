@@ -247,7 +247,7 @@ Primary workstreams:
 - metrics and readiness;
 - migration gate;
 - full smoke suite;
-- release gate script (`scripts/release-gate-local.sh`).
+- release gate script (`scripts/release-gate-local.sh`) with optional PostgreSQL migration apply gate (`scripts/check-migrations-local.sh`).
 
 Required release checks:
 

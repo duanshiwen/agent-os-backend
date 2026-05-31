@@ -107,9 +107,9 @@ Backend working tree at Stage 0 start had one existing README documentation diff
 | Observability | Request IDs | ✅ | `X-Request-ID` middleware; generated or propagated | structured log integration |
 | Observability | Structured logging | ⬜ | standard log today | slog and correlation-aware logs |
 | Ops | Background job runner | ✅ | offline cleanup, sync cleanup, sensitive confirmation cleanup, KB subscription expiry, optional embedding worker, persisted run history, admin run-once trigger | embedding worker per-batch telemetry |
-| Release | Go unit/integration tests | ✅ | 155 passed | CI migration apply gate |
+| Release | Go unit/integration tests | ✅ | 155 passed | CI automation wrapper |
 | Release | Rust SDK tests | ✅ | 1560 passed | backend-pinned FFI artifact gate |
-| Release | Smoke scripts | ✅ | `scripts/release-gate-local.sh` runs tests/syntax checks plus optional object storage, SAGE, and real local_http semantic smokes | CI full platform release gate |
+| Release | Smoke scripts | ✅ | `scripts/release-gate-local.sh` runs tests/syntax checks plus optional migration apply, object storage, SAGE, and real local_http semantic smokes | CI full platform release gate |
 
 ## 3. Existing API Surface Summary
 
