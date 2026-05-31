@@ -19,7 +19,7 @@ Latest local verification for Stage 1 branch:
 
 ```text
 Backend: go test ./...
-Result: 135 passed in 11 packages
+Result: 137 passed in 11 packages
 
 Rust SDK: cargo test --workspace --all-targets --locked
 Result: 1560 passed, 2 ignored, 110 suites
@@ -689,6 +689,21 @@ Full M3 / M3.5 intentionally still does **not** include:
 - OpenAI/Cohere/Voyage or other paid/closed embedding providers as defaults.
 
 Semantic search is no longer faked: it is available only when a configured embedding provider and ready pgvector rows exist. Hybrid search degrades to lexical results and reports semantic unavailable reason / coverage when semantic indexing is not ready.
+
+## Stage 2 KB Hub Productionization Foundation
+
+Stage 2 adds the first production-governance closure around KB Hub:
+
+- collection source and copyright declarations;
+- collection review status fields and admin review/takedown API;
+- user moderation reports and admin report list/resolve API;
+- public collection visibility requires published + approved state;
+- snapshot active/archived lifecycle with archive/restore APIs;
+- snapshot diff API for added/removed/changed/unchanged entries;
+- subscription `expires_at` support and admin-triggerable expiry cleanup;
+- audit events for KB review/report/snapshot lifecycle/subscription expiry.
+
+Stage 2 intentionally still leaves full billing invoices/payouts, per-plan entitlement variants, unified background scheduling, and chunk-level search quality for later work.
 
 ## Recommended Next Milestone
 

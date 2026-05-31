@@ -63,8 +63,45 @@ type PublishKBSnapshotInput struct {
 }
 
 type InstallKBCollectionInput struct {
-	TrackMode     string `json:"track_mode"`
-	PinnedVersion *int   `json:"pinned_version"`
+	TrackMode     string     `json:"track_mode"`
+	PinnedVersion *int       `json:"pinned_version"`
+	ExpiresAt     *time.Time `json:"expires_at"`
+}
+
+type UpdateKBCollectionDeclarationsInput struct {
+	SourceDeclaration    string         `json:"source_declaration"`
+	CopyrightDeclaration string         `json:"copyright_declaration"`
+	ModerationMetadata   map[string]any `json:"moderation_metadata"`
+}
+
+type ReviewKBCollectionInput struct {
+	ReviewStatus string `json:"review_status"`
+	Reason       string `json:"reason"`
+}
+
+type ReportKBCollectionInput struct {
+	Reason string `json:"reason"`
+	Detail string `json:"detail"`
+}
+
+type ResolveKBModerationReportInput struct {
+	Status     string `json:"status"`
+	Resolution string `json:"resolution"`
+}
+
+type KBSnapshotDiff struct {
+	FromSnapshotID uuid.UUID               `json:"from_snapshot_id"`
+	ToSnapshotID   uuid.UUID               `json:"to_snapshot_id"`
+	Added          []model.KBSnapshotEntry `json:"added"`
+	Removed        []model.KBSnapshotEntry `json:"removed"`
+	Changed        []KBSnapshotEntryChange `json:"changed"`
+	UnchangedCount int                     `json:"unchanged_count"`
+}
+
+type KBSnapshotEntryChange struct {
+	EntryID string                `json:"entry_id"`
+	From    model.KBSnapshotEntry `json:"from"`
+	To      model.KBSnapshotEntry `json:"to"`
 }
 
 type KBSnapshotDetail struct {
@@ -236,6 +273,84 @@ func (s *KBHubService) GetCollection(ownerID, collectionID uuid.UUID) (*model.KB
 		return nil, err
 	}
 	return collection, nil
+}
+
+func (s *KBHubService) UpdateCollectionDeclarations(ownerID, collectionID uuid.UUID, input UpdateKBCollectionDeclarationsInput) (*model.KBCollection, error) {
+	collection, err := s.GetCollection(ownerID, collectionID)
+	if err != nil {
+		return nil, err
+	}
+	collection.SourceDeclaration = strings.TrimSpace(input.SourceDeclaration)
+	collection.CopyrightDeclaration = strings.TrimSpace(input.CopyrightDeclaration)
+	if input.ModerationMetadata != nil {
+		collection.ModerationMetadata = datatypes.JSONMap(input.ModerationMetadata)
+	}
+	collection.ReviewStatus = repository.KBReviewStatusPending
+	collection.ReviewReason = ""
+	collection.ReviewedBy = nil
+	collection.ReviewedAt = nil
+	if err := s.kbRepo.UpdateCollection(collection); err != nil {
+		return nil, err
+	}
+	return collection, nil
+}
+
+func (s *KBHubService) ListCollectionsForReview(status string, limit, offset int) ([]model.KBCollection, error) {
+	return s.kbRepo.ListCollectionsForReview(status, limit, offset)
+}
+
+func (s *KBHubService) ReviewCollection(adminID, collectionID uuid.UUID, input ReviewKBCollectionInput) (*model.KBCollection, error) {
+	status := strings.TrimSpace(input.ReviewStatus)
+	switch status {
+	case repository.KBReviewStatusApproved, repository.KBReviewStatusRejected, repository.KBReviewStatusTakedown:
+	default:
+		return nil, fmt.Errorf("%w: review_status must be approved, rejected, or takedown", ErrKBInvalid)
+	}
+	collection, err := s.kbRepo.UpdateCollectionReview(collectionID, adminID, status, strings.TrimSpace(input.Reason))
+	if err != nil {
+		if repository.IsNotFound(err) {
+			return nil, ErrKBCollectionNotFound
+		}
+		return nil, err
+	}
+	return collection, nil
+}
+
+func (s *KBHubService) ReportCollection(reporterID, collectionID uuid.UUID, input ReportKBCollectionInput) (*model.KBModerationReport, error) {
+	if reporterID == uuid.Nil {
+		return nil, fmt.Errorf("%w: reporter is required", ErrKBInvalid)
+	}
+	if _, err := s.kbRepo.GetCollection(collectionID); err != nil {
+		if repository.IsNotFound(err) {
+			return nil, ErrKBCollectionNotFound
+		}
+		return nil, err
+	}
+	reason := strings.TrimSpace(input.Reason)
+	if reason == "" {
+		return nil, fmt.Errorf("%w: reason is required", ErrKBInvalid)
+	}
+	report := &model.KBModerationReport{CollectionID: collectionID, ReporterID: reporterID, Reason: reason, Detail: strings.TrimSpace(input.Detail), Status: "open"}
+	if err := s.kbRepo.CreateModerationReport(report); err != nil {
+		return nil, err
+	}
+	return report, nil
+}
+
+func (s *KBHubService) ListModerationReports(status string, limit, offset int) ([]model.KBModerationReport, error) {
+	return s.kbRepo.ListModerationReports(status, limit, offset)
+}
+
+func (s *KBHubService) ResolveModerationReport(adminID, reportID uuid.UUID, input ResolveKBModerationReportInput) (*model.KBModerationReport, error) {
+	status := strings.TrimSpace(input.Status)
+	if status != "resolved" && status != "dismissed" {
+		return nil, fmt.Errorf("%w: status must be resolved or dismissed", ErrKBInvalid)
+	}
+	report, err := s.kbRepo.ResolveModerationReport(reportID, adminID, status, strings.TrimSpace(input.Resolution))
+	if err != nil {
+		return nil, err
+	}
+	return report, nil
 }
 
 func (s *KBHubService) UpdateCollectionPricing(ownerID, collectionID uuid.UUID, input UpdateKBCollectionPricingInput) (*model.KBCollection, error) {
@@ -415,6 +530,75 @@ func (s *KBHubService) GetSnapshot(ownerID, collectionID, snapshotID uuid.UUID) 
 	return s.getSnapshotDetail(collectionID, snapshotID)
 }
 
+func (s *KBHubService) ArchiveSnapshot(ownerID, collectionID, snapshotID uuid.UUID) (*model.KBSnapshot, error) {
+	if _, err := s.GetCollection(ownerID, collectionID); err != nil {
+		return nil, err
+	}
+	snapshot, err := s.kbRepo.ArchiveSnapshot(collectionID, snapshotID)
+	if err != nil {
+		if repository.IsNotFound(err) {
+			return nil, ErrKBSnapshotNotFound
+		}
+		return nil, err
+	}
+	return snapshot, nil
+}
+
+func (s *KBHubService) RestoreSnapshot(ownerID, collectionID, snapshotID uuid.UUID) (*model.KBSnapshot, error) {
+	if _, err := s.GetCollection(ownerID, collectionID); err != nil {
+		return nil, err
+	}
+	snapshot, err := s.kbRepo.RestoreSnapshot(collectionID, snapshotID)
+	if err != nil {
+		if repository.IsNotFound(err) {
+			return nil, ErrKBSnapshotNotFound
+		}
+		return nil, err
+	}
+	return snapshot, nil
+}
+
+func (s *KBHubService) DiffSnapshots(ownerID, collectionID, fromSnapshotID, toSnapshotID uuid.UUID) (*KBSnapshotDiff, error) {
+	if _, err := s.GetCollection(ownerID, collectionID); err != nil {
+		return nil, err
+	}
+	fromEntries, err := s.kbRepo.ListSnapshotEntries(fromSnapshotID)
+	if err != nil {
+		return nil, err
+	}
+	toEntries, err := s.kbRepo.ListSnapshotEntries(toSnapshotID)
+	if err != nil {
+		return nil, err
+	}
+	fromByID := map[string]model.KBSnapshotEntry{}
+	toByID := map[string]model.KBSnapshotEntry{}
+	for _, entry := range fromEntries {
+		fromByID[entry.EntryID] = entry
+	}
+	for _, entry := range toEntries {
+		toByID[entry.EntryID] = entry
+	}
+	diff := &KBSnapshotDiff{FromSnapshotID: fromSnapshotID, ToSnapshotID: toSnapshotID}
+	for entryID, to := range toByID {
+		from, ok := fromByID[entryID]
+		if !ok {
+			diff.Added = append(diff.Added, to)
+			continue
+		}
+		if snapshotEntryChanged(from, to) {
+			diff.Changed = append(diff.Changed, KBSnapshotEntryChange{EntryID: entryID, From: from, To: to})
+		} else {
+			diff.UnchangedCount++
+		}
+	}
+	for entryID, from := range fromByID {
+		if _, ok := toByID[entryID]; !ok {
+			diff.Removed = append(diff.Removed, from)
+		}
+	}
+	return diff, nil
+}
+
 func (s *KBHubService) GetPublicSnapshot(collectionID, snapshotID uuid.UUID) (*KBSnapshotDetail, error) {
 	if _, err := s.GetPublicCollection(collectionID); err != nil {
 		return nil, err
@@ -484,6 +668,7 @@ func (s *KBHubService) InstallCollection(userID, collectionID uuid.UUID, input I
 		PinnedVersion: pinnedVersion,
 		Status:        "active",
 		StartedAt:     now,
+		ExpiresAt:     input.ExpiresAt,
 	}
 	if err := s.kbRepo.UpsertSubscription(subscription); err != nil {
 		return nil, err
@@ -493,6 +678,13 @@ func (s *KBHubService) InstallCollection(userID, collectionID uuid.UUID, input I
 
 func (s *KBHubService) ListSubscriptions(userID uuid.UUID) ([]model.KBSubscription, error) {
 	return s.kbRepo.ListSubscriptionsByUser(userID)
+}
+
+func (s *KBHubService) ExpireSubscriptions(now time.Time) (int64, error) {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	return s.kbRepo.ExpireSubscriptions(now)
 }
 
 func (s *KBHubService) CancelSubscription(userID, collectionID uuid.UUID) (*model.KBSubscription, error) {
@@ -698,6 +890,10 @@ func ownerIDFromCollection(collection *model.KBCollection) uuid.UUID {
 		return uuid.Nil
 	}
 	return collection.OwnerID
+}
+
+func snapshotEntryChanged(from, to model.KBSnapshotEntry) bool {
+	return from.Title != to.Title || from.Summary != to.Summary || from.ContentObjectURI != to.ContentObjectURI || from.Tokens != to.Tokens || fmt.Sprint(from.Tags) != fmt.Sprint(to.Tags) || fmt.Sprint(from.Metadata) != fmt.Sprint(to.Metadata)
 }
 
 func filterKnowledgeEntries(entries []model.UserKnowledgeEntry, entryIDs []string) []model.UserKnowledgeEntry {

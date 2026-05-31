@@ -268,7 +268,7 @@ func newKBHubServiceTestEnv(t *testing.T) (*KBHubService, *repository.KnowledgeE
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.UserKnowledgeEntry{}, &model.ObjectRecord{}, &model.KBCollection{}, &model.KBSnapshot{}, &model.KBSnapshotEntry{}, &model.KBSubscription{}, &model.KBUsageRecord{}, &model.KBSearchDocument{}, &model.KBEmbeddingJob{}, &model.KBSearchEmbedding{}, &model.BillingAccount{}, &model.BillingTransaction{}, &model.ContributorEarning{}); err != nil {
+	if err := db.AutoMigrate(&model.UserKnowledgeEntry{}, &model.ObjectRecord{}, &model.KBCollection{}, &model.KBSnapshot{}, &model.KBSnapshotEntry{}, &model.KBSubscription{}, &model.KBModerationReport{}, &model.KBUsageRecord{}, &model.KBSearchDocument{}, &model.KBEmbeddingJob{}, &model.KBSearchEmbedding{}, &model.BillingAccount{}, &model.BillingTransaction{}, &model.ContributorEarning{}); err != nil {
 		t.Fatalf("migrate models: %v", err)
 	}
 	fake := &recordingObjectStorageBackend{fakeObjectStorageBackend: fakeObjectStorageBackend{head: ObjectHead{ContentHash: strings.Repeat("a", 64), ContentSize: 1}}}
