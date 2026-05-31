@@ -1,0 +1,516 @@
+package service
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/agent-os/backend/internal/model"
+	"github.com/agent-os/backend/internal/repository"
+	"github.com/google/uuid"
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
+)
+
+var (
+	ErrSAGEPluginNotFound       = errors.New("sage plugin not found")
+	ErrSAGEVersionNotFound      = errors.New("sage plugin version not found")
+	ErrSAGEInstallationNotFound = errors.New("sage plugin installation not found")
+	ErrSAGEInvalid              = errors.New("sage request invalid")
+	ErrSAGEForbidden            = errors.New("sage operation forbidden")
+)
+
+const SensitiveOperationSAGEHighRiskGrant = "sage.permission.high_risk_grant"
+
+type SAGEPluginService struct {
+	repo                  *repository.SAGEPluginRepo
+	validator             *SAGEManifestValidator
+	syncSvc               *SyncService
+	auditSvc              *AuditService
+	sensitiveOperationSvc *SensitiveOperationService
+}
+
+func NewSAGEPluginService(repo *repository.SAGEPluginRepo) *SAGEPluginService {
+	return &SAGEPluginService{repo: repo, validator: NewSAGEManifestValidator()}
+}
+func (s *SAGEPluginService) SetSyncService(syncSvc *SyncService)    { s.syncSvc = syncSvc }
+func (s *SAGEPluginService) SetAuditService(auditSvc *AuditService) { s.auditSvc = auditSvc }
+func (s *SAGEPluginService) SetSensitiveOperationService(svc *SensitiveOperationService) {
+	s.sensitiveOperationSvc = svc
+}
+
+type CreateSAGEPluginInput struct {
+	PluginKey, Name, Description, Category, HomepageURL, ManifestURL string `json:",omitempty"`
+}
+type SubmitSAGEPluginVersionInput struct {
+	Version  string         `json:"version"`
+	Manifest map[string]any `json:"manifest"`
+}
+type ReviewSAGEPluginInput struct {
+	Decision, Reason                                  string   `json:"decision"`
+	SecurityFindings, PrivacyFindings, PolicyFindings []string `json:"security_findings"`
+}
+type InstallSAGEPluginInput struct {
+	TrackMode string `json:"track_mode"`
+}
+type GrantSAGEPermissionInput struct {
+	PermissionKey     string         `json:"permission_key"`
+	GrantScope        map[string]any `json:"grant_scope"`
+	ConfirmationToken string         `json:"confirmation_token"`
+	ExpiresAt         *time.Time     `json:"expires_at"`
+}
+type CreateSAGEInvocationInput struct {
+	PluginKey                                                string         `json:"plugin_key"`
+	InstallationID                                           *uuid.UUID     `json:"installation_id"`
+	ClientRequestID, UserIntent, FlowID, FlowHash, RiskLevel string         `json:"client_request_id"`
+	PermissionsUsed                                          []string       `json:"permissions_used"`
+	PolicyDecision                                           map[string]any `json:"policy_decision"`
+}
+type SubmitSAGEExecutionReportInput struct {
+	ClientReportID, Status, FlowID string         `json:"client_report_id"`
+	StepsCompleted                 []string       `json:"steps_completed"`
+	StepSummaries                  map[string]any `json:"step_summaries"`
+	Errors                         []string       `json:"errors"`
+	UserConfirmations              []string       `json:"user_confirmations"`
+	PluginCallbacks                []string       `json:"plugin_callbacks"`
+	TokensUsed                     int            `json:"tokens_used"`
+	Metering                       map[string]any `json:"metering"`
+}
+
+type SAGECatalogPage struct {
+	Items         []model.SAGEPlugin `json:"items"`
+	Limit, Offset int                `json:"limit"`
+	Total         int64              `json:"total"`
+}
+type SAGEPolicyBundle struct {
+	PluginKey, Version, PolicyBundleVersion string            `json:"plugin_key"`
+	ManifestSnapshot                        datatypes.JSONMap `json:"manifest_snapshot"`
+	GrantedPermissions                      []map[string]any  `json:"granted_permissions"`
+	DeniedPermissions                       []string          `json:"denied_permissions"`
+	RuntimeGuards                           []map[string]any  `json:"runtime_guards"`
+	Reporting                               map[string]any    `json:"reporting"`
+}
+type SAGEDeveloperMetrics struct {
+	PluginKey, Period              string  `json:"plugin_key"`
+	Invocations, Completed, Failed int64   `json:"invocations"`
+	SuccessRate                    float64 `json:"success_rate"`
+	TokensUsed                     int64   `json:"tokens_used"`
+	EstimatedRevenue               int64   `json:"estimated_revenue"`
+}
+
+func (s *SAGEPluginService) CreatePlugin(developerID uuid.UUID, input CreateSAGEPluginInput) (*model.SAGEPlugin, error) {
+	pluginKey := strings.TrimSpace(input.PluginKey)
+	name := strings.TrimSpace(input.Name)
+	if pluginKey == "" || name == "" {
+		return nil, fmt.Errorf("%w: plugin_key and name are required", ErrSAGEInvalid)
+	}
+	plugin := &model.SAGEPlugin{PluginKey: pluginKey, DeveloperID: developerID, Name: name, Description: strings.TrimSpace(input.Description), Category: strings.TrimSpace(input.Category), HomepageURL: strings.TrimSpace(input.HomepageURL), ManifestURL: strings.TrimSpace(input.ManifestURL), Status: repository.SAGEPluginStatusDraft, ReviewStatus: repository.SAGEReviewStatusPending, Visibility: "private", RiskLevel: "unknown", TrustLevel: "unverified"}
+	if err := s.repo.CreatePlugin(plugin); err != nil {
+		return nil, err
+	}
+	s.recordAudit(&developerID, "", AuditActionSAGEPluginCreated, "sage_plugin", plugin.ID.String(), AuditOutcomeSuccess, map[string]any{"plugin_key": plugin.PluginKey})
+	return plugin, nil
+}
+
+func (s *SAGEPluginService) SubmitVersion(developerID, pluginID uuid.UUID, input SubmitSAGEPluginVersionInput) (*model.SAGEPluginVersion, *SAGEManifestValidationResult, error) {
+	plugin, err := s.repo.GetPlugin(pluginID)
+	if err != nil {
+		return nil, nil, ErrSAGEPluginNotFound
+	}
+	if plugin.DeveloperID != developerID {
+		return nil, nil, ErrSAGEForbidden
+	}
+	result, err := s.validator.Validate(input.Manifest)
+	if err != nil {
+		return nil, nil, err
+	}
+	version := strings.TrimSpace(input.Version)
+	if version == "" {
+		version = result.Manifest.Version
+	}
+	if version == "" {
+		return nil, nil, fmt.Errorf("%w: version is required", ErrSAGEInvalid)
+	}
+	now := time.Now().UTC()
+	status := repository.SAGEVersionStatusSubmitted
+	validationStatus := repository.SAGEValidationStatusValid
+	if !result.Valid {
+		status = repository.SAGEVersionStatusDraft
+		validationStatus = repository.SAGEValidationStatusInvalid
+	}
+	v := &model.SAGEPluginVersion{PluginID: plugin.ID, Version: version, SAGEVersion: result.Manifest.SAGEVersion, ManifestHash: result.ManifestHash, ManifestSnapshot: datatypes.JSONMap(result.Snapshot), ValidationStatus: validationStatus, ValidationErrors: datatypes.JSONSlice[string](result.Errors), ValidationWarnings: datatypes.JSONSlice[string](result.Warnings), RiskSummary: datatypes.JSONMap(result.RiskSummary), PermissionSummary: datatypes.JSONMap(result.PermissionSummary), Status: status}
+	if result.Valid {
+		v.SubmittedAt = &now
+	}
+	err = s.repo.Transaction(func(tx *repository.SAGEPluginRepo) error {
+		if err := tx.CreateVersion(v); err != nil {
+			return err
+		}
+		plugin.LatestVersionID = &v.ID
+		plugin.ManifestURL = result.Manifest.Endpoints.Manifest
+		plugin.FlowURL = result.Manifest.Endpoints.Flow
+		plugin.CallbackURL = result.Manifest.Endpoints.Callback
+		plugin.HealthURL = result.Manifest.Endpoints.Health
+		plugin.RiskLevel = fmt.Sprint(result.RiskSummary["highest_risk"])
+		if result.Valid {
+			plugin.Status = repository.SAGEPluginStatusSubmitted
+			plugin.ReviewStatus = repository.SAGEReviewStatusPending
+		}
+		return tx.UpdatePlugin(plugin)
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	s.recordAudit(&developerID, "", AuditActionSAGEPluginVersionSubmitted, "sage_plugin_version", v.ID.String(), AuditOutcomeSuccess, map[string]any{"plugin_id": plugin.ID.String(), "valid": result.Valid})
+	return v, result, nil
+}
+
+func (s *SAGEPluginService) GetValidation(developerID, pluginID, versionID uuid.UUID) (*model.SAGEPluginVersion, error) {
+	plugin, err := s.repo.GetPlugin(pluginID)
+	if err != nil {
+		return nil, ErrSAGEPluginNotFound
+	}
+	if plugin.DeveloperID != developerID {
+		return nil, ErrSAGEForbidden
+	}
+	v, err := s.repo.GetVersion(versionID)
+	if err != nil || v.PluginID != pluginID {
+		return nil, ErrSAGEVersionNotFound
+	}
+	return v, nil
+}
+
+func (s *SAGEPluginService) ListReviewQueue(status string, limit, offset int) ([]model.SAGEPluginVersion, error) {
+	return s.repo.ListPluginsForReview(status, limit, offset)
+}
+
+func (s *SAGEPluginService) ReviewPlugin(reviewerID, pluginID, versionID uuid.UUID, input ReviewSAGEPluginInput) (*model.SAGEPluginReview, error) {
+	plugin, err := s.repo.GetPlugin(pluginID)
+	if err != nil {
+		return nil, ErrSAGEPluginNotFound
+	}
+	version, err := s.repo.GetVersion(versionID)
+	if err != nil || version.PluginID != pluginID {
+		return nil, ErrSAGEVersionNotFound
+	}
+	decision := strings.TrimSpace(input.Decision)
+	if decision == "" {
+		return nil, fmt.Errorf("%w: decision is required", ErrSAGEInvalid)
+	}
+	review := &model.SAGEPluginReview{PluginID: pluginID, VersionID: versionID, ReviewerID: reviewerID, Decision: decision, Reason: strings.TrimSpace(input.Reason), SecurityFindings: datatypes.JSONSlice[string](input.SecurityFindings), PrivacyFindings: datatypes.JSONSlice[string](input.PrivacyFindings), PolicyFindings: datatypes.JSONSlice[string](input.PolicyFindings)}
+	now := time.Now().UTC()
+	err = s.repo.Transaction(func(tx *repository.SAGEPluginRepo) error {
+		if err := tx.CreateReview(review); err != nil {
+			return err
+		}
+		switch decision {
+		case "approved":
+			plugin.Status = repository.SAGEPluginStatusPublished
+			plugin.ReviewStatus = repository.SAGEReviewStatusApproved
+			plugin.Visibility = "public"
+			plugin.ApprovedVersionID = &version.ID
+			version.Status = repository.SAGEVersionStatusApproved
+			version.ApprovedAt = &now
+		case "rejected", "request_changes":
+			plugin.ReviewStatus = decision
+			version.Status = repository.SAGEVersionStatusRejected
+			version.RejectedAt = &now
+		case "takedown", "suspended":
+			plugin.Status = repository.SAGEPluginStatusSuspended
+			plugin.ReviewStatus = repository.SAGEReviewStatusTakedown
+		}
+		if err := tx.UpdatePlugin(plugin); err != nil {
+			return err
+		}
+		return tx.UpdateVersion(version)
+	})
+	if err != nil {
+		return nil, err
+	}
+	s.recordAudit(&reviewerID, "", AuditActionSAGEPluginReviewed, "sage_plugin", pluginID.String(), AuditOutcomeSuccess, map[string]any{"version_id": versionID.String(), "decision": decision})
+	return review, nil
+}
+
+func (s *SAGEPluginService) SuspendPlugin(actorID, pluginID uuid.UUID, reason string) (*model.SAGEPlugin, error) {
+	plugin, err := s.repo.GetPlugin(pluginID)
+	if err != nil {
+		return nil, ErrSAGEPluginNotFound
+	}
+	plugin.Status = repository.SAGEPluginStatusSuspended
+	plugin.ReviewStatus = repository.SAGEReviewStatusTakedown
+	if err := s.repo.UpdatePlugin(plugin); err != nil {
+		return nil, err
+	}
+	s.recordAudit(&actorID, "", AuditActionSAGEPluginSuspended, "sage_plugin", pluginID.String(), AuditOutcomeSuccess, map[string]any{"reason": reason})
+	return plugin, nil
+}
+func (s *SAGEPluginService) SearchCatalog(q, category string, limit, offset int) (*SAGECatalogPage, error) {
+	items, err := s.repo.SearchPublishedPlugins(q, category, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	total, err := s.repo.CountPublishedPlugins(q, category)
+	if err != nil {
+		return nil, err
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return &SAGECatalogPage{Items: items, Limit: limit, Offset: offset, Total: total}, nil
+}
+func (s *SAGEPluginService) GetCatalogPlugin(pluginKey string) (*model.SAGEPlugin, error) {
+	p, err := s.repo.GetPublishedPluginByKey(pluginKey)
+	if err != nil {
+		return nil, ErrSAGEPluginNotFound
+	}
+	return p, nil
+}
+
+func (s *SAGEPluginService) InstallPlugin(userID uuid.UUID, deviceID, pluginKey string, input InstallSAGEPluginInput) (*model.SAGEPluginInstallation, error) {
+	plugin, err := s.repo.GetPublishedPluginByKey(pluginKey)
+	if err != nil {
+		return nil, ErrSAGEPluginNotFound
+	}
+	if plugin.ApprovedVersionID == nil {
+		return nil, fmt.Errorf("%w: approved version required", ErrSAGEInvalid)
+	}
+	if existing, err := s.repo.GetInstallationByUserPlugin(userID, plugin.ID); err == nil {
+		if existing.Status != repository.SAGEInstallationStatusActive {
+			existing.Status = repository.SAGEInstallationStatusActive
+			existing.DisabledAt = nil
+			_ = s.repo.UpdateInstallation(existing)
+		}
+		return existing, nil
+	}
+	track := strings.TrimSpace(input.TrackMode)
+	if track == "" {
+		track = "latest_approved"
+	}
+	installation := &model.SAGEPluginInstallation{UserID: userID, PluginID: plugin.ID, VersionID: *plugin.ApprovedVersionID, Status: repository.SAGEInstallationStatusActive, InstallSource: "catalog", TrackMode: track, InstalledAt: time.Now().UTC()}
+	if err := s.repo.CreateInstallation(installation); err != nil {
+		return nil, err
+	}
+	s.recordSync(userID, deviceID, "sage_plugin_installation", installation.ID.String(), "installed", map[string]any{"object_id": installation.ID.String(), "plugin_id": plugin.ID.String(), "plugin_key": plugin.PluginKey})
+	s.recordAudit(&userID, deviceID, AuditActionSAGEPluginInstalled, "sage_plugin_installation", installation.ID.String(), AuditOutcomeSuccess, nil)
+	return installation, nil
+}
+
+func (s *SAGEPluginService) SetInstallationStatus(userID uuid.UUID, deviceID string, installationID uuid.UUID, status string) (*model.SAGEPluginInstallation, error) {
+	inst, err := s.repo.GetInstallation(installationID)
+	if err != nil || inst.UserID != userID {
+		return nil, ErrSAGEInstallationNotFound
+	}
+	inst.Status = status
+	now := time.Now().UTC()
+	if status == repository.SAGEInstallationStatusDisabled || status == repository.SAGEInstallationStatusUninstalled {
+		inst.DisabledAt = &now
+	} else {
+		inst.DisabledAt = nil
+	}
+	if err := s.repo.UpdateInstallation(inst); err != nil {
+		return nil, err
+	}
+	op := status
+	s.recordSync(userID, deviceID, "sage_plugin_installation", inst.ID.String(), op, map[string]any{"object_id": inst.ID.String(), "status": status})
+	return inst, nil
+}
+func (s *SAGEPluginService) ListInstallations(userID uuid.UUID) ([]model.SAGEPluginInstallation, error) {
+	return s.repo.ListInstallations(userID)
+}
+
+func (s *SAGEPluginService) GrantPermission(userID uuid.UUID, deviceID string, installationID uuid.UUID, input GrantSAGEPermissionInput) (*model.SAGEPluginPermissionGrant, error) {
+	inst, err := s.repo.GetInstallation(installationID)
+	if err != nil || inst.UserID != userID {
+		return nil, ErrSAGEInstallationNotFound
+	}
+	key := strings.TrimSpace(input.PermissionKey)
+	if key == "" {
+		return nil, fmt.Errorf("%w: permission_key is required", ErrSAGEInvalid)
+	}
+	risk := knownSAGEPermissions[key]
+	if risk == "" {
+		risk = SAGERiskMedium
+	}
+	requires := riskRank(risk) >= riskRank(SAGERiskHigh)
+	if requires {
+		if s.sensitiveOperationSvc == nil {
+			return nil, fmt.Errorf("sensitive operation service unavailable")
+		}
+		if err := s.sensitiveOperationSvc.ConsumeConfirmation(userID, input.ConfirmationToken, SensitiveOperationSAGEHighRiskGrant, "sage_permission_grant"); err != nil {
+			return nil, err
+		}
+	}
+	grant := &model.SAGEPluginPermissionGrant{InstallationID: installationID, UserID: userID, PluginID: inst.PluginID, PermissionKey: key, RiskLevel: risk, Status: repository.SAGEGrantStatusActive, GrantScope: datatypes.JSONMap(input.GrantScope), RequiresConfirmation: requires, ExpiresAt: input.ExpiresAt}
+	if grant.GrantScope == nil {
+		grant.GrantScope = datatypes.JSONMap{}
+	}
+	if err := s.repo.CreateGrant(grant); err != nil {
+		return nil, err
+	}
+	s.recordSync(userID, deviceID, "sage_plugin_permission_grant", grant.ID.String(), "granted", map[string]any{"object_id": grant.ID.String(), "permission_key": key, "plugin_id": inst.PluginID.String()})
+	return grant, nil
+}
+
+func (s *SAGEPluginService) RevokeGrant(userID uuid.UUID, deviceID string, grantID uuid.UUID) (*model.SAGEPluginPermissionGrant, error) {
+	grant, err := s.repo.GetGrant(grantID)
+	if err != nil || grant.UserID != userID {
+		return nil, ErrSAGEForbidden
+	}
+	now := time.Now().UTC()
+	grant.Status = repository.SAGEGrantStatusRevoked
+	grant.RevokedAt = &now
+	if err := s.repo.UpdateGrant(grant); err != nil {
+		return nil, err
+	}
+	s.recordSync(userID, deviceID, "sage_plugin_permission_grant", grant.ID.String(), "revoked", map[string]any{"object_id": grant.ID.String(), "permission_key": grant.PermissionKey})
+	return grant, nil
+}
+
+func (s *SAGEPluginService) PolicyBundle(userID uuid.UUID, installationID uuid.UUID) (*SAGEPolicyBundle, error) {
+	inst, err := s.repo.GetInstallation(installationID)
+	if err != nil || inst.UserID != userID {
+		return nil, ErrSAGEInstallationNotFound
+	}
+	if inst.Status != repository.SAGEInstallationStatusActive {
+		return nil, ErrSAGEForbidden
+	}
+	plugin, _ := s.repo.GetPlugin(inst.PluginID)
+	version, _ := s.repo.GetVersion(inst.VersionID)
+	grants, _ := s.repo.ListActiveGrants(inst.ID)
+	granted := []map[string]any{}
+	grantedSet := map[string]bool{}
+	for _, g := range grants {
+		grantedSet[g.PermissionKey] = true
+		granted = append(granted, map[string]any{"key": g.PermissionKey, "risk": g.RiskLevel, "scope": g.GrantScope})
+	}
+	denied := []string{}
+	guards := []map[string]any{}
+	if perms, ok := version.PermissionSummary["permissions"].([]any); ok {
+		for _, p := range perms {
+			key := fmt.Sprint(p)
+			if !grantedSet[key] {
+				denied = append(denied, key)
+			}
+			if riskRank(knownSAGEPermissions[key]) >= riskRank(SAGERiskHigh) {
+				guards = append(guards, map[string]any{"id": "guard-" + strings.ReplaceAll(key, ".", "-"), "match": map[string]any{"permission": key}, "decision": "require_user_confirmation"})
+			}
+		}
+	}
+	return &SAGEPolicyBundle{PluginKey: plugin.PluginKey, Version: version.Version, PolicyBundleVersion: time.Now().UTC().Format("2006-01-02") + ".1", ManifestSnapshot: version.ManifestSnapshot, GrantedPermissions: granted, DeniedPermissions: denied, RuntimeGuards: guards, Reporting: map[string]any{"required": true, "endpoint": "/api/v1/sage/invocations/{id}/reports"}}, nil
+}
+
+func (s *SAGEPluginService) CreateInvocation(userID uuid.UUID, deviceID string, input CreateSAGEInvocationInput) (*model.SAGEPluginInvocation, error) {
+	plugin, err := s.repo.GetPublishedPluginByKey(input.PluginKey)
+	if err != nil {
+		return nil, ErrSAGEPluginNotFound
+	}
+	inst, err := s.repo.GetInstallationByUserPlugin(userID, plugin.ID)
+	if err != nil || inst.Status != repository.SAGEInstallationStatusActive {
+		return nil, ErrSAGEForbidden
+	}
+	clientID := strings.TrimSpace(input.ClientRequestID)
+	if clientID == "" {
+		return nil, fmt.Errorf("%w: client_request_id is required", ErrSAGEInvalid)
+	}
+	if existing, err := s.repo.GetInvocationByClientRequest(userID, plugin.ID, clientID); err == nil {
+		return existing, nil
+	}
+	now := time.Now().UTC()
+	risk := strings.TrimSpace(input.RiskLevel)
+	if risk == "" {
+		risk = plugin.RiskLevel
+	}
+	inv := &model.SAGEPluginInvocation{UserID: userID, DeviceID: deviceID, PluginID: plugin.ID, InstallationID: &inst.ID, ClientRequestID: clientID, UserIntent: strings.TrimSpace(input.UserIntent), FlowID: strings.TrimSpace(input.FlowID), FlowHash: strings.TrimSpace(input.FlowHash), Status: repository.SAGEInvocationStatusCreated, RiskLevel: risk, PolicyDecision: datatypes.JSONMap(input.PolicyDecision), PermissionsUsed: datatypes.JSONSlice[string](input.PermissionsUsed), StartedAt: &now}
+	if inv.PolicyDecision == nil {
+		inv.PolicyDecision = datatypes.JSONMap{}
+	}
+	if err := s.repo.CreateInvocation(inv); err != nil {
+		return nil, err
+	}
+	return inv, nil
+}
+
+func (s *SAGEPluginService) SubmitReport(userID uuid.UUID, invocationID uuid.UUID, input SubmitSAGEExecutionReportInput) (*model.SAGEPluginExecutionReport, error) {
+	inv, err := s.repo.GetInvocation(invocationID)
+	if err != nil || inv.UserID != userID {
+		return nil, ErrSAGEForbidden
+	}
+	clientID := strings.TrimSpace(input.ClientReportID)
+	if clientID == "" {
+		return nil, fmt.Errorf("%w: client_report_id is required", ErrSAGEInvalid)
+	}
+	if existing, err := s.repo.GetReportByClientID(invocationID, clientID); err == nil {
+		return existing, nil
+	}
+	report := &model.SAGEPluginExecutionReport{InvocationID: invocationID, ClientReportID: clientID, Status: strings.TrimSpace(input.Status), FlowID: strings.TrimSpace(input.FlowID), StepsCompleted: datatypes.JSONSlice[string](input.StepsCompleted), StepSummaries: datatypes.JSONMap(input.StepSummaries), Errors: datatypes.JSONSlice[string](input.Errors), UserConfirmations: datatypes.JSONSlice[string](input.UserConfirmations), PluginCallbacks: datatypes.JSONSlice[string](input.PluginCallbacks), TokensUsed: input.TokensUsed, Metering: datatypes.JSONMap(input.Metering)}
+	if report.Status == "" {
+		report.Status = "completed"
+	}
+	if report.StepSummaries == nil {
+		report.StepSummaries = datatypes.JSONMap{}
+	}
+	if report.Metering == nil {
+		report.Metering = datatypes.JSONMap{}
+	}
+	now := time.Now().UTC()
+	if report.Status == "completed" {
+		inv.Status = repository.SAGEInvocationStatusCompleted
+		inv.CompletedAt = &now
+	} else if report.Status == "failed" {
+		inv.Status = repository.SAGEInvocationStatusFailed
+		inv.FailedAt = &now
+	}
+	err = s.repo.Transaction(func(tx *repository.SAGEPluginRepo) error {
+		if err := tx.CreateReport(report); err != nil {
+			return err
+		}
+		if err := tx.UpdateInvocation(inv); err != nil {
+			return err
+		}
+		plugin, _ := tx.GetPlugin(inv.PluginID)
+		ledger := &model.SAGEPluginUsageLedger{DeveloperID: plugin.DeveloperID, PluginID: inv.PluginID, UserID: inv.UserID, InvocationID: inv.ID, ReportID: report.ID, EventType: "plugin_invocation." + report.Status, Quantity: 1, Currency: "CNY", Metadata: datatypes.JSONMap{"tokens_used": input.TokensUsed}}
+		return tx.CreateUsageLedger(ledger)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return report, nil
+}
+
+func (s *SAGEPluginService) DeveloperMetrics(developerID uuid.UUID, pluginID uuid.UUID) (*SAGEDeveloperMetrics, error) {
+	plugin, err := s.repo.GetPlugin(pluginID)
+	if err != nil {
+		return nil, ErrSAGEPluginNotFound
+	}
+	if plugin.DeveloperID != developerID {
+		return nil, ErrSAGEForbidden
+	}
+	inv, completed, tokens, err := s.repo.DeveloperMetrics(developerID, pluginID)
+	if err != nil {
+		return nil, err
+	}
+	failed := inv - completed
+	rate := 0.0
+	if inv > 0 {
+		rate = float64(completed) / float64(inv)
+	}
+	return &SAGEDeveloperMetrics{PluginKey: plugin.PluginKey, Period: "all_time", Invocations: inv, Completed: completed, Failed: failed, SuccessRate: rate, TokensUsed: tokens}, nil
+}
+
+func (s *SAGEPluginService) recordSync(userID uuid.UUID, deviceID, objectType, objectID, operation string, payload map[string]any) {
+	if s.syncSvc == nil {
+		return
+	}
+	_, _ = s.syncSvc.RecordEnvelope(SyncEnvelope{UserID: userID, SourceDeviceID: deviceID, ObjectType: objectType, ObjectID: objectID, Operation: operation, ClientEventID: "", Payload: datatypes.JSONMap(payload)})
+}
+func (s *SAGEPluginService) recordAudit(actorID *uuid.UUID, actorDeviceID, action, resourceType, resourceID, outcome string, metadata map[string]any) {
+	if s.auditSvc == nil {
+		return
+	}
+	_, _ = s.auditSvc.Record(RecordAuditEventInput{ActorUserID: actorID, ActorDeviceID: actorDeviceID, Action: action, ResourceType: resourceType, ResourceID: resourceID, Outcome: outcome, Metadata: metadata})
+}
+func isGormNotFound(err error) bool { return errors.Is(err, gorm.ErrRecordNotFound) }

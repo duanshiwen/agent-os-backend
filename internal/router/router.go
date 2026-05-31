@@ -65,6 +65,7 @@ func Setup(
 	}
 	objectSvc := service.NewObjectService(objectRecordsRepo, objectStorageBackend, objectStorageCfg)
 	kbHubRepo := repository.NewKBHubRepo(db)
+	sagePluginRepo := repository.NewSAGEPluginRepo(db)
 	billingRepo := repository.NewBillingRepo(db)
 	billingSvc := service.NewKBBillingService(billingRepo)
 	kbSearchRepo := repository.NewKBSearchRepo(db)
@@ -75,6 +76,10 @@ func Setup(
 	kbHubSvc := service.NewKBHubService(kbHubRepo, knowledgeEntriesRepo, objectSvc)
 	kbHubSvc.SetBillingService(billingSvc)
 	kbHubSvc.SetSearchService(kbSearchSvc)
+	sagePluginSvc := service.NewSAGEPluginService(sagePluginRepo)
+	sagePluginSvc.SetSyncService(syncSvc)
+	sagePluginSvc.SetAuditService(auditSvc)
+	sagePluginSvc.SetSensitiveOperationService(sensitiveOperationSvc)
 
 	// Handlers
 	readinessH := handler.NewReadinessHandler(db)
@@ -94,6 +99,7 @@ func Setup(
 	knowledgeEntriesH := handler.NewKnowledgeEntriesHandler(knowledgeEntriesSvc)
 	objectH := handler.NewObjectHandler(objectSvc)
 	kbHubH := handler.NewKBHubHandler(kbHubSvc)
+	sagePluginH := handler.NewSAGEPluginHandler(sagePluginSvc)
 	sensitiveOperationH := handler.NewSensitiveOperationHandler(sensitiveOperationSvc)
 	kbHubH.SetSearchService(kbSearchSvc)
 	kbHubH.SetBillingService(billingSvc)
@@ -150,6 +156,8 @@ func Setup(
 		v1.POST("/devices/pairing/claim", pairingH.Claim)
 
 		// Public KB Hub read routes
+		v1.GET("/sage/catalog/plugins", sagePluginH.SearchCatalog)
+		v1.GET("/sage/catalog/plugins/:plugin_key", sagePluginH.GetCatalogPlugin)
 		v1.GET("/kb/public/collections", kbHubH.ListPublicCollections)
 		v1.GET("/kb/public/search", kbHubH.Search)
 		v1.GET("/kb/public/collections/:id", kbHubH.GetPublicCollection)
@@ -181,6 +189,21 @@ func Setup(
 			protected.POST("/sync/ack", syncH.AckEvents)
 
 			protected.POST("/sensitive-operations/confirmations", sensitiveOperationH.IssueConfirmation)
+
+			protected.POST("/sage/plugins", sagePluginH.CreatePlugin)
+			protected.POST("/sage/plugins/:plugin_id/versions", sagePluginH.SubmitVersion)
+			protected.GET("/sage/plugins/:plugin_id/versions/:version_id/validation", sagePluginH.GetValidation)
+			protected.POST("/sage/catalog/plugins/:plugin_key/install", sagePluginH.InstallPlugin)
+			protected.GET("/sage/installations", sagePluginH.ListInstallations)
+			protected.DELETE("/sage/installations/:installation_id", sagePluginH.UninstallPlugin)
+			protected.POST("/sage/installations/:installation_id/disable", sagePluginH.DisableInstallation)
+			protected.POST("/sage/installations/:installation_id/enable", sagePluginH.EnableInstallation)
+			protected.POST("/sage/installations/:installation_id/grants", sagePluginH.GrantPermission)
+			protected.DELETE("/sage/installations/:installation_id/grants/:grant_id", sagePluginH.RevokeGrant)
+			protected.GET("/sage/installations/:installation_id/policy-bundle", sagePluginH.PolicyBundle)
+			protected.POST("/sage/invocations", sagePluginH.CreateInvocation)
+			protected.POST("/sage/invocations/:invocation_id/reports", sagePluginH.SubmitReport)
+			protected.GET("/developer/sage/plugins/:plugin_id/metrics", sagePluginH.DeveloperMetrics)
 
 			protected.GET("/skills/settings", skillSettingsH.List)
 			protected.PUT("/skills/settings/:skill_id", skillSettingsH.Update)
@@ -254,6 +277,9 @@ func Setup(
 			admin.GET("/admission/requests", admissionH.GetPending)
 			admin.POST("/admission/requests/:id/approve", admissionH.Approve)
 			admin.POST("/admission/requests/:id/reject", admissionH.Reject)
+			admin.GET("/sage/plugins/review-queue", sagePluginH.ListReviewQueue)
+			admin.POST("/sage/plugins/:plugin_id/versions/:version_id/review", sagePluginH.ReviewPlugin)
+			admin.POST("/sage/plugins/:plugin_id/suspend", sagePluginH.SuspendPlugin)
 			admin.GET("/kb/collections/review", kbHubH.AdminListCollectionsForReview)
 			admin.POST("/kb/collections/:id/review", kbHubH.AdminReviewCollection)
 			admin.GET("/kb/moderation/reports", kbHubH.AdminListModerationReports)
