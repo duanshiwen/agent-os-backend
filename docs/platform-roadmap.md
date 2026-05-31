@@ -47,7 +47,7 @@ Current known major gaps:
 - SAGE runtime/control-plane smoke is implemented via `scripts/smoke-sage-plugin-runtime.sh`; plugin lifecycle/permission state sync and icon/package object bindings are implemented. Remaining SAGE gaps are richer governance scanning and production policy operations.
 - Multi-server federation is not implemented beyond local user server-list sync.
 - Governance/policy/audit is not yet a platform-wide control plane.
-- Production observability, admin operations, release gates, and background job unification are incomplete.
+- Production observability is still incomplete; admin operations, release gates, and background job unification now have a Stage 3A foundation via background job run history, admin ops APIs, and `scripts/release-gate-local.sh`.
 - KB Hub now has a Stage 2 productionization foundation for review/takedown/reporting, source/copyright declarations, snapshot archive/restore/diff, subscription expiry cleanup, per-plan entitlement modes, invoice/refund/dispute records, payout period aggregation, and a unified background job runner; remaining gaps are real payment integration, tax/export operations, renewal collection policy, and chunk-level search quality.
 
 ## 3. Platform Completion Stages
@@ -241,11 +241,13 @@ Primary workstreams:
 
 - admin APIs for identity, admission, KB, plugins, billing, federation, jobs, audit, security, and health;
 - unified background job system;
+- background job run history and admin visibility (`/api/v1/admin/ops/background-job-runs`);
+- admin run-once operation for maintenance tasks (`/api/v1/admin/ops/background-jobs/run-once`);
 - structured logging and request IDs;
 - metrics and readiness;
 - migration gate;
 - full smoke suite;
-- release gate script.
+- release gate script (`scripts/release-gate-local.sh`).
 
 Required release checks:
 

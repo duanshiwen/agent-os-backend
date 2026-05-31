@@ -316,6 +316,14 @@ curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 
 生产部署建议仍优先使用独立 worker 进程运行 embedding pipeline；`BACKGROUND_EMBEDDING_WORKER_ENABLED=true` 主要用于单机开发、测试或轻量部署。
 
+Stage 3A Platform Ops Gate 增加了维护任务运行历史和 admin 操作入口：
+
+- `GET /api/v1/admin/ops/background-job-runs`
+- `GET /api/v1/admin/ops/background-job-runs/:id`
+- `POST /api/v1/admin/ops/background-jobs/run-once`
+
+这些接口均受 JWT 与 `AdminMiddleware` 保护。
+
 #### KB Hub 语义搜索（M3.5）
 
 KB Hub semantic search 使用 PostgreSQL + pgvector 持久化 embedding，并通过异步队列生成向量：
@@ -382,6 +390,26 @@ curl -H "Authorization: Bearer $TOKEN" \
 - `mode=hybrid`：semantic 不可用时降级 lexical，并返回 `semantic_available=false` 与原因
 
 普通 Go CI 使用 deterministic provider / SQLite fallback，不下载真实 BGE-M3。
+
+#### Local Release Gate
+
+默认 release gate 会运行 Go tests、shell syntax checks、Python syntax checks，不要求真实 BGE-M3：
+
+```bash
+./scripts/release-gate-local.sh
+```
+
+本地完整栈已启动时，可加 live smoke：
+
+```bash
+RUN_LIVE_SMOKES=1 BASE_URL=http://localhost:8080 ./scripts/release-gate-local.sh
+```
+
+真实 BGE-M3 / `local_http` 语义 smoke 可单独打开：
+
+```bash
+RUN_LOCAL_HTTP_SEMANTIC=1 EMBEDDING_ENDPOINT=http://localhost:8091 ./scripts/release-gate-local.sh
+```
 
 #### SAGE Plugin Runtime / Control-Plane Smoke
 

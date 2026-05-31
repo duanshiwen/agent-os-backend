@@ -61,7 +61,9 @@ func TestBackgroundTasksRunOnceCleansMaintenanceJobs(t *testing.T) {
 	syncSvc := NewSyncService(syncRepo, nil)
 	sensitiveSvc := NewSensitiveOperationService(userRepo, sensitiveRepo, nil)
 	kbSvc := NewKBHubService(kbRepo, knowledgeRepo, NewObjectService(objectRepo, nil, config.ObjectStorageConfig{}))
+	jobRunRepo := repository.NewBackgroundJobRunRepo(db)
 	bt := NewBackgroundTasksWithConfig(BackgroundTasksConfig{}, msgSvc, syncSvc, sensitiveSvc, kbSvc, nil)
+	bt.SetJobRunRepo(jobRunRepo)
 	results := bt.RunOnce(context.Background())
 	for job, err := range results {
 		if err != nil {
@@ -86,6 +88,18 @@ func TestBackgroundTasksRunOnceCleansMaintenanceJobs(t *testing.T) {
 	}
 	if sub.Status != "expired" || sub.RenewalStatus != "expired" {
 		t.Fatalf("expected expired subscription, got %+v", sub)
+	}
+	runs, total, err := jobRunRepo.List(repository.ListBackgroundJobRunsInput{Limit: 20})
+	if err != nil {
+		t.Fatalf("list job runs: %v", err)
+	}
+	if total != 4 || len(runs) != 4 {
+		t.Fatalf("expected 4 recorded job runs, total=%d len=%d", total, len(runs))
+	}
+	for _, run := range runs {
+		if run.Trigger != "manual" || run.Status != repository.BackgroundJobRunStatusSuccess || run.FinishedAt == nil {
+			t.Fatalf("unexpected run history row: %+v", run)
+		}
 	}
 }
 

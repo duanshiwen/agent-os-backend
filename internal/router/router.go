@@ -25,6 +25,7 @@ func Setup(
 	msgSvc *service.MessageService,
 	syncSvc *service.SyncService,
 	signatureVerifier service.SignatureVerifier,
+	backgroundTasks *service.BackgroundTasks,
 ) *gin.Engine {
 	r := gin.Default()
 
@@ -70,6 +71,8 @@ func Setup(
 	billingSvc := service.NewKBBillingService(billingRepo)
 	kbSearchRepo := repository.NewKBSearchRepo(db)
 	kbEmbeddingRepo := repository.NewKBEmbeddingRepo(db)
+	backgroundJobRunRepo := repository.NewBackgroundJobRunRepo(db)
+	opsSvc := service.NewOpsService(backgroundTasks, backgroundJobRunRepo)
 	embeddingProvider := service.NewEmbeddingProvider(service.EmbeddingProviderConfig{Provider: cfg.Embedding.Provider, Endpoint: cfg.Embedding.Endpoint, Model: cfg.Embedding.Model, Dimensions: cfg.Embedding.Dimensions, Timeout: time.Duration(cfg.Embedding.TimeoutSecs) * time.Second, MaxBatchSize: cfg.Embedding.MaxBatchSize})
 	kbSearchSvc := service.NewKBSearchService(kbSearchRepo, kbHubRepo, billingSvc)
 	kbSearchSvc.SetEmbedding(kbEmbeddingRepo, embeddingProvider)
@@ -102,6 +105,7 @@ func Setup(
 	kbHubH := handler.NewKBHubHandler(kbHubSvc)
 	sagePluginH := handler.NewSAGEPluginHandler(sagePluginSvc)
 	sensitiveOperationH := handler.NewSensitiveOperationHandler(sensitiveOperationSvc)
+	opsH := handler.NewOpsHandler(opsSvc)
 	kbHubH.SetSearchService(kbSearchSvc)
 	kbHubH.SetBillingService(billingSvc)
 	kbHubH.SetAuditService(auditSvc)
@@ -272,6 +276,9 @@ func Setup(
 		admin.Use(middleware.AdminMiddleware(userRepo))
 		{
 			admin.GET("/audit/events", auditH.List)
+			admin.GET("/ops/background-job-runs", opsH.ListBackgroundJobRuns)
+			admin.GET("/ops/background-job-runs/:id", opsH.GetBackgroundJobRun)
+			admin.POST("/ops/background-jobs/run-once", opsH.RunBackgroundJobsOnce)
 			admin.GET("/admission/policy", admissionH.GetPolicy)
 			admin.PUT("/admission/policy", admissionH.UpdatePolicy)
 			admin.PUT("/admission/invitation-code", admissionH.UpdateInvitationCode)
