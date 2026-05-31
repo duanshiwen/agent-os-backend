@@ -199,6 +199,12 @@ func (r *SAGEPluginRepo) GetGrant(id uuid.UUID) (*model.SAGEPluginPermissionGran
 	return &grant, err
 }
 
+func (r *SAGEPluginRepo) GetGrantByInstallationPermission(installationID uuid.UUID, permissionKey string) (*model.SAGEPluginPermissionGrant, error) {
+	var grant model.SAGEPluginPermissionGrant
+	err := r.db.First(&grant, "installation_id = ? AND permission_key = ?", installationID, strings.TrimSpace(permissionKey)).Error
+	return &grant, err
+}
+
 func (r *SAGEPluginRepo) CreateInvocation(invocation *model.SAGEPluginInvocation) error {
 	return r.db.Create(invocation).Error
 }

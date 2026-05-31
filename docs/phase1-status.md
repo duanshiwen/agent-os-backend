@@ -775,9 +775,21 @@ Metrics: invocations=1 completed=1 tokens_used=42
 
 The smoke also hardened client contract JSON tags for SAGE request inputs, policy bundle fields, and developer metrics fields.
 
+SAGE plugin state sync is now covered by `plugin.*` events:
+
+```text
+plugin.installed
+plugin.uninstalled
+plugin.enabled
+plugin.disabled
+plugin.permission_granted
+plugin.permission_revoked
+```
+
+These events are verified both by `TestSAGEPluginServiceEmitsPluginSyncEvents` and by the public sync pull assertions inside `scripts/smoke-sage-plugin-runtime.sh`.
+
 Current M4 gaps:
 
-- plugin install/grant state still needs sync event coverage for multi-device clients;
 - plugin icon/package object storage binding is not yet complete;
 - richer manifest governance scans such as injection and typosquatting checks are still pending;
 - Backend still intentionally does not execute third-party Flow definitions or host plugin code;

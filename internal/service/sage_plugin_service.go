@@ -301,7 +301,16 @@ func (s *SAGEPluginService) InstallPlugin(userID uuid.UUID, deviceID, pluginKey 
 		if existing.Status != repository.SAGEInstallationStatusActive {
 			existing.Status = repository.SAGEInstallationStatusActive
 			existing.DisabledAt = nil
-			_ = s.repo.UpdateInstallation(existing)
+			if err := s.repo.UpdateInstallation(existing); err != nil {
+				return nil, err
+			}
+			s.recordPluginSync(userID, deviceID, existing.ID.String(), SyncOperationEnabled, map[string]any{
+				"plugin_id":       plugin.ID.String(),
+				"plugin_key":      plugin.PluginKey,
+				"version_id":      existing.VersionID.String(),
+				"installation_id": existing.ID.String(),
+				"status":          existing.Status,
+			})
 		}
 		return existing, nil
 	}
@@ -313,7 +322,7 @@ func (s *SAGEPluginService) InstallPlugin(userID uuid.UUID, deviceID, pluginKey 
 	if err := s.repo.CreateInstallation(installation); err != nil {
 		return nil, err
 	}
-	s.recordSync(userID, deviceID, "sage_plugin_installation", installation.ID.String(), "installed", map[string]any{"object_id": installation.ID.String(), "plugin_id": plugin.ID.String(), "plugin_key": plugin.PluginKey})
+	s.recordPluginSync(userID, deviceID, installation.ID.String(), SyncOperationInstalled, map[string]any{"plugin_id": plugin.ID.String(), "plugin_key": plugin.PluginKey, "version_id": installation.VersionID.String(), "installation_id": installation.ID.String(), "status": installation.Status, "track_mode": installation.TrackMode})
 	s.recordAudit(&userID, deviceID, AuditActionSAGEPluginInstalled, "sage_plugin_installation", installation.ID.String(), AuditOutcomeSuccess, nil)
 	return installation, nil
 }
@@ -333,8 +342,14 @@ func (s *SAGEPluginService) SetInstallationStatus(userID uuid.UUID, deviceID str
 	if err := s.repo.UpdateInstallation(inst); err != nil {
 		return nil, err
 	}
-	op := status
-	s.recordSync(userID, deviceID, "sage_plugin_installation", inst.ID.String(), op, map[string]any{"object_id": inst.ID.String(), "status": status})
+	operation := SyncOperationEnabled
+	switch status {
+	case repository.SAGEInstallationStatusDisabled:
+		operation = SyncOperationDisabled
+	case repository.SAGEInstallationStatusUninstalled:
+		operation = SyncOperationUninstalled
+	}
+	s.recordPluginSync(userID, deviceID, inst.ID.String(), operation, map[string]any{"installation_id": inst.ID.String(), "plugin_id": inst.PluginID.String(), "version_id": inst.VersionID.String(), "status": status})
 	return inst, nil
 }
 func (s *SAGEPluginService) ListInstallations(userID uuid.UUID) ([]model.SAGEPluginInstallation, error) {
@@ -363,14 +378,28 @@ func (s *SAGEPluginService) GrantPermission(userID uuid.UUID, deviceID string, i
 			return nil, err
 		}
 	}
-	grant := &model.SAGEPluginPermissionGrant{InstallationID: installationID, UserID: userID, PluginID: inst.PluginID, PermissionKey: key, RiskLevel: risk, Status: repository.SAGEGrantStatusActive, GrantScope: datatypes.JSONMap(input.GrantScope), RequiresConfirmation: requires, ExpiresAt: input.ExpiresAt}
-	if grant.GrantScope == nil {
-		grant.GrantScope = datatypes.JSONMap{}
+	grantScope := datatypes.JSONMap(input.GrantScope)
+	if grantScope == nil {
+		grantScope = datatypes.JSONMap{}
 	}
-	if err := s.repo.CreateGrant(grant); err != nil {
-		return nil, err
+	grant, err := s.repo.GetGrantByInstallationPermission(installationID, key)
+	if err == nil {
+		grant.Status = repository.SAGEGrantStatusActive
+		grant.RiskLevel = risk
+		grant.GrantScope = grantScope
+		grant.RequiresConfirmation = requires
+		grant.ExpiresAt = input.ExpiresAt
+		grant.RevokedAt = nil
+		if err := s.repo.UpdateGrant(grant); err != nil {
+			return nil, err
+		}
+	} else {
+		grant = &model.SAGEPluginPermissionGrant{InstallationID: installationID, UserID: userID, PluginID: inst.PluginID, PermissionKey: key, RiskLevel: risk, Status: repository.SAGEGrantStatusActive, GrantScope: grantScope, RequiresConfirmation: requires, ExpiresAt: input.ExpiresAt}
+		if err := s.repo.CreateGrant(grant); err != nil {
+			return nil, err
+		}
 	}
-	s.recordSync(userID, deviceID, "sage_plugin_permission_grant", grant.ID.String(), "granted", map[string]any{"object_id": grant.ID.String(), "permission_key": key, "plugin_id": inst.PluginID.String()})
+	s.recordPluginSync(userID, deviceID, installationID.String(), SyncOperationPermissionGranted, map[string]any{"installation_id": installationID.String(), "grant_id": grant.ID.String(), "permission_key": key, "plugin_id": inst.PluginID.String(), "risk_level": risk, "requires_confirmation": requires, "status": grant.Status})
 	return grant, nil
 }
 
@@ -385,7 +414,7 @@ func (s *SAGEPluginService) RevokeGrant(userID uuid.UUID, deviceID string, grant
 	if err := s.repo.UpdateGrant(grant); err != nil {
 		return nil, err
 	}
-	s.recordSync(userID, deviceID, "sage_plugin_permission_grant", grant.ID.String(), "revoked", map[string]any{"object_id": grant.ID.String(), "permission_key": grant.PermissionKey})
+	s.recordPluginSync(userID, deviceID, grant.InstallationID.String(), SyncOperationPermissionRevoked, map[string]any{"installation_id": grant.InstallationID.String(), "grant_id": grant.ID.String(), "permission_key": grant.PermissionKey, "plugin_id": grant.PluginID.String(), "status": grant.Status})
 	return grant, nil
 }
 
@@ -520,11 +549,16 @@ func (s *SAGEPluginService) DeveloperMetrics(developerID uuid.UUID, pluginID uui
 	return &SAGEDeveloperMetrics{PluginKey: plugin.PluginKey, Period: "all_time", Invocations: inv, Completed: completed, Failed: failed, SuccessRate: rate, TokensUsed: tokens}, nil
 }
 
-func (s *SAGEPluginService) recordSync(userID uuid.UUID, deviceID, objectType, objectID, operation string, payload map[string]any) {
+func (s *SAGEPluginService) recordPluginSync(userID uuid.UUID, deviceID, installationID, operation string, payload map[string]any) {
 	if s.syncSvc == nil {
 		return
 	}
-	_, _ = s.syncSvc.RecordEnvelope(SyncEnvelope{UserID: userID, SourceDeviceID: deviceID, ObjectType: objectType, ObjectID: objectID, Operation: operation, ClientEventID: "", Payload: datatypes.JSONMap(payload)})
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	payload["object_id"] = installationID
+	payload["object_type"] = SyncObjectPlugin
+	_, _ = s.syncSvc.RecordEnvelope(SyncEnvelope{UserID: userID, SourceDeviceID: deviceID, ObjectType: SyncObjectPlugin, ObjectID: installationID, Operation: operation, ClientEventID: "", Payload: datatypes.JSONMap(payload)})
 }
 func (s *SAGEPluginService) recordAudit(actorID *uuid.UUID, actorDeviceID, action, resourceType, resourceID, outcome string, metadata map[string]any) {
 	if s.auditSvc == nil {

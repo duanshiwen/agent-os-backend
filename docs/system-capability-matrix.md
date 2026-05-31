@@ -50,7 +50,7 @@ Backend working tree at Stage 0 start had one existing README documentation diff
 | Sync | Message sync | ✅ | `message.created` | full conversation reconstruction solely from sync not complete |
 | Sync | Skill settings sync | ✅ | settings routes and events | schema version evolution |
 | Sync | Agent settings sync | ✅ | settings routes and events | schema version evolution |
-| Sync | Server list sync | ✅ | `/servers` routes and events | not federation |
+| Sync | Server list and plugin sync | ✅ | `/servers` routes and `plugin.installed/uninstalled/enabled/disabled/permission_granted/permission_revoked` events | not federation |
 | Sync | Personal knowledge sync | ✅ | entry CRUD, tombstone, version conflict, content hash | restore operation and full client merge engine |
 | Sync | Plugin sync taxonomy | 🟡 | SAGE subsystem exists but install/grant state is not yet emitted as sync events | plugin install/grant/enable/disable events and tests |
 | Sync | Schema version negotiation | ⬜ | schema_version stored | `/sync/capabilities`, compatibility strategy |
@@ -82,7 +82,7 @@ Backend working tree at Stage 0 start had one existing README documentation diff
 | Plugin | SAGE Manifest | ✅ | `SAGEManifestValidator`, manifest hash, permission/risk summaries, validation tests | stronger schema evolution and compatibility policy |
 | Plugin | Runtime Flow contract | ✅ | mock plugin server + `scripts/smoke-sage-plugin-runtime.sh`; Backend intentionally does not execute Flow | real AgentOS Client integration |
 | Plugin | Execution Report | ✅ | invocation and execution report APIs, usage ledger / metrics foundation | idempotency hardening and billing integration |
-| Plugin | Installation / grants | ✅ | install/uninstall/enable/disable/grant/revoke APIs, high-risk grants use sensitive confirmation | sync events and richer grant scopes |
+| Plugin | Installation / grants | ✅ | install/uninstall/enable/disable/grant/revoke APIs, high-risk grants use sensitive confirmation, `plugin.*` sync events | richer grant scopes and real AgentOS Client integration |
 | Governance | Capability taxonomy | ⬜ | none | platform-wide capability model |
 | Governance | Policy engine | ⬜ | none | allow/approval/deny decisions |
 | Governance | Tool definition scanning | ⬜ | none | injection/typosquatting/capability mismatch scanner |

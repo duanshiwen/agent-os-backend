@@ -202,7 +202,36 @@ api GET "/api/v1/sage/catalog/plugins/${unique_key}" '' '' 200 | jq '{id:.data.i
 echo "==> User installs plugin and grants low-risk permission"
 install_resp="$(api POST "/api/v1/sage/catalog/plugins/${unique_key}/install" "$TOKEN" '{}' 201)"
 installation_id="$(echo "$install_resp" | jq -r '.data.id')"
-api POST "/api/v1/sage/installations/${installation_id}/grants" "$TOKEN" '{"permission_key":"plugin.api.call"}' 201 >/dev/null
+grant_resp="$(api POST "/api/v1/sage/installations/${installation_id}/grants" "$TOKEN" '{"permission_key":"plugin.api.call"}' 201)"
+grant_id="$(echo "$grant_resp" | jq -r '.data.id')"
+
+echo "==> Sync pull exposes install and grant events"
+sync_events="$(api GET '/api/v1/sync/events?after_sequence=0&limit=100' "$TOKEN" '' 200)"
+echo "$sync_events" | jq '[.data.events[] | select(.object_type=="plugin") | {event_type, object_id, operation, permission_key:.payload.permission_key}]'
+for expected_event in plugin.installed plugin.permission_granted; do
+  if [[ "$(echo "$sync_events" | jq --arg event "$expected_event" --arg id "$installation_id" '[.data.events[] | select(.event_type==$event and .object_id==$id)] | length')" == "0" ]]; then
+    echo "expected sync event ${expected_event} for installation ${installation_id}" >&2
+    echo "$sync_events" | jq >&2
+    exit 1
+  fi
+done
+
+# Exercise the rest of the plugin lifecycle sync contract on the same installation.
+api DELETE "/api/v1/sage/installations/${installation_id}/grants/${grant_id}" "$TOKEN" '' 200 >/dev/null
+api POST "/api/v1/sage/installations/${installation_id}/disable" "$TOKEN" '{}' 200 >/dev/null
+api POST "/api/v1/sage/installations/${installation_id}/enable" "$TOKEN" '{}' 200 >/dev/null
+sync_events="$(api GET '/api/v1/sync/events?after_sequence=0&limit=100' "$TOKEN" '' 200)"
+for expected_event in plugin.permission_revoked plugin.disabled plugin.enabled; do
+  if [[ "$(echo "$sync_events" | jq --arg event "$expected_event" --arg id "$installation_id" '[.data.events[] | select(.event_type==$event and .object_id==$id)] | length')" == "0" ]]; then
+    echo "expected sync event ${expected_event} for installation ${installation_id}" >&2
+    echo "$sync_events" | jq >&2
+    exit 1
+  fi
+done
+
+# Re-grant the permission so the policy bundle and invocation path remain allowed.
+grant_resp="$(api POST "/api/v1/sage/installations/${installation_id}/grants" "$TOKEN" '{"permission_key":"plugin.api.call"}' 201)"
+grant_id="$(echo "$grant_resp" | jq -r '.data.id')"
 
 echo "==> Client fetches policy bundle"
 bundle="$(api GET "/api/v1/sage/installations/${installation_id}/policy-bundle" "$TOKEN" '' 200)"
@@ -224,6 +253,15 @@ echo "==> Client creates invocation and submits execution report"
 invocation_resp="$(api POST /api/v1/sage/invocations "$TOKEN" "$(jq -cn --arg plugin_key "$unique_key" --arg installation_id "$installation_id" --arg flow_id "$flow_id" '{plugin_key:$plugin_key,installation_id:$installation_id,client_request_id:"sage-runtime-smoke-req",user_intent:"find hotels in Hangzhou",flow_id:$flow_id,flow_hash:"mock-flow-hash",risk_level:"low",permissions_used:["plugin.api.call"],policy_decision:{decision:"allow"}}')" 201)"
 invocation_id="$(echo "$invocation_resp" | jq -r '.data.id')"
 api POST "/api/v1/sage/invocations/${invocation_id}/reports" "$TOKEN" "$(jq -cn --arg flow_id "$flow_id" '{client_report_id:"sage-runtime-smoke-report",status:"completed",flow_id:$flow_id,steps_completed:["search_hotels","present_options"],step_summaries:{search_hotels:"mock candidates returned",present_options:"options presented"},tokens_used:42,metering:{unit:"tokens"}}')" 201 >/dev/null
+
+echo "==> Uninstall event is pullable after runtime reporting"
+api DELETE "/api/v1/sage/installations/${installation_id}" "$TOKEN" '' 200 >/dev/null
+sync_events="$(api GET '/api/v1/sync/events?after_sequence=0&limit=100' "$TOKEN" '' 200)"
+if [[ "$(echo "$sync_events" | jq --arg id "$installation_id" '[.data.events[] | select(.event_type=="plugin.uninstalled" and .object_id==$id)] | length')" == "0" ]]; then
+  echo "expected sync event plugin.uninstalled for installation ${installation_id}" >&2
+  echo "$sync_events" | jq >&2
+  exit 1
+fi
 
 echo "==> Developer metrics include invocation"
 metrics="$(api GET "/api/v1/developer/sage/plugins/${plugin_id}/metrics" "$TOKEN" '' 200)"
