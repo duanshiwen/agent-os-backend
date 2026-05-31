@@ -1,7 +1,7 @@
 # AgentOS Governance Plane Design
 
 Updated: 2026-05-31
-Status: Stage 4A foundation
+Status: Stage 4C enforce-readiness
 
 ## 1. Purpose
 
@@ -17,9 +17,9 @@ It is designed to be reused by:
 
 Federation / multi-server networking is explicitly out of current scope.
 
-## 2. Current Stage 4A Foundation
+## 2. Current Stage 4C Foundation
 
-Stage 4A introduces six durable concepts:
+Stage 4A introduced six durable concepts:
 
 1. `capability_definitions` — stable capability taxonomy entries.
 2. `policy_rules` — deterministic rules that map actor/subject/capability/risk context to a decision.
@@ -81,11 +81,13 @@ Rules:
 - consume is one-time;
 - consume after expiry fails;
 - token reuse fails;
-- `consumed_by` records the consuming device or actor marker.
+- `consumed_by` records the consuming device or actor marker;
+- Stage 4C consume validates actor, subject type, subject id, and capability key when an approval token is used by `GovernanceEnforcer`;
+- an approval token for one subject/capability cannot be reused for another SAGE, KB, or object operation.
 
 ## 7. Admin APIs
 
-The first admin API slice exposes:
+The admin API slice exposes:
 
 - `POST /api/v1/admin/governance/capabilities`
 - `GET /api/v1/admin/governance/capabilities`
@@ -93,6 +95,13 @@ The first admin API slice exposes:
 - `GET /api/v1/admin/governance/policy-rules`
 - `POST /api/v1/admin/governance/kill-switches`
 - `POST /api/v1/admin/governance/evaluate`
+- `GET /api/v1/admin/governance/summary?window=24`
+- `GET /api/v1/admin/governance/policy-decisions`
+- `GET /api/v1/admin/governance/policy-decisions/:id`
+- `POST /api/v1/admin/governance/approval-receipts`
+- `GET /api/v1/admin/governance/approval-receipts`
+- `GET /api/v1/admin/governance/scan-results`
+- `POST /api/v1/admin/governance/scan-results/:id/resolve`
 
 These routes are mounted under the existing admin route group and therefore inherit JWT authentication and admin authorization.
 
@@ -140,3 +149,31 @@ The default backend configuration is `GOVERNANCE_ENFORCEMENT_MODE=observe`, so S
 | KB snapshot lifecycle | `kb_operation` | `kb.snapshot.archive` / `kb.snapshot.restore` | `KBHubService.ArchiveSnapshot` / `RestoreSnapshot` |
 
 Domain-specific overrides are available via `GOVERNANCE_ENFORCEMENT_SAGE_MODE`, `GOVERNANCE_ENFORCEMENT_OBJECT_MODE`, and `GOVERNANCE_ENFORCEMENT_KB_MODE`.
+
+## Stage 4C Enforce Readiness
+
+Stage 4C makes observe-mode evidence operationally useful and closes the most important approval-token safety gap before broader enforce rollout.
+
+Implemented readiness controls:
+
+1. Approval receipt binding
+   - `GovernanceEnforcer` consumes approval receipts through an operation-bound path.
+   - The repository validates pending status, expiry, actor, subject type, subject id, and capability key in one transaction before marking the receipt consumed.
+
+2. Stable governance error contract
+   - Denied operations return machine-readable error codes:
+     - `governance_denied`
+     - `governance_approval_required`
+     - `governance_approval_invalid`
+   - SAGE, Object, and KB handlers route governance errors through the shared governance error helper.
+
+3. Admin evidence APIs
+   - Admins can list and inspect policy decisions.
+   - Admins can list approval receipts without exposing raw approval tokens.
+   - Admins can list scanner findings and resolve findings.
+   - Admins can query a governance summary window for decisions, approvals, and open findings.
+
+4. Release evidence
+   - Unit/integration test baseline: `go test ./...` → 180 passed in 11 packages.
+   - Local release gate: `./scripts/release-gate-local.sh` passes.
+   - Live enforce-readiness smoke: `scripts/smoke-governance-enforce-readiness.sh` verifies enforce-mode denial, stable `governance_denied`, admin policy-decision visibility, and summary evidence.
