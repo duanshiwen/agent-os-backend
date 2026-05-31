@@ -8,6 +8,8 @@ fi
 JWT_SECRET="${JWT_SECRET:-dev-secret-change-me-use-48-plus-bytes-in-production}"
 RUN_ID="${RUN_ID:-$(date +%s)}"
 DEVICE_ID="governance-enforce-smoke-device-${RUN_ID}"
+PG_DB_NAME="${PG_DB:-agent_os}"
+PG_USER_NAME="${PG_USER:-postgres}"
 KEY_DIR=""
 
 cleanup() { rm -rf "${KEY_DIR:-}"; }
@@ -47,7 +49,9 @@ api() {
 KEY_DIR="$(mktemp -d)"
 
 new_identity() {
-  local device_id="$1" key_file="$KEY_DIR/${device_id}.pem" pubkey
+  local device_id key_file pubkey
+  device_id="$1"
+  key_file="$KEY_DIR/${device_id}.pem"
   openssl genpkey -algorithm Ed25519 -out "$key_file" >/dev/null 2>&1
   pubkey="$(openssl pkey -in "$key_file" -pubout -outform DER 2>/dev/null | xxd -p -c 256 | sed 's/^.*032100//')"
   echo "$key_file|$pubkey"
@@ -103,8 +107,8 @@ ADMIN_TOKEN="$(make_admin_token "$USER_ID" "$DEVICE_ID")"
 
 # Smoke-only admin bootstrap. The product still needs a first-class admin bootstrap policy.
 if command -v docker >/dev/null 2>&1 && docker compose ps postgres >/dev/null 2>&1; then
-  echo "==> Mark smoke user as admin in local PostgreSQL"
-  docker compose exec -T postgres psql -U postgres -d agent_os -v ON_ERROR_STOP=1 -c "UPDATE users SET role='admin', is_admin=true WHERE id='${USER_ID}';" >/dev/null
+  echo "==> Mark smoke user as admin in local PostgreSQL (${PG_DB_NAME})"
+  docker compose exec -T postgres psql -U "$PG_USER_NAME" -d "$PG_DB_NAME" -v ON_ERROR_STOP=1 -c "UPDATE users SET role='admin', is_admin=true WHERE id='${USER_ID}';" >/dev/null
 else
   echo "==> Skipping DB admin bootstrap; assuming supplied token is already admin-capable"
 fi
@@ -115,7 +119,7 @@ SHA="$(printf 'governance enforce smoke' | shasum -a 256 | awk '{print $1}')"
 
 # Duplicate capability/rule creates are treated as smoke setup best-effort because repeated RUN_ID values may collide.
 api POST /api/v1/admin/governance/capabilities "$ADMIN_TOKEN" "$(jq -cn --arg key "$CAPABILITY" '{key:$key,name:"Object upload enforce smoke",risk_level:"medium",status:"active"}')" '' >/dev/null || true
-api POST /api/v1/admin/governance/policy-rules "$ADMIN_TOKEN" "$(jq -cn --arg key "$CAPABILITY" '{name:"object upload enforce smoke deny",capability_key:$key,subject_type:"object_operation",effect:"deny",priority:1,status:"active"}')" '' >/dev/null || true
+api POST /api/v1/admin/governance/policy-rules "$ADMIN_TOKEN" "$(jq -cn --arg key "$CAPABILITY" '{name:"object upload enforce smoke deny",capability_key:$key,subject_type:"object_operation",risk_level:"medium",effect:"deny",priority:1,status:"active"}')" '' >/dev/null || true
 
 echo "==> Protected object upload is blocked by governance enforce mode"
 BLOCKED_JSON="$(api POST /api/v1/objects/upload-intents "$USER_TOKEN" "$(jq -cn --arg scope "$SCOPE" --arg sha "$SHA" '{scope:$scope,filename:"blocked.txt",content_type:"text/plain",content_size:24,sha256:$sha}')" 403)"
