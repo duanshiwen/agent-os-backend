@@ -299,6 +299,7 @@ func Setup(
 			admin.POST("/governance/approval-receipts", governanceH.CreateApprovalReceipt)
 			admin.GET("/governance/approval-receipts", governanceH.ListApprovalReceipts)
 			admin.POST("/governance/approval-receipts/:id/revoke", governanceH.RevokeApprovalReceipt)
+			admin.POST("/governance/approval-receipts/:id/reissue-token", governanceH.ReissueApprovalReceiptToken)
 			admin.GET("/governance/scan-results", governanceH.ListScanResults)
 			admin.POST("/governance/scan-results/:id/resolve", governanceH.ResolveScanResult)
 			admin.GET("/ops/background-job-runs", opsH.ListBackgroundJobRuns)

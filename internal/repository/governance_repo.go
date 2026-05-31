@@ -261,6 +261,34 @@ func (r *GovernanceRepo) RevokeApprovalReceipt(id uuid.UUID, reason string, now 
 	return &receipt, nil
 }
 
+func (r *GovernanceRepo) ReissueApprovalReceiptToken(id uuid.UUID, tokenHash, reason string, expiresAt, now time.Time) (*model.ApprovalReceipt, error) {
+	var receipt model.ApprovalReceipt
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&receipt, "id = ?", id).Error; err != nil {
+			return err
+		}
+		if receipt.Status != "pending" || !receipt.ExpiresAt.After(now) {
+			return gorm.ErrInvalidData
+		}
+		metadata := map[string]any(receipt.Metadata)
+		if metadata == nil {
+			metadata = map[string]any{}
+		}
+		metadata["token_reissued_at"] = now.Format(time.RFC3339)
+		if reason != "" {
+			metadata["token_reissue_reason"] = reason
+		}
+		receipt.TokenHash = tokenHash
+		receipt.ExpiresAt = expiresAt
+		receipt.Metadata = metadata
+		return tx.Save(&receipt).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &receipt, nil
+}
+
 type ApprovalReceiptConsumeConstraints struct {
 	ActorUserID   *uuid.UUID
 	SubjectType   string

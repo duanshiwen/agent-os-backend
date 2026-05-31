@@ -250,6 +250,28 @@ func (h *GovernanceHandler) RevokeApprovalReceipt(c *gin.Context) {
 	response.OK(c, receipt)
 }
 
+func (h *GovernanceHandler) ReissueApprovalReceiptToken(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.BadRequest(c, "invalid approval receipt id")
+		return
+	}
+	var req struct {
+		Reason           string `json:"reason"`
+		ExpiresInSeconds int    `json:"expires_in_seconds"`
+	}
+	if c.Request.Body != nil {
+		_ = c.ShouldBindJSON(&req)
+	}
+	ttl := time.Duration(req.ExpiresInSeconds) * time.Second
+	receipt, token, err := h.svc.ReissueApprovalReceiptToken(id, req.Reason, ttl)
+	if err != nil {
+		h.writeGovernanceError(c, err)
+		return
+	}
+	response.OK(c, gin.H{"receipt": receipt, "approval_token": token})
+}
+
 func (h *GovernanceHandler) ListScanResults(c *gin.Context) {
 	page, err := h.svc.ListScanResults(service.ListScanResultsInput{SubjectType: c.Query("subject_type"), SubjectID: c.Query("subject_id"), Scanner: c.Query("scanner"), Severity: c.Query("severity"), Status: c.Query("status")}, parseGovernanceIntQuery(c, "limit", 50), parseGovernanceIntQuery(c, "offset", 0))
 	if err != nil {
@@ -291,7 +313,7 @@ func (h *GovernanceHandler) ConsumeApprovalReceipt(c *gin.Context) {
 }
 
 func (h *GovernanceHandler) writeGovernanceError(c *gin.Context, err error) {
-	if errors.Is(err, service.ErrGovernanceInvalidInput) {
+	if errors.Is(err, service.ErrGovernanceInvalidInput) || errors.Is(err, service.ErrApprovalReceiptInvalid) {
 		response.BadRequest(c, err.Error())
 		return
 	}
