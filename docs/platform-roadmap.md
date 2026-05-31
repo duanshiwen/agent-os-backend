@@ -1,7 +1,7 @@
 # AgentOS Backend Platform Roadmap
 
-Updated: 2026-05-31
-Status: Stage 0 architecture baseline; federation removed from current roadmap on 2026-05-31
+Updated: 2026-06-01
+Status: Stage 5A client-ready platform slice planning baseline; federation remains out of current roadmap
 Scope: AgentOS Server platform completion, not MVP delivery
 
 ## 1. Direction
@@ -21,7 +21,7 @@ Fresh local verification before this roadmap:
 
 ```text
 Backend: go test ./...
-Result: 180 passed in 11 packages
+Result: 183 passed in 11 packages
 
 Rust SDK: cargo test --workspace --all-targets --locked
 Result: 1560 passed, 2 ignored, 110 suites
@@ -58,7 +58,8 @@ graph TD
     S1 --> S2[Stage 2: KB Hub Productionization]
     S2 --> S3[Stage 3: Full SAGE Plugin Marketplace]
     S3 --> S4[Stage 4: Agent Tool Governance Plane]
-    S4 --> S5[Stage 5: Commercialization and Platform Operations]
+    S4 --> S5A[Stage 5A: Client-Ready Platform Slice]
+    S5A --> S5[Stage 5: Commercialization and Platform Operations]
     S5 --> S6[Stage 6: Admin, Observability, Release Gates]
 ```
 
@@ -224,7 +225,32 @@ Remaining Stage 4 gaps:
 
 This stage is deliberately placed after SAGE registry design but before allowing broad real tool execution.
 
-## 9. Stage 5 — Commercialization and Platform Operations
+## 9. Stage 5A — Client-Ready Platform Slice
+
+Goal: make the already implemented single-server platform stable enough for AgentOS Client / SDK integration before broad commercialization work.
+
+Stage 5A reference plan:
+
+- `docs/stage5a-client-ready-platform-slice.md`
+
+Primary workstreams:
+
+- Reality Lock 2.0: keep roadmap, status docs, tests, and architecture boundaries aligned with the real codebase;
+- SDK Client Sync Bridge expansion: extend `agentos-client-bridge` / `agentos-ffi` beyond knowledge-only reduction so client projections can consume plugin, skill, agent, server, and knowledge sync events from backend pull envelopes;
+- SAGE Client Runtime Contract Gate: freeze policy bundle semantics, verify approval-required / denied governance paths, and keep backend as the control plane rather than a flow executor;
+- Release Gate 1.0: include client-ready evidence paths alongside Go tests, migration gate, live object/SAGE/governance smokes, and optional local_http semantic smoke;
+- Search-quality follow-up: chunk-level passage retrieval and evaluation fixtures after client contracts are stable;
+- Governance 4E follow-up: richer scanner coverage, policy conditions, response inspection, incident workflow, and admin bootstrap.
+
+Exit criteria:
+
+- backend and SDK tests pass with fresh evidence;
+- backend sync events have SDK-compatible reducer coverage beyond knowledge-only sync;
+- SAGE policy bundle / invocation / report contract is verified by smoke evidence;
+- governance enforcement errors remain stable for client consumption;
+- release gate records client-ready evidence.
+
+## 10. Stage 5 — Commercialization and Platform Operations
 
 Goal: complete commercial and operational platform capabilities without introducing Federation / multi-server networking.
 
@@ -240,7 +266,7 @@ Primary workstreams:
 
 Deferred scope: Federation / multi-server networking remains out of the current roadmap. Do not implement server identity discovery, `.well-known/agentos-server.json`, signed server handshakes, remote plugin discovery, remote KB discovery, or cross-server data synchronization until a later product/security review explicitly reopens this scope.
 
-## 10. Stage 6 — Admin, Observability, Release Gates
+## 11. Stage 6 — Admin, Observability, Release Gates
 
 Goal: make the backend long-running, governable, and releaseable.
 
@@ -271,17 +297,17 @@ governance enforce-readiness smoke, including approval receipt reissue/revoke ch
 audit hash-chain smoke
 ```
 
-## 11. Immediate Next Work After Stage 1 Core Hardening Pass
+## 12. Immediate Next Work
 
-Stage 1 has completed the first platform core hardening closure pass: queryable audit events, device lifecycle hardening, password-backed sensitive operation confirmations, confirmation-gated device revoke/admission mutations, request ID propagation, `/ready`, and expired confirmation cleanup service support.
+The immediate next implementation target is **Stage 5A: Client-Ready Platform Slice**.
 
-Recommended next implementation targets:
+Recommended order:
 
-1. admin bootstrap and broader fine-grained admin role policy;
-2. audit hash-chain / tamper-evidence design and migration;
-3. active session invalidation for revoked devices;
-4. persisted job execution history plus admin job trigger/list APIs;
-5. SAGE/Governance schema design docs before broad plugin code.
+1. Reality Lock 2.0 documentation update and verification evidence refresh;
+2. SDK Client Sync Bridge expansion for plugin / skill / agent / server / knowledge pull envelopes;
+3. SAGE Client Runtime Contract Gate for policy bundle, invocation/report, and governance error semantics;
+4. Release Gate 1.0 client-ready evidence path;
+5. KB chunk-level search quality and Governance 4E production policy operations as follow-up slices.
 
 ### Stage 4B/4C/4D Governance Enforcement Integration
 

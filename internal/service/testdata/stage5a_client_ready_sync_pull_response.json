@@ -1,0 +1,106 @@
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "events": [
+      {
+        "id": "evt-stage5a-skill-1",
+        "user_id": "user-1",
+        "device_id": "device-b",
+        "event_type": "skill.enabled",
+        "schema_version": 1,
+        "object_type": "skill",
+        "object_id": "superpowers",
+        "operation": "enabled",
+        "source_device_id": "device-a",
+        "client_event_id": "skill-enable-1",
+        "payload": {
+          "skill_id": "superpowers",
+          "object_id": "superpowers",
+          "enabled": true,
+          "config": {},
+          "updated_by_device_id": "device-a"
+        },
+        "timestamp": "2026-06-01T01:00:00Z",
+        "sequence": 1
+      },
+      {
+        "id": "evt-stage5a-plugin-1",
+        "user_id": "user-1",
+        "device_id": "device-b",
+        "event_type": "plugin.installed",
+        "schema_version": 1,
+        "object_type": "plugin",
+        "object_id": "installation-1",
+        "operation": "installed",
+        "source_device_id": "device-a",
+        "client_event_id": "plugin-install-1",
+        "payload": {
+          "installation_id": "installation-1",
+          "plugin_id": "plugin-1",
+          "plugin_key": "com.example.hotel",
+          "version_id": "version-1",
+          "status": "active",
+          "track_mode": "latest_approved"
+        },
+        "timestamp": "2026-06-01T01:01:00Z",
+        "sequence": 2
+      },
+      {
+        "id": "evt-stage5a-plugin-grant-1",
+        "user_id": "user-1",
+        "device_id": "device-b",
+        "event_type": "plugin.permission_granted",
+        "schema_version": 1,
+        "object_type": "plugin",
+        "object_id": "installation-1",
+        "operation": "permission_granted",
+        "source_device_id": "device-a",
+        "client_event_id": "plugin-grant-1",
+        "payload": {
+          "installation_id": "installation-1",
+          "grant_id": "grant-1",
+          "permission_key": "plugin.api.call",
+          "plugin_id": "plugin-1",
+          "risk_level": "low",
+          "status": "active"
+        },
+        "timestamp": "2026-06-01T01:02:00Z",
+        "sequence": 3
+      },
+      {
+        "id": "evt-stage5a-knowledge-1",
+        "user_id": "user-1",
+        "device_id": "device-b",
+        "event_type": "knowledge.created",
+        "schema_version": 1,
+        "object_type": "knowledge",
+        "object_id": "notes/stage5a",
+        "operation": "created",
+        "source_device_id": "device-a",
+        "client_event_id": "knowledge-create-1",
+        "payload": {
+          "entry_id": "notes/stage5a",
+          "object_id": "notes/stage5a",
+          "title": "Stage 5A",
+          "content_markdown": "# Stage 5A",
+          "summary": "summary",
+          "tags": ["agentos"],
+          "metadata": {},
+          "source_uri": "",
+          "status": "active",
+          "version": 1,
+          "content_hash": "hash-stage5a-1",
+          "updated_by_device_id": "device-a",
+          "updated_at": "2026-06-01T01:03:00Z"
+        },
+        "timestamp": "2026-06-01T01:03:00Z",
+        "sequence": 4
+      }
+    ],
+    "next_after_sequence": 4,
+    "has_more": false,
+    "server_time": 1780275780000,
+    "schema_version": 1
+  }
+}
