@@ -46,7 +46,7 @@ Current known major gaps:
 - SAGE Plugin Open Platform backend foundation is implemented: registry, manifest validation, review/catalog, installation/grants, policy bundle, invocation/report, and developer metrics.
 - SAGE runtime/control-plane smoke is implemented via `scripts/smoke-sage-plugin-runtime.sh`; plugin lifecycle/permission state sync and icon/package object bindings are implemented. Remaining SAGE gaps are richer governance scanning and production policy operations.
 - Federation / multi-server networking is intentionally out of scope; existing server-list sync remains a local user configuration feature only.
-- Governance/policy control plane now has Stage 4C enforce-readiness: capability taxonomy, policy rules/decisions, kill switches, approval receipts, scanner findings, enforcer integration, admin evidence APIs, stable error codes, summary API, and live enforce-readiness smoke. Remaining gaps are richer scanner coverage, policy DSL/conditions, response inspection, frontend/admin UX, and production incident workflows.
+- Governance/policy control plane now has Stage 4D approval-workflow foundation: capability taxonomy, policy rules/decisions, kill switches, approval receipts, scanner findings, enforcer integration, admin evidence APIs, stable error codes/details, summary API, approval receipt revoke/reissue APIs, and live enforce-readiness smoke. Remaining gaps are richer scanner coverage, policy DSL/conditions, response inspection, frontend/admin UX, first-class admin bootstrap, and production incident workflows.
 - Production observability is still incomplete; admin operations, release gates, and background job unification now have a Stage 3A foundation via background job run history, admin ops APIs, and `scripts/release-gate-local.sh`.
 - KB Hub now has a Stage 2 productionization foundation for review/takedown/reporting, source/copyright declarations, snapshot archive/restore/diff, subscription expiry cleanup, per-plan entitlement modes, invoice/refund/dispute records, payout period aggregation, and a unified background job runner; remaining gaps are real payment integration, tax/export operations, renewal collection policy, and chunk-level search quality.
 
@@ -200,17 +200,17 @@ Non-goal: Backend does not execute third-party SAGE Flow definitions and does no
 
 Goal: create the policy/audit/security control plane used by SAGE, KB, object storage, admin operations, billing, and future action systems.
 
-Completed foundation through Stage 4C:
+Completed foundation through Stage 4D:
 
 - capability taxonomy via `capability_definitions` and admin create/list APIs;
 - policy rules and persisted policy decisions with decisions: allow, require_user_approval, require_admin_approval, deny;
 - kill switches by global/plugin/user/capability/server-local scope;
-- approval receipts with one-time expiry and Stage 4C actor/subject/capability-bound consume validation;
+- approval receipts with one-time expiry, actor/subject/capability-bound consume validation, admin revoke, and token reissue with old-token invalidation;
 - governance scan result persistence plus admin list/resolve APIs;
 - enforcer integration for SAGE grants/invocations, object storage lifecycle, and KB high-impact operations;
-- stable machine-readable error codes for denied / approval-required / invalid-approval outcomes;
+- stable machine-readable error codes and error details for denied / approval-required / invalid-approval outcomes;
 - admin evidence APIs for policy decisions, approval receipts, scan results, and summary windows;
-- live enforce-readiness smoke script and release-gate integration.
+- live enforce-readiness smoke script and release-gate integration, including approval receipt reissue/revoke checks.
 
 Remaining Stage 4 gaps:
 
@@ -219,6 +219,7 @@ Remaining Stage 4 gaps:
 - response inspection / unsafe output detection;
 - security incident workflow;
 - frontend/admin UX for approvals and evidence review;
+- first-class admin bootstrap and finer-grained approval operator authorization;
 - append-only audit expansion beyond the existing audit hash-chain foundation.
 
 This stage is deliberately placed after SAGE registry design but before allowing broad real tool execution.
@@ -266,7 +267,7 @@ semantic search deterministic smoke
 real embedding worker health smoke when enabled
 SAGE marketplace smoke
 policy governance smoke
-governance enforce-readiness smoke
+governance enforce-readiness smoke, including approval receipt reissue/revoke checks
 audit hash-chain smoke
 ```
 
@@ -282,8 +283,10 @@ Recommended next implementation targets:
 4. persisted job execution history plus admin job trigger/list APIs;
 5. SAGE/Governance schema design docs before broad plugin code.
 
-### Stage 4B/4C Governance Enforcement Integration
+### Stage 4B/4C/4D Governance Enforcement Integration
 
 Stage 4B wires governance evaluation into SAGE permission grants/invocations, object storage lifecycle operations, and KB high-impact operations. The default mode is `observe`, which records decisions and would-block evidence without interrupting business execution. Operators can later switch global or domain-specific modes to `enforce`.
 
 Stage 4C adds enforce-readiness controls: approval receipts are bound to actor/subject/capability at consume time, SAGE/Object/KB handlers return stable governance error codes, admin APIs expose policy decisions/approval receipts/scan findings/summary evidence, scan findings can be resolved, and `scripts/smoke-governance-enforce-readiness.sh` verifies live enforce-mode denial behavior.
+
+Stage 4D starts the operational approval workflow: enforce errors now include stable details for policy decision/subject/capability/risk context, pending approval receipts can be revoked, pending unexpired receipts can reissue a one-time raw token, old tokens are invalidated on reissue, and revoked/consumed/expired receipts cannot be reissued.

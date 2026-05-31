@@ -56,6 +56,7 @@ func newGovernanceHandlerTestRouterWithDB(t *testing.T) (*gin.Engine, *gorm.DB) 
 	admin.POST("/governance/approval-receipts", h.CreateApprovalReceipt)
 	admin.GET("/governance/approval-receipts", h.ListApprovalReceipts)
 	admin.POST("/governance/approval-receipts/:id/revoke", h.RevokeApprovalReceipt)
+	admin.POST("/governance/approval-receipts/:id/reissue-token", h.ReissueApprovalReceiptToken)
 	admin.GET("/governance/scan-results", h.ListScanResults)
 	admin.POST("/governance/scan-results/:id/resolve", func(c *gin.Context) {
 		c.Set("user_id", mustParseUUID(t, "22222222-2222-2222-2222-222222222222"))
@@ -437,10 +438,90 @@ func TestGovernanceHandlerRevokeApprovalReceipt(t *testing.T) {
 		t.Fatalf("expected revoked receipt, got %+v", revokeResp)
 	}
 
+	reissueRevokedRec := httptest.NewRecorder()
+	r.ServeHTTP(reissueRevokedRec, httptest.NewRequest(http.MethodPost, "/api/v1/admin/governance/approval-receipts/"+createResp.Data.Receipt.ID+"/reissue-token", bytes.NewBufferString(`{"reason":"try revoked"}`)))
+	if reissueRevokedRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected revoked receipt reissue 400, got %d body=%s", reissueRevokedRec.Code, reissueRevokedRec.Body.String())
+	}
+
 	consumeBody := `{"approval_token":"` + createResp.Data.ApprovalToken + `","consumed_by":"device-a"}`
 	consumeRec := httptest.NewRecorder()
 	r.ServeHTTP(consumeRec, httptest.NewRequest(http.MethodPost, "/api/v1/governance/approval-receipts/consume", bytes.NewBufferString(consumeBody)))
 	if consumeRec.Code != http.StatusBadRequest {
 		t.Fatalf("expected revoked token consume 400, got %d body=%s", consumeRec.Code, consumeRec.Body.String())
+	}
+}
+
+func TestGovernanceHandlerReissueApprovalReceiptToken(t *testing.T) {
+	r := newGovernanceHandlerTestRouter(t)
+	actorID := "11111111-1111-1111-1111-111111111111"
+
+	evalRec := httptest.NewRecorder()
+	r.ServeHTTP(evalRec, httptest.NewRequest(http.MethodPost, "/api/v1/admin/governance/evaluate", bytes.NewBufferString(`{"actor_user_id":"`+actorID+`","subject_type":"sage_permission_grant","subject_id":"grant-3","capability_key":"sage.permission.payments.write","risk_level":"high"}`)))
+	if evalRec.Code != http.StatusOK {
+		t.Fatalf("expected evaluate 200, got %d body=%s", evalRec.Code, evalRec.Body.String())
+	}
+	var evalResp struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(evalRec.Body.Bytes(), &evalResp); err != nil {
+		t.Fatalf("decode evaluate: %v", err)
+	}
+
+	createRec := httptest.NewRecorder()
+	createBody := `{"policy_decision_id":"` + evalResp.Data.ID + `","actor_user_id":"` + actorID + `","subject_type":"sage_permission_grant","subject_id":"grant-3","capability_key":"sage.permission.payments.write","decision":"require_user_approval","expires_in_seconds":900}`
+	r.ServeHTTP(createRec, httptest.NewRequest(http.MethodPost, "/api/v1/admin/governance/approval-receipts", bytes.NewBufferString(createBody)))
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected create receipt 201, got %d body=%s", createRec.Code, createRec.Body.String())
+	}
+	var createResp struct {
+		Data struct {
+			ApprovalToken string `json:"approval_token"`
+			Receipt       struct {
+				ID string `json:"id"`
+			} `json:"receipt"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(createRec.Body.Bytes(), &createResp); err != nil {
+		t.Fatalf("decode create: %v", err)
+	}
+
+	reissueRec := httptest.NewRecorder()
+	r.ServeHTTP(reissueRec, httptest.NewRequest(http.MethodPost, "/api/v1/admin/governance/approval-receipts/"+createResp.Data.Receipt.ID+"/reissue-token", bytes.NewBufferString(`{"reason":"operator approved","expires_in_seconds":600}`)))
+	if reissueRec.Code != http.StatusOK {
+		t.Fatalf("expected reissue 200, got %d body=%s", reissueRec.Code, reissueRec.Body.String())
+	}
+	var reissueResp struct {
+		Data struct {
+			ApprovalToken string `json:"approval_token"`
+			Receipt       struct {
+				ID     string `json:"id"`
+				Status string `json:"status"`
+			} `json:"receipt"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(reissueRec.Body.Bytes(), &reissueResp); err != nil {
+		t.Fatalf("decode reissue: %v", err)
+	}
+	if reissueResp.Data.ApprovalToken == "" || reissueResp.Data.ApprovalToken == createResp.Data.ApprovalToken || reissueResp.Data.Receipt.Status != service.GovernanceApprovalPending {
+		t.Fatalf("unexpected reissue response: %+v", reissueResp)
+	}
+
+	oldConsumeRec := httptest.NewRecorder()
+	r.ServeHTTP(oldConsumeRec, httptest.NewRequest(http.MethodPost, "/api/v1/governance/approval-receipts/consume", bytes.NewBufferString(`{"approval_token":"`+createResp.Data.ApprovalToken+`","consumed_by":"device-a"}`)))
+	if oldConsumeRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected old token consume 400, got %d body=%s", oldConsumeRec.Code, oldConsumeRec.Body.String())
+	}
+	newConsumeRec := httptest.NewRecorder()
+	r.ServeHTTP(newConsumeRec, httptest.NewRequest(http.MethodPost, "/api/v1/governance/approval-receipts/consume", bytes.NewBufferString(`{"approval_token":"`+reissueResp.Data.ApprovalToken+`","consumed_by":"device-a"}`)))
+	if newConsumeRec.Code != http.StatusOK {
+		t.Fatalf("expected reissued token consume 200, got %d body=%s", newConsumeRec.Code, newConsumeRec.Body.String())
+	}
+	secondReissueRec := httptest.NewRecorder()
+	r.ServeHTTP(secondReissueRec, httptest.NewRequest(http.MethodPost, "/api/v1/admin/governance/approval-receipts/"+createResp.Data.Receipt.ID+"/reissue-token", bytes.NewBufferString(`{"reason":"after consume"}`)))
+	if secondReissueRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected consumed receipt reissue 400, got %d body=%s", secondReissueRec.Code, secondReissueRec.Body.String())
 	}
 }

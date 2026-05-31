@@ -1,7 +1,7 @@
 # AgentOS Governance Plane Design
 
-Updated: 2026-05-31
-Status: Stage 4C enforce-readiness
+Updated: 2026-06-01
+Status: Stage 4D approval workflow foundation
 
 ## 1. Purpose
 
@@ -17,7 +17,7 @@ It is designed to be reused by:
 
 Federation / multi-server networking is explicitly out of current scope.
 
-## 2. Current Stage 4C Foundation
+## 2. Current Stage 4D Foundation
 
 Stage 4A introduced six durable concepts:
 
@@ -83,7 +83,11 @@ Rules:
 - token reuse fails;
 - `consumed_by` records the consuming device or actor marker;
 - Stage 4C consume validates actor, subject type, subject id, and capability key when an approval token is used by `GovernanceEnforcer`;
-- an approval token for one subject/capability cannot be reused for another SAGE, KB, or object operation.
+- an approval token for one subject/capability cannot be reused for another SAGE, KB, or object operation;
+- Stage 4D adds admin revoke semantics for pending receipts;
+- Stage 4D adds admin token reissue for pending, unexpired receipts;
+- token reissue rotates `token_hash`, invalidates the previous raw token, and returns the new raw token only once;
+- revoked, consumed, and expired receipts cannot be reissued.
 
 ## 7. Admin APIs
 
@@ -100,6 +104,8 @@ The admin API slice exposes:
 - `GET /api/v1/admin/governance/policy-decisions/:id`
 - `POST /api/v1/admin/governance/approval-receipts`
 - `GET /api/v1/admin/governance/approval-receipts`
+- `POST /api/v1/admin/governance/approval-receipts/:id/reissue-token`
+- `POST /api/v1/admin/governance/approval-receipts/:id/revoke`
 - `GET /api/v1/admin/governance/scan-results`
 - `POST /api/v1/admin/governance/scan-results/:id/resolve`
 
@@ -166,6 +172,7 @@ Implemented readiness controls:
      - `governance_approval_required`
      - `governance_approval_invalid`
    - SAGE, Object, and KB handlers route governance errors through the shared governance error helper.
+   - Stage 4D wraps enforce-mode governance failures with decision/input context and returns stable `details` fields for policy decision, subject, capability, risk, reason, and approval receipt expiry metadata when available.
 
 3. Admin evidence APIs
    - Admins can list and inspect policy decisions.
@@ -173,7 +180,13 @@ Implemented readiness controls:
    - Admins can list scanner findings and resolve findings.
    - Admins can query a governance summary window for decisions, approvals, and open findings.
 
-4. Release evidence
-   - Unit/integration test baseline: `go test ./...` → 180 passed in 11 packages.
+4. Stage 4D approval workflow controls
+   - Admins can revoke pending approval receipts.
+   - Admins can reissue a token for a pending, unexpired approval receipt.
+   - Reissue invalidates the old token by rotating the persisted token hash.
+   - Revoked, consumed, and expired receipts cannot be reissued.
+
+5. Release evidence
+   - Unit/integration test baseline: `go test ./...` → 183 passed in 11 packages.
    - Local release gate: `./scripts/release-gate-local.sh` passes.
-   - Live enforce-readiness smoke: `scripts/smoke-governance-enforce-readiness.sh` verifies enforce-mode denial, stable `governance_denied`, admin policy-decision visibility, and summary evidence.
+   - Live enforce-readiness smoke: `scripts/smoke-governance-enforce-readiness.sh` verifies enforce-mode denial, stable `governance_denied`, admin policy-decision visibility, summary evidence, approval token reissue/consume, old-token invalidation, and approval receipt revoke semantics.

@@ -147,4 +147,48 @@ if [[ "$POLICY_TOTAL" == "0" ]]; then
   exit 1
 fi
 
-echo "Governance enforce-readiness smoke passed. error_code=${ERROR_CODE} denied_decisions=${DECISION_TOTAL} summary_policy_total=${POLICY_TOTAL}"
+APPROVAL_CAPABILITY="sage.permission.governance_smoke_${RUN_ID}"
+APPROVAL_SUBJECT="approval-grant-${RUN_ID}"
+api POST /api/v1/admin/governance/capabilities "$ADMIN_TOKEN" "$(jq -cn --arg key "$APPROVAL_CAPABILITY" '{key:$key,name:"Approval workflow smoke",risk_level:"high",status:"active"}')" '' >/dev/null || true
+api POST /api/v1/admin/governance/policy-rules "$ADMIN_TOKEN" "$(jq -cn --arg key "$APPROVAL_CAPABILITY" '{name:"approval workflow smoke require approval",capability_key:$key,subject_type:"sage_permission_grant",risk_level:"high",effect:"require_user_approval",priority:1,status:"active"}')" '' >/dev/null || true
+
+EVAL_JSON="$(api POST /api/v1/admin/governance/evaluate "$ADMIN_TOKEN" "$(jq -cn --arg actor "$USER_ID" --arg subject "$APPROVAL_SUBJECT" --arg key "$APPROVAL_CAPABILITY" '{actor_user_id:$actor,subject_type:"sage_permission_grant",subject_id:$subject,capability_key:$key,risk_level:"high"}')" 200)"
+APPROVAL_DECISION_ID="$(echo "$EVAL_JSON" | jq -r '.data.id')"
+APPROVAL_DECISION="$(echo "$EVAL_JSON" | jq -r '.data.decision')"
+if [[ "$APPROVAL_DECISION" != "require_user_approval" ]]; then
+  echo "expected require_user_approval decision, got ${APPROVAL_DECISION}" >&2
+  echo "$EVAL_JSON" | jq >&2
+  exit 1
+fi
+
+CREATE_RECEIPT_JSON="$(api POST /api/v1/admin/governance/approval-receipts "$ADMIN_TOKEN" "$(jq -cn --arg decision_id "$APPROVAL_DECISION_ID" --arg actor "$USER_ID" --arg subject "$APPROVAL_SUBJECT" --arg key "$APPROVAL_CAPABILITY" '{policy_decision_id:$decision_id,actor_user_id:$actor,subject_type:"sage_permission_grant",subject_id:$subject,capability_key:$key,decision:"require_user_approval",expires_in_seconds:900}')" 201)"
+RECEIPT_ID="$(echo "$CREATE_RECEIPT_JSON" | jq -r '.data.receipt.id')"
+OLD_APPROVAL_TOKEN="$(echo "$CREATE_RECEIPT_JSON" | jq -r '.data.approval_token')"
+
+REISSUE_JSON="$(api POST "/api/v1/admin/governance/approval-receipts/${RECEIPT_ID}/reissue-token" "$ADMIN_TOKEN" '{"reason":"smoke operator approved","expires_in_seconds":600}' 200)"
+NEW_APPROVAL_TOKEN="$(echo "$REISSUE_JSON" | jq -r '.data.approval_token')"
+if [[ -z "$NEW_APPROVAL_TOKEN" || "$NEW_APPROVAL_TOKEN" == "null" || "$NEW_APPROVAL_TOKEN" == "$OLD_APPROVAL_TOKEN" ]]; then
+  echo "expected reissued approval token to be present and rotated" >&2
+  echo "$REISSUE_JSON" | jq >&2
+  exit 1
+fi
+
+api POST /api/v1/governance/approval-receipts/consume '' "$(jq -cn --arg token "$OLD_APPROVAL_TOKEN" '{approval_token:$token,consumed_by:"smoke-old-token"}')" 400 >/dev/null
+api POST /api/v1/governance/approval-receipts/consume '' "$(jq -cn --arg token "$NEW_APPROVAL_TOKEN" '{approval_token:$token,consumed_by:"smoke-new-token"}')" 200 >/dev/null
+api POST "/api/v1/admin/governance/approval-receipts/${RECEIPT_ID}/reissue-token" "$ADMIN_TOKEN" '{"reason":"after consume"}' 400 >/dev/null
+
+REVOKE_SUBJECT="approval-revoke-${RUN_ID}"
+REVOKE_EVAL_JSON="$(api POST /api/v1/admin/governance/evaluate "$ADMIN_TOKEN" "$(jq -cn --arg actor "$USER_ID" --arg subject "$REVOKE_SUBJECT" --arg key "$APPROVAL_CAPABILITY" '{actor_user_id:$actor,subject_type:"sage_permission_grant",subject_id:$subject,capability_key:$key,risk_level:"high"}')" 200)"
+REVOKE_DECISION_ID="$(echo "$REVOKE_EVAL_JSON" | jq -r '.data.id')"
+REVOKE_CREATE_JSON="$(api POST /api/v1/admin/governance/approval-receipts "$ADMIN_TOKEN" "$(jq -cn --arg decision_id "$REVOKE_DECISION_ID" --arg actor "$USER_ID" --arg subject "$REVOKE_SUBJECT" --arg key "$APPROVAL_CAPABILITY" '{policy_decision_id:$decision_id,actor_user_id:$actor,subject_type:"sage_permission_grant",subject_id:$subject,capability_key:$key,decision:"require_user_approval",expires_in_seconds:900}')" 201)"
+REVOKE_RECEIPT_ID="$(echo "$REVOKE_CREATE_JSON" | jq -r '.data.receipt.id')"
+REVOKE_JSON="$(api POST "/api/v1/admin/governance/approval-receipts/${REVOKE_RECEIPT_ID}/revoke" "$ADMIN_TOKEN" '{"reason":"smoke revoke"}' 200)"
+REVOKE_STATUS="$(echo "$REVOKE_JSON" | jq -r '.data.status')"
+if [[ "$REVOKE_STATUS" != "revoked" ]]; then
+  echo "expected revoked approval receipt, got ${REVOKE_STATUS}" >&2
+  echo "$REVOKE_JSON" | jq >&2
+  exit 1
+fi
+api POST "/api/v1/admin/governance/approval-receipts/${REVOKE_RECEIPT_ID}/reissue-token" "$ADMIN_TOKEN" '{"reason":"after revoke"}' 400 >/dev/null
+
+echo "Governance enforce-readiness smoke passed. error_code=${ERROR_CODE} denied_decisions=${DECISION_TOTAL} summary_policy_total=${POLICY_TOTAL} approval_reissue=ok approval_revoke=ok"

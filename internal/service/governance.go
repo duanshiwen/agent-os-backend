@@ -365,6 +365,25 @@ func (s *GovernanceService) RevokeApprovalReceipt(id uuid.UUID, reason string) (
 	return receipt, nil
 }
 
+func (s *GovernanceService) ReissueApprovalReceiptToken(id uuid.UUID, reason string, ttl time.Duration) (*model.ApprovalReceipt, string, error) {
+	if s == nil || s.repo == nil || id == uuid.Nil {
+		return nil, "", ErrGovernanceInvalidInput
+	}
+	if ttl <= 0 || ttl > time.Hour {
+		ttl = 15 * time.Minute
+	}
+	token, tokenHash, err := newGovernanceToken()
+	if err != nil {
+		return nil, "", err
+	}
+	now := time.Now().UTC()
+	receipt, err := s.repo.ReissueApprovalReceiptToken(id, tokenHash, strings.TrimSpace(reason), now.Add(ttl), now)
+	if err != nil {
+		return nil, "", ErrApprovalReceiptInvalid
+	}
+	return receipt, token, nil
+}
+
 type ListScanResultsInput struct {
 	SubjectType string
 	SubjectID   string
