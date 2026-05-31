@@ -210,6 +210,40 @@ func (s *GovernanceService) persistDecision(input EvaluatePolicyInput, riskLevel
 	return policyDecision, nil
 }
 
+type ListPolicyDecisionsInput struct {
+	SubjectType   string
+	SubjectID     string
+	CapabilityKey string
+	Decision      string
+	RiskLevel     string
+}
+
+type GovernancePolicyDecisionsPage struct {
+	Items  []model.PolicyDecision `json:"items"`
+	Limit  int                    `json:"limit"`
+	Offset int                    `json:"offset"`
+	Total  int64                  `json:"total"`
+}
+
+func (s *GovernanceService) ListPolicyDecisions(input ListPolicyDecisionsInput, limit, offset int) (*GovernancePolicyDecisionsPage, error) {
+	if s == nil || s.repo == nil {
+		return nil, ErrGovernanceInvalidInput
+	}
+	limit, offset = normalizePage(limit, offset)
+	items, total, err := s.repo.ListPolicyDecisions(repository.PolicyDecisionListFilter{SubjectType: strings.TrimSpace(input.SubjectType), SubjectID: strings.TrimSpace(input.SubjectID), CapabilityKey: strings.TrimSpace(input.CapabilityKey), Decision: strings.TrimSpace(input.Decision), RiskLevel: strings.TrimSpace(input.RiskLevel)}, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	return &GovernancePolicyDecisionsPage{Items: items, Limit: limit, Offset: offset, Total: total}, nil
+}
+
+func (s *GovernanceService) GetPolicyDecision(id uuid.UUID) (*model.PolicyDecision, error) {
+	if s == nil || s.repo == nil || id == uuid.Nil {
+		return nil, ErrGovernanceInvalidInput
+	}
+	return s.repo.GetPolicyDecision(id)
+}
+
 type CreateKillSwitchInput struct {
 	ScopeType string
 	ScopeID   string
@@ -264,15 +298,128 @@ func (s *GovernanceService) CreateApprovalReceipt(input CreateApprovalReceiptInp
 	return receipt, token, nil
 }
 
+type ConsumeApprovalReceiptInput struct {
+	Token         string
+	ConsumedBy    string
+	ActorUserID   *uuid.UUID
+	SubjectType   string
+	SubjectID     string
+	CapabilityKey string
+}
+
 func (s *GovernanceService) ConsumeApprovalReceipt(token, consumedBy string) (*model.ApprovalReceipt, error) {
-	if s == nil || s.repo == nil || strings.TrimSpace(token) == "" {
+	return s.ConsumeApprovalReceiptForOperation(ConsumeApprovalReceiptInput{Token: token, ConsumedBy: consumedBy})
+}
+
+func (s *GovernanceService) ConsumeApprovalReceiptForOperation(input ConsumeApprovalReceiptInput) (*model.ApprovalReceipt, error) {
+	if s == nil || s.repo == nil || strings.TrimSpace(input.Token) == "" {
 		return nil, ErrGovernanceInvalidInput
 	}
-	receipt, err := s.repo.ConsumeApprovalReceiptByTokenHash(hashGovernanceToken(token), strings.TrimSpace(consumedBy), time.Now().UTC())
+	receipt, err := s.repo.ConsumeApprovalReceiptByTokenHash(hashGovernanceToken(input.Token), strings.TrimSpace(input.ConsumedBy), time.Now().UTC(), repository.ApprovalReceiptConsumeConstraints{
+		ActorUserID:   input.ActorUserID,
+		SubjectType:   strings.TrimSpace(input.SubjectType),
+		SubjectID:     strings.TrimSpace(input.SubjectID),
+		CapabilityKey: strings.TrimSpace(input.CapabilityKey),
+	})
 	if err != nil {
 		return nil, ErrApprovalReceiptInvalid
 	}
 	return receipt, nil
+}
+
+type ListApprovalReceiptsInput struct {
+	SubjectType   string
+	SubjectID     string
+	CapabilityKey string
+	Status        string
+}
+
+type GovernanceApprovalReceiptsPage struct {
+	Items  []model.ApprovalReceipt `json:"items"`
+	Limit  int                     `json:"limit"`
+	Offset int                     `json:"offset"`
+	Total  int64                   `json:"total"`
+}
+
+func (s *GovernanceService) ListApprovalReceipts(input ListApprovalReceiptsInput, limit, offset int) (*GovernanceApprovalReceiptsPage, error) {
+	if s == nil || s.repo == nil {
+		return nil, ErrGovernanceInvalidInput
+	}
+	limit, offset = normalizePage(limit, offset)
+	items, total, err := s.repo.ListApprovalReceipts(repository.ApprovalReceiptListFilter{SubjectType: strings.TrimSpace(input.SubjectType), SubjectID: strings.TrimSpace(input.SubjectID), CapabilityKey: strings.TrimSpace(input.CapabilityKey), Status: strings.TrimSpace(input.Status)}, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	return &GovernanceApprovalReceiptsPage{Items: items, Limit: limit, Offset: offset, Total: total}, nil
+}
+
+type ListScanResultsInput struct {
+	SubjectType string
+	SubjectID   string
+	Scanner     string
+	Severity    string
+	Status      string
+}
+
+type GovernanceScanResultsPage struct {
+	Items  []model.GovernanceScanResult `json:"items"`
+	Limit  int                          `json:"limit"`
+	Offset int                          `json:"offset"`
+	Total  int64                        `json:"total"`
+}
+
+func (s *GovernanceService) ListScanResults(input ListScanResultsInput, limit, offset int) (*GovernanceScanResultsPage, error) {
+	if s == nil || s.repo == nil {
+		return nil, ErrGovernanceInvalidInput
+	}
+	limit, offset = normalizePage(limit, offset)
+	items, total, err := s.repo.ListScanResults(repository.ScanResultListFilter{SubjectType: strings.TrimSpace(input.SubjectType), SubjectID: strings.TrimSpace(input.SubjectID), Scanner: strings.TrimSpace(input.Scanner), Severity: strings.TrimSpace(input.Severity), Status: strings.TrimSpace(input.Status)}, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	return &GovernanceScanResultsPage{Items: items, Limit: limit, Offset: offset, Total: total}, nil
+}
+
+func (s *GovernanceService) ResolveScanResult(id uuid.UUID, resolvedBy uuid.UUID) (*model.GovernanceScanResult, error) {
+	if s == nil || s.repo == nil || id == uuid.Nil {
+		return nil, ErrGovernanceInvalidInput
+	}
+	return s.repo.ResolveScanResult(id, resolvedBy, time.Now().UTC())
+}
+
+type GovernanceSummary struct {
+	WindowHours               int                             `json:"window_hours"`
+	Since                     time.Time                       `json:"since"`
+	PolicyDecisionTotal       int64                           `json:"policy_decision_total"`
+	PolicyDecisionsByDecision []repository.GovernanceCountRow `json:"policy_decisions_by_decision"`
+	PolicyDecisionsByRisk     []repository.GovernanceCountRow `json:"policy_decisions_by_risk"`
+	ApprovalReceiptTotal      int64                           `json:"approval_receipt_total"`
+	ApprovalReceiptsByStatus  []repository.GovernanceCountRow `json:"approval_receipts_by_status"`
+	OpenScanResultTotal       int64                           `json:"open_scan_result_total"`
+	OpenScanResultsBySeverity []repository.GovernanceCountRow `json:"open_scan_results_by_severity"`
+}
+
+func (s *GovernanceService) Summary(windowHours int) (*GovernanceSummary, error) {
+	if s == nil || s.repo == nil {
+		return nil, ErrGovernanceInvalidInput
+	}
+	if windowHours <= 0 || windowHours > 24*30 {
+		windowHours = 24
+	}
+	since := time.Now().UTC().Add(-time.Duration(windowHours) * time.Hour)
+	decisionTotal, decisionsByDecision, decisionsByRisk, err := s.repo.CountPolicyDecisionsSince(since)
+	if err != nil {
+		return nil, err
+	}
+	receiptTotal, receiptsByStatus, err := s.repo.CountApprovalReceiptsSince(since)
+	if err != nil {
+		return nil, err
+	}
+	openScanTotal, openScansBySeverity, err := s.repo.CountOpenScanResults()
+	if err != nil {
+		return nil, err
+	}
+	return &GovernanceSummary{WindowHours: windowHours, Since: since, PolicyDecisionTotal: decisionTotal, PolicyDecisionsByDecision: decisionsByDecision, PolicyDecisionsByRisk: decisionsByRisk, ApprovalReceiptTotal: receiptTotal, ApprovalReceiptsByStatus: receiptsByStatus, OpenScanResultTotal: openScanTotal, OpenScanResultsBySeverity: openScansBySeverity}, nil
 }
 
 func normalizePage(limit, offset int) (int, int) {

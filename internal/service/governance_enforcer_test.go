@@ -3,7 +3,9 @@ package service
 import (
 	"errors"
 	"testing"
+	"time"
 
+	"github.com/agent-os/backend/internal/model"
 	"github.com/google/uuid"
 )
 
@@ -123,6 +125,94 @@ func TestGovernanceEnforcerRequiresApprovalOnlyInEnforceMode(t *testing.T) {
 	if approved == nil || !approved.Allowed || approved.ConsumedApprovalReceipt == nil {
 		t.Fatalf("expected consumed approval result, got %+v", approved)
 	}
+}
+
+func TestGovernanceEnforcerRejectsApprovalTokenForDifferentCapability(t *testing.T) {
+	governance, _ := newGovernanceTestService(t)
+	enforcer := NewGovernanceEnforcer(governance, GovernanceEnforcementConfig{Mode: GovernanceEnforcementModeEnforce})
+	actorID := uuid.New()
+
+	decision := mustCreateApprovalDecision(t, governance, actorID, GovernanceSubjectSAGEPermissionGrant, "grant-1", "sage.permission.payments.write")
+	_, token, err := governance.CreateApprovalReceipt(CreateApprovalReceiptInput{
+		PolicyDecisionID: decision.ID,
+		ActorUserID:      actorID,
+		SubjectType:      GovernanceSubjectSAGEPermissionGrant,
+		SubjectID:        "grant-1",
+		CapabilityKey:    "sage.permission.payments.write",
+		Decision:         GovernanceDecisionRequireUserApproval,
+	})
+	if err != nil {
+		t.Fatalf("create approval receipt: %v", err)
+	}
+
+	result, err := enforcer.Enforce(GovernanceEnforcementInput{
+		ActorUserID:        &actorID,
+		ActorDeviceID:      "device-a",
+		SubjectType:        GovernanceSubjectSAGEPermissionGrant,
+		SubjectID:          "grant-1",
+		CapabilityKey:      "sage.permission.files.write",
+		RiskLevel:          GovernanceRiskHigh,
+		ApprovalToken:      token,
+		ApprovalConsumedBy: "device-a",
+	})
+	if !errors.Is(err, ErrGovernanceApprovalInvalid) {
+		t.Fatalf("expected mismatched capability to fail with ErrGovernanceApprovalInvalid, got result=%+v err=%v", result, err)
+	}
+	if result != nil && result.Allowed {
+		t.Fatalf("mismatched approval token must not allow execution, got %+v", result)
+	}
+}
+
+func TestGovernanceEnforcerRejectsApprovalTokenForDifferentSubject(t *testing.T) {
+	governance, _ := newGovernanceTestService(t)
+	enforcer := NewGovernanceEnforcer(governance, GovernanceEnforcementConfig{Mode: GovernanceEnforcementModeEnforce})
+	actorID := uuid.New()
+
+	decision := mustCreateApprovalDecision(t, governance, actorID, GovernanceSubjectKBOperation, "collection-a", "kb.collection.pricing.update")
+	_, token, err := governance.CreateApprovalReceipt(CreateApprovalReceiptInput{
+		PolicyDecisionID: decision.ID,
+		ActorUserID:      actorID,
+		SubjectType:      GovernanceSubjectKBOperation,
+		SubjectID:        "collection-a",
+		CapabilityKey:    "kb.collection.pricing.update",
+		Decision:         GovernanceDecisionRequireUserApproval,
+	})
+	if err != nil {
+		t.Fatalf("create approval receipt: %v", err)
+	}
+
+	result, err := enforcer.Enforce(GovernanceEnforcementInput{
+		ActorUserID:        &actorID,
+		ActorDeviceID:      "device-a",
+		SubjectType:        GovernanceSubjectKBOperation,
+		SubjectID:          "collection-b",
+		CapabilityKey:      "kb.collection.pricing.update",
+		RiskLevel:          GovernanceRiskHigh,
+		ApprovalToken:      token,
+		ApprovalConsumedBy: "device-a",
+	})
+	if !errors.Is(err, ErrGovernanceApprovalInvalid) {
+		t.Fatalf("expected mismatched subject to fail with ErrGovernanceApprovalInvalid, got result=%+v err=%v", result, err)
+	}
+	if result != nil && result.Allowed {
+		t.Fatalf("mismatched approval token must not allow execution, got %+v", result)
+	}
+}
+
+func mustCreateApprovalDecision(t *testing.T, governance *GovernanceService, actorID uuid.UUID, subjectType, subjectID, capabilityKey string) *model.PolicyDecision {
+	t.Helper()
+	decision, err := governance.persistDecision(EvaluatePolicyInput{
+		ActorUserID:   &actorID,
+		ActorDeviceID: "device-a",
+		SubjectType:   subjectType,
+		SubjectID:     subjectID,
+		CapabilityKey: capabilityKey,
+		RiskLevel:     GovernanceRiskHigh,
+	}, GovernanceRiskHigh, GovernanceDecisionRequireUserApproval, "test approval required", nil, nil, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("create approval decision: %v", err)
+	}
+	return decision
 }
 
 func TestGovernanceEnforcerDisabledModeSkipsDecisionPersistence(t *testing.T) {

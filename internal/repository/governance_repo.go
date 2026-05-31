@@ -81,6 +81,70 @@ func (r *GovernanceRepo) CreatePolicyDecision(decision *model.PolicyDecision) er
 	return r.db.Create(decision).Error
 }
 
+type PolicyDecisionListFilter struct {
+	SubjectType   string
+	SubjectID     string
+	CapabilityKey string
+	Decision      string
+	RiskLevel     string
+}
+
+func (r *GovernanceRepo) ListPolicyDecisions(filter PolicyDecisionListFilter, limit, offset int) ([]model.PolicyDecision, int64, error) {
+	db := r.db.Model(&model.PolicyDecision{})
+	if filter.SubjectType != "" {
+		db = db.Where("subject_type = ?", filter.SubjectType)
+	}
+	if filter.SubjectID != "" {
+		db = db.Where("subject_id = ?", filter.SubjectID)
+	}
+	if filter.CapabilityKey != "" {
+		db = db.Where("capability_key = ?", filter.CapabilityKey)
+	}
+	if filter.Decision != "" {
+		db = db.Where("decision = ?", filter.Decision)
+	}
+	if filter.RiskLevel != "" {
+		db = db.Where("risk_level = ?", filter.RiskLevel)
+	}
+	var total int64
+	if err := db.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var items []model.PolicyDecision
+	err := db.Order("decided_at DESC, created_at DESC").Limit(limit).Offset(offset).Find(&items).Error
+	return items, total, err
+}
+
+func (r *GovernanceRepo) GetPolicyDecision(id uuid.UUID) (*model.PolicyDecision, error) {
+	var decision model.PolicyDecision
+	if err := r.db.First(&decision, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &decision, nil
+}
+
+type GovernanceCountRow struct {
+	Key   string `json:"key"`
+	Count int64  `json:"count"`
+}
+
+func (r *GovernanceRepo) CountPolicyDecisionsSince(since time.Time) (int64, []GovernanceCountRow, []GovernanceCountRow, error) {
+	db := r.db.Model(&model.PolicyDecision{}).Where("decided_at >= ?", since)
+	var total int64
+	if err := db.Count(&total).Error; err != nil {
+		return 0, nil, nil, err
+	}
+	var byDecision []GovernanceCountRow
+	if err := db.Select("decision AS key, count(*) AS count").Group("decision").Order("count DESC").Scan(&byDecision).Error; err != nil {
+		return 0, nil, nil, err
+	}
+	var byRisk []GovernanceCountRow
+	if err := db.Select("risk_level AS key, count(*) AS count").Group("risk_level").Order("count DESC").Scan(&byRisk).Error; err != nil {
+		return 0, nil, nil, err
+	}
+	return total, byDecision, byRisk, nil
+}
+
 type KillSwitchQuery struct {
 	ScopeType     string
 	ScopeID       string
@@ -127,7 +191,57 @@ func (r *GovernanceRepo) CreateApprovalReceipt(receipt *model.ApprovalReceipt) e
 	return r.db.Create(receipt).Error
 }
 
-func (r *GovernanceRepo) ConsumeApprovalReceiptByTokenHash(tokenHash, consumedBy string, now time.Time) (*model.ApprovalReceipt, error) {
+type ApprovalReceiptListFilter struct {
+	SubjectType   string
+	SubjectID     string
+	CapabilityKey string
+	Status        string
+}
+
+func (r *GovernanceRepo) ListApprovalReceipts(filter ApprovalReceiptListFilter, limit, offset int) ([]model.ApprovalReceipt, int64, error) {
+	db := r.db.Model(&model.ApprovalReceipt{})
+	if filter.SubjectType != "" {
+		db = db.Where("subject_type = ?", filter.SubjectType)
+	}
+	if filter.SubjectID != "" {
+		db = db.Where("subject_id = ?", filter.SubjectID)
+	}
+	if filter.CapabilityKey != "" {
+		db = db.Where("capability_key = ?", filter.CapabilityKey)
+	}
+	if filter.Status != "" {
+		db = db.Where("status = ?", filter.Status)
+	}
+	var total int64
+	if err := db.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var items []model.ApprovalReceipt
+	err := db.Order("created_at DESC").Limit(limit).Offset(offset).Find(&items).Error
+	return items, total, err
+}
+
+func (r *GovernanceRepo) CountApprovalReceiptsSince(since time.Time) (int64, []GovernanceCountRow, error) {
+	db := r.db.Model(&model.ApprovalReceipt{}).Where("created_at >= ?", since)
+	var total int64
+	if err := db.Count(&total).Error; err != nil {
+		return 0, nil, err
+	}
+	var byStatus []GovernanceCountRow
+	if err := db.Select("status AS key, count(*) AS count").Group("status").Order("count DESC").Scan(&byStatus).Error; err != nil {
+		return 0, nil, err
+	}
+	return total, byStatus, nil
+}
+
+type ApprovalReceiptConsumeConstraints struct {
+	ActorUserID   *uuid.UUID
+	SubjectType   string
+	SubjectID     string
+	CapabilityKey string
+}
+
+func (r *GovernanceRepo) ConsumeApprovalReceiptByTokenHash(tokenHash, consumedBy string, now time.Time, constraints ApprovalReceiptConsumeConstraints) (*model.ApprovalReceipt, error) {
 	var receipt model.ApprovalReceipt
 	err := r.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("token_hash = ?", tokenHash).First(&receipt).Error; err != nil {
@@ -137,6 +251,18 @@ func (r *GovernanceRepo) ConsumeApprovalReceiptByTokenHash(tokenHash, consumedBy
 			return gorm.ErrInvalidData
 		}
 		if !receipt.ExpiresAt.After(now) {
+			return gorm.ErrInvalidData
+		}
+		if constraints.ActorUserID != nil && *constraints.ActorUserID != uuid.Nil && receipt.ActorUserID != *constraints.ActorUserID {
+			return gorm.ErrInvalidData
+		}
+		if constraints.SubjectType != "" && receipt.SubjectType != constraints.SubjectType {
+			return gorm.ErrInvalidData
+		}
+		if constraints.SubjectID != "" && receipt.SubjectID != constraints.SubjectID {
+			return gorm.ErrInvalidData
+		}
+		if constraints.CapabilityKey != "" && receipt.CapabilityKey != constraints.CapabilityKey {
 			return gorm.ErrInvalidData
 		}
 		receipt.Status = "consumed"
@@ -152,4 +278,70 @@ func (r *GovernanceRepo) ConsumeApprovalReceiptByTokenHash(tokenHash, consumedBy
 
 func (r *GovernanceRepo) CreateScanResult(result *model.GovernanceScanResult) error {
 	return r.db.Create(result).Error
+}
+
+type ScanResultListFilter struct {
+	SubjectType string
+	SubjectID   string
+	Scanner     string
+	Severity    string
+	Status      string
+}
+
+func (r *GovernanceRepo) ListScanResults(filter ScanResultListFilter, limit, offset int) ([]model.GovernanceScanResult, int64, error) {
+	db := r.db.Model(&model.GovernanceScanResult{})
+	if filter.SubjectType != "" {
+		db = db.Where("subject_type = ?", filter.SubjectType)
+	}
+	if filter.SubjectID != "" {
+		db = db.Where("subject_id = ?", filter.SubjectID)
+	}
+	if filter.Scanner != "" {
+		db = db.Where("scanner = ?", filter.Scanner)
+	}
+	if filter.Severity != "" {
+		db = db.Where("severity = ?", filter.Severity)
+	}
+	if filter.Status != "" {
+		db = db.Where("status = ?", filter.Status)
+	}
+	var total int64
+	if err := db.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var items []model.GovernanceScanResult
+	err := db.Order("created_at DESC").Limit(limit).Offset(offset).Find(&items).Error
+	return items, total, err
+}
+
+func (r *GovernanceRepo) ResolveScanResult(id uuid.UUID, resolvedBy uuid.UUID, now time.Time) (*model.GovernanceScanResult, error) {
+	var result model.GovernanceScanResult
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&result, "id = ?", id).Error; err != nil {
+			return err
+		}
+		result.Status = "resolved"
+		result.ResolvedAt = &now
+		if resolvedBy != uuid.Nil {
+			result.ResolvedBy = &resolvedBy
+		}
+		return tx.Save(&result).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (r *GovernanceRepo) CountOpenScanResults() (int64, []GovernanceCountRow, error) {
+	db := r.db.Model(&model.GovernanceScanResult{}).Where("status = ?", "open")
+	var total int64
+	if err := db.Count(&total).Error; err != nil {
+		return 0, nil, err
+	}
+	var bySeverity []GovernanceCountRow
+	if err := db.Select("severity AS key, count(*) AS count").Group("severity").Order("count DESC").Scan(&bySeverity).Error; err != nil {
+		return 0, nil, err
+	}
+	return total, bySeverity, nil
 }

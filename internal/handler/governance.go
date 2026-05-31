@@ -5,10 +5,12 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/agent-os/backend/internal/middleware"
 	"github.com/agent-os/backend/internal/pkg/response"
 	"github.com/agent-os/backend/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 type GovernanceHandler struct {
@@ -187,6 +189,70 @@ func (h *GovernanceHandler) CreateApprovalReceipt(c *gin.Context) {
 	response.Created(c, gin.H{"receipt": receipt, "approval_token": token})
 }
 
+func (h *GovernanceHandler) Summary(c *gin.Context) {
+	summary, err := h.svc.Summary(parseGovernanceIntQuery(c, "window", 24))
+	if err != nil {
+		h.writeGovernanceError(c, err)
+		return
+	}
+	response.OK(c, summary)
+}
+
+func (h *GovernanceHandler) ListPolicyDecisions(c *gin.Context) {
+	page, err := h.svc.ListPolicyDecisions(service.ListPolicyDecisionsInput{SubjectType: c.Query("subject_type"), SubjectID: c.Query("subject_id"), CapabilityKey: c.Query("capability_key"), Decision: c.Query("decision"), RiskLevel: c.Query("risk_level")}, parseGovernanceIntQuery(c, "limit", 50), parseGovernanceIntQuery(c, "offset", 0))
+	if err != nil {
+		h.writeGovernanceError(c, err)
+		return
+	}
+	response.OK(c, page)
+}
+
+func (h *GovernanceHandler) GetPolicyDecision(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.BadRequest(c, "invalid policy decision id")
+		return
+	}
+	decision, err := h.svc.GetPolicyDecision(id)
+	if err != nil {
+		h.writeGovernanceError(c, err)
+		return
+	}
+	response.OK(c, decision)
+}
+
+func (h *GovernanceHandler) ListApprovalReceipts(c *gin.Context) {
+	page, err := h.svc.ListApprovalReceipts(service.ListApprovalReceiptsInput{SubjectType: c.Query("subject_type"), SubjectID: c.Query("subject_id"), CapabilityKey: c.Query("capability_key"), Status: c.Query("status")}, parseGovernanceIntQuery(c, "limit", 50), parseGovernanceIntQuery(c, "offset", 0))
+	if err != nil {
+		h.writeGovernanceError(c, err)
+		return
+	}
+	response.OK(c, page)
+}
+
+func (h *GovernanceHandler) ListScanResults(c *gin.Context) {
+	page, err := h.svc.ListScanResults(service.ListScanResultsInput{SubjectType: c.Query("subject_type"), SubjectID: c.Query("subject_id"), Scanner: c.Query("scanner"), Severity: c.Query("severity"), Status: c.Query("status")}, parseGovernanceIntQuery(c, "limit", 50), parseGovernanceIntQuery(c, "offset", 0))
+	if err != nil {
+		h.writeGovernanceError(c, err)
+		return
+	}
+	response.OK(c, page)
+}
+
+func (h *GovernanceHandler) ResolveScanResult(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.BadRequest(c, "invalid scan result id")
+		return
+	}
+	result, err := h.svc.ResolveScanResult(id, middleware.MustGetUserID(c))
+	if err != nil {
+		h.writeGovernanceError(c, err)
+		return
+	}
+	response.OK(c, result)
+}
+
 func (h *GovernanceHandler) ConsumeApprovalReceipt(c *gin.Context) {
 	var req struct {
 		ApprovalToken string `json:"approval_token"`
@@ -207,6 +273,10 @@ func (h *GovernanceHandler) ConsumeApprovalReceipt(c *gin.Context) {
 func (h *GovernanceHandler) writeGovernanceError(c *gin.Context, err error) {
 	if errors.Is(err, service.ErrGovernanceInvalidInput) {
 		response.BadRequest(c, err.Error())
+		return
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		response.NotFound(c, err.Error())
 		return
 	}
 	response.InternalError(c, err.Error())
