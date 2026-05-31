@@ -42,6 +42,11 @@ const (
 	AuditActionKBBillingDisputeOpened        = "kb.billing_dispute.opened"
 	AuditActionKBBillingDisputeResolved      = "kb.billing_dispute.resolved"
 	AuditActionKBPayoutPaid                  = "kb.payout.paid"
+	AuditActionSAGEPluginCreated             = "sage.plugin.created"
+	AuditActionSAGEPluginVersionSubmitted    = "sage.plugin.version.submitted"
+	AuditActionSAGEPluginReviewed            = "sage.plugin.reviewed"
+	AuditActionSAGEPluginSuspended           = "sage.plugin.suspended"
+	AuditActionSAGEPluginInstalled           = "sage.plugin.installed"
 )
 
 type AuditService struct {

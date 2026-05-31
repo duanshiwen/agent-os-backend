@@ -1,0 +1,48 @@
+{
+  "sage_version": "1.0",
+  "plugin_key": "com.example.hotel-booking",
+  "name": "Hotel Booking Assistant",
+  "version": "1.0.0",
+  "description": "Search, compare, and prepare hotel bookings through AgentOS Client.",
+  "developer": {
+    "name": "Example Travel Inc.",
+    "website": "https://example.com",
+    "support_email": "support@example.com"
+  },
+  "endpoints": {
+    "manifest": "http://localhost:18080/.well-known/sage-plugin.json",
+    "flow": "http://localhost:18080/sage/flow",
+    "callback": "http://localhost:18080/sage/callback",
+    "health": "http://localhost:18080/sage/health"
+  },
+  "trigger_intents": [
+    "book hotel",
+    "search accommodation",
+    "compare hotel options",
+    "预订酒店",
+    "找住宿"
+  ],
+  "permissions": [
+    {
+      "key": "plugin.api.call",
+      "required": true,
+      "risk": "low",
+      "requires_user_confirmation": false,
+      "reason": "Call the plugin server to search hotel candidates."
+    },
+    {
+      "key": "transaction.booking.create",
+      "required": false,
+      "risk": "high",
+      "requires_user_confirmation": true,
+      "reason": "Create a hotel booking only after explicit user confirmation."
+    }
+  ],
+  "privacy": {
+    "data_shared": ["destination", "dates", "budget"],
+    "data_retention": "30_days"
+  },
+  "billing": {
+    "model": "free"
+  }
+}

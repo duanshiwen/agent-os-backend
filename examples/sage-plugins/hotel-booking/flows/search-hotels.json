@@ -1,0 +1,41 @@
+{
+  "flow_id": "flow_hotel_search_demo",
+  "plugin_key": "com.example.hotel-booking",
+  "title": "Search and compare hotels",
+  "risk_level": "medium",
+  "requires_permissions": ["plugin.api.call"],
+  "steps": [
+    {
+      "id": "search_hotels",
+      "type": "plugin_api",
+      "method": "POST",
+      "path": "/api/hotels/search",
+      "input": {
+        "destination": "{{user_constraints.destination}}",
+        "check_in": "{{user_constraints.check_in}}",
+        "check_out": "{{user_constraints.check_out}}",
+        "budget": "{{user_constraints.budget}}"
+      },
+      "output_key": "hotel_candidates"
+    },
+    {
+      "id": "rank_hotels",
+      "type": "llm_generate",
+      "prompt": "Rank hotel candidates based on user constraints, price, location, and rating.",
+      "input": {
+        "candidates": "{{steps.search_hotels.output}}"
+      },
+      "output_key": "ranked_hotels"
+    },
+    {
+      "id": "present_options",
+      "type": "present_to_user",
+      "input": {
+        "items": "{{steps.rank_hotels.output}}"
+      }
+    }
+  ],
+  "reporting": {
+    "callback_required": true
+  }
+}
