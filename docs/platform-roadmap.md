@@ -1,12 +1,12 @@
 # AgentOS Backend Platform Roadmap
 
 Updated: 2026-05-31
-Status: Stage 0 architecture baseline
+Status: Stage 0 architecture baseline; federation removed from current roadmap on 2026-05-31
 Scope: AgentOS Server platform completion, not MVP delivery
 
 ## 1. Direction
 
-AgentOS Backend is no longer treated as a sequence of isolated MVP slices. The target is a complete federated AgentOS server platform with stable architecture, complete data boundaries, governance, auditability, billing, KB Hub, SAGE plugin marketplace, semantic search, and federation.
+AgentOS Backend is no longer treated as a sequence of isolated MVP slices. The current target is a complete single-server AgentOS platform with stable architecture, complete data boundaries, governance, auditability, billing, KB Hub, SAGE plugin marketplace, semantic search, object storage, and production operations. Federation / multi-server networking is intentionally removed from the current roadmap until the single-server governance and trust model is mature.
 
 “Step into final form” means:
 
@@ -45,7 +45,7 @@ Current known major gaps:
 
 - SAGE Plugin Open Platform backend foundation is implemented: registry, manifest validation, review/catalog, installation/grants, policy bundle, invocation/report, and developer metrics.
 - SAGE runtime/control-plane smoke is implemented via `scripts/smoke-sage-plugin-runtime.sh`; plugin lifecycle/permission state sync and icon/package object bindings are implemented. Remaining SAGE gaps are richer governance scanning and production policy operations.
-- Multi-server federation is not implemented beyond local user server-list sync.
+- Federation / multi-server networking is intentionally out of scope; existing server-list sync remains a local user configuration feature only.
 - Governance/policy/audit is not yet a platform-wide control plane.
 - Production observability is still incomplete; admin operations, release gates, and background job unification now have a Stage 3A foundation via background job run history, admin ops APIs, and `scripts/release-gate-local.sh`.
 - KB Hub now has a Stage 2 productionization foundation for review/takedown/reporting, source/copyright declarations, snapshot archive/restore/diff, subscription expiry cleanup, per-plan entitlement modes, invoice/refund/dispute records, payout period aggregation, and a unified background job runner; remaining gaps are real payment integration, tax/export operations, renewal collection policy, and chunk-level search quality.
@@ -58,7 +58,7 @@ graph TD
     S1 --> S2[Stage 2: KB Hub Productionization]
     S2 --> S3[Stage 3: Full SAGE Plugin Marketplace]
     S3 --> S4[Stage 4: Agent Tool Governance Plane]
-    S4 --> S5[Stage 5: Federated Multi-Server Network]
+    S4 --> S5[Stage 5: Commercialization and Platform Operations]
     S5 --> S6[Stage 6: Admin, Observability, Release Gates]
 ```
 
@@ -94,7 +94,7 @@ Primary workstreams:
    - admission audit events.
 
 2. Sync completeness
-   - plugin and federation-related sync event taxonomy;
+   - plugin lifecycle sync event taxonomy;
    - schema version compatibility policy;
    - sync snapshot/repair API;
    - event compaction and retention strategy.
@@ -198,7 +198,7 @@ Non-goal: Backend does not execute third-party SAGE Flow definitions and does no
 
 ## 8. Stage 4 — Agent Tool Governance Plane
 
-Goal: create the policy/audit/security control plane used by SAGE, KB, federation, and future action systems.
+Goal: create the policy/audit/security control plane used by SAGE, KB, object storage, admin operations, billing, and future action systems.
 
 Primary workstreams:
 
@@ -214,24 +214,21 @@ Primary workstreams:
 
 This stage is deliberately placed after SAGE registry design but before allowing broad real tool execution.
 
-## 9. Stage 5 — Federated Multi-Server Network
+## 9. Stage 5 — Commercialization and Platform Operations
 
-Goal: upgrade the current local server-list sync into actual AgentOS server federation.
+Goal: complete commercial and operational platform capabilities without introducing Federation / multi-server networking.
 
 Primary workstreams:
 
-- server identity and public keys;
-- `.well-known/agentos-server.json`;
-- federation capability discovery;
-- server handshake;
-- remote server trust score;
-- federated plugin metadata discovery;
-- remote install references for plugin/server resources;
-- local policy gate for all remote resources.
+- external payment provider integration around the internal ledger;
+- automated renewal collection and reconciliation policy;
+- refund, dispute, payout hold, tax/export operations;
+- owner/admin entitlement revocation;
+- richer admin dashboards for KB, SAGE, billing, jobs, audit, security, and health;
+- production metrics, structured logs, release gates, and operational runbooks;
+- search-quality improvements such as chunk-level passage retrieval and evaluation fixtures.
 
-Deferred follow-up: Federated KB Discovery is explicitly not part of the current Stage 5 implementation plan. KB Hub remains local-server scoped until a separate product/security review reopens cross-server KB metadata discovery.
-
-Non-goal: cross-server strong consistency, hidden database replication, or federated KB metadata discovery in this stage.
+Deferred scope: Federation / multi-server networking remains out of the current roadmap. Do not implement server identity discovery, `.well-known/agentos-server.json`, signed server handshakes, remote plugin discovery, remote KB discovery, or cross-server data synchronization until a later product/security review explicitly reopens this scope.
 
 ## 10. Stage 6 — Admin, Observability, Release Gates
 
@@ -239,7 +236,7 @@ Goal: make the backend long-running, governable, and releaseable.
 
 Primary workstreams:
 
-- admin APIs for identity, admission, KB, plugins, billing, federation, jobs, audit, security, and health;
+- admin APIs for identity, admission, KB, plugins, billing, jobs, audit, security, and health;
 - unified background job system;
 - background job run history and admin visibility (`/api/v1/admin/ops/background-job-runs`);
 - admin run-once operation for maintenance tasks (`/api/v1/admin/ops/background-jobs/run-once`);
@@ -260,7 +257,6 @@ semantic search deterministic smoke
 real embedding worker health smoke when enabled
 SAGE marketplace smoke
 policy governance smoke
-federation handshake smoke
 audit hash-chain smoke
 ```
 

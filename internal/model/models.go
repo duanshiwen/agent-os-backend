@@ -525,6 +525,88 @@ type AuditEvent struct {
 	OccurredAt    time.Time         `gorm:"index;not null" json:"occurred_at"`
 }
 
+type CapabilityDefinition struct {
+	Base
+	Key         string            `gorm:"uniqueIndex;not null" json:"key"`
+	Name        string            `gorm:"not null" json:"name"`
+	Description string            `gorm:"type:text" json:"description"`
+	RiskLevel   string            `gorm:"index;not null;default:low" json:"risk_level"`
+	Status      string            `gorm:"index;not null;default:active" json:"status"`
+	Metadata    datatypes.JSONMap `gorm:"type:jsonb" json:"metadata"`
+}
+
+type PolicyRule struct {
+	Base
+	Name          string            `gorm:"not null" json:"name"`
+	Description   string            `gorm:"type:text" json:"description"`
+	CapabilityKey string            `gorm:"index;not null" json:"capability_key"`
+	SubjectType   string            `gorm:"index" json:"subject_type"`
+	SubjectID     string            `gorm:"index" json:"subject_id"`
+	ActorUserID   *uuid.UUID        `gorm:"type:uuid;index" json:"actor_user_id"`
+	RiskLevel     string            `gorm:"index" json:"risk_level"`
+	Effect        string            `gorm:"index;not null" json:"effect"`
+	Priority      int               `gorm:"index;not null;default:100" json:"priority"`
+	Status        string            `gorm:"index;not null;default:active" json:"status"`
+	Conditions    datatypes.JSONMap `gorm:"type:jsonb" json:"conditions"`
+	Metadata      datatypes.JSONMap `gorm:"type:jsonb" json:"metadata"`
+}
+
+type PolicyDecision struct {
+	Base
+	ActorUserID   *uuid.UUID        `gorm:"type:uuid;index" json:"actor_user_id"`
+	ActorDeviceID string            `gorm:"index" json:"actor_device_id"`
+	SubjectType   string            `gorm:"index;not null" json:"subject_type"`
+	SubjectID     string            `gorm:"index" json:"subject_id"`
+	CapabilityKey string            `gorm:"index;not null" json:"capability_key"`
+	RiskLevel     string            `gorm:"index;not null;default:low" json:"risk_level"`
+	Decision      string            `gorm:"index;not null" json:"decision"`
+	Reason        string            `gorm:"type:text" json:"reason"`
+	PolicyRuleID  *uuid.UUID        `gorm:"type:uuid;index" json:"policy_rule_id"`
+	KillSwitchID  *uuid.UUID        `gorm:"type:uuid;index" json:"kill_switch_id"`
+	Context       datatypes.JSONMap `gorm:"type:jsonb" json:"context"`
+	DecidedAt     time.Time         `gorm:"index;not null" json:"decided_at"`
+}
+
+type ApprovalReceipt struct {
+	Base
+	PolicyDecisionID uuid.UUID         `gorm:"type:uuid;index;not null" json:"policy_decision_id"`
+	ActorUserID      uuid.UUID         `gorm:"type:uuid;index;not null" json:"actor_user_id"`
+	SubjectType      string            `gorm:"index;not null" json:"subject_type"`
+	SubjectID        string            `gorm:"index" json:"subject_id"`
+	CapabilityKey    string            `gorm:"index;not null" json:"capability_key"`
+	Decision         string            `gorm:"not null" json:"decision"`
+	TokenHash        string            `gorm:"uniqueIndex;not null" json:"-"`
+	Status           string            `gorm:"index;not null;default:pending" json:"status"`
+	ExpiresAt        time.Time         `gorm:"index;not null" json:"expires_at"`
+	ConsumedAt       *time.Time        `json:"consumed_at"`
+	ConsumedBy       string            `gorm:"index" json:"consumed_by"`
+	Metadata         datatypes.JSONMap `gorm:"type:jsonb" json:"metadata"`
+}
+
+type KillSwitch struct {
+	Base
+	ScopeType string            `gorm:"index;not null" json:"scope_type"`
+	ScopeID   string            `gorm:"index" json:"scope_id"`
+	Reason    string            `gorm:"type:text" json:"reason"`
+	Status    string            `gorm:"index;not null;default:active" json:"status"`
+	ExpiresAt *time.Time        `gorm:"index" json:"expires_at"`
+	CreatedBy *uuid.UUID        `gorm:"type:uuid;index" json:"created_by"`
+	Metadata  datatypes.JSONMap `gorm:"type:jsonb" json:"metadata"`
+}
+
+type GovernanceScanResult struct {
+	Base
+	SubjectType string            `gorm:"index;not null" json:"subject_type"`
+	SubjectID   string            `gorm:"index" json:"subject_id"`
+	Scanner     string            `gorm:"index;not null" json:"scanner"`
+	Severity    string            `gorm:"index;not null;default:info" json:"severity"`
+	Status      string            `gorm:"index;not null;default:open" json:"status"`
+	Message     string            `gorm:"type:text" json:"message"`
+	Details     datatypes.JSONMap `gorm:"type:jsonb" json:"details"`
+	ResolvedAt  *time.Time        `json:"resolved_at"`
+	ResolvedBy  *uuid.UUID        `gorm:"type:uuid;index" json:"resolved_by"`
+}
+
 func AllModels() []any {
-	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &UserAgentSetting{}, &UserServerConnection{}, &UserKnowledgeEntry{}, &ObjectRecord{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBModerationReport{}, &KBUsageRecord{}, &KBSearchDocument{}, &BackgroundJobRun{}, &KBEmbeddingJob{}, &KBSearchEmbedding{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &SAGEPlugin{}, &SAGEPluginVersion{}, &SAGEPluginReview{}, &SAGEPluginInstallation{}, &SAGEPluginPermissionGrant{}, &SAGEPluginInvocation{}, &SAGEPluginExecutionReport{}, &SAGEPluginUsageLedger{}, &KBBillingPlan{}, &KBInvoice{}, &KBInvoiceItem{}, &ContributorPayoutPeriod{}, &KBRefund{}, &KBBillingDispute{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}, &SensitiveOperationConfirmation{}, &AuditEvent{}}
+	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &UserAgentSetting{}, &UserServerConnection{}, &UserKnowledgeEntry{}, &ObjectRecord{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBModerationReport{}, &KBUsageRecord{}, &KBSearchDocument{}, &BackgroundJobRun{}, &KBEmbeddingJob{}, &KBSearchEmbedding{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &SAGEPlugin{}, &SAGEPluginVersion{}, &SAGEPluginReview{}, &SAGEPluginInstallation{}, &SAGEPluginPermissionGrant{}, &SAGEPluginInvocation{}, &SAGEPluginExecutionReport{}, &SAGEPluginUsageLedger{}, &KBBillingPlan{}, &KBInvoice{}, &KBInvoiceItem{}, &ContributorPayoutPeriod{}, &KBRefund{}, &KBBillingDispute{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}, &SensitiveOperationConfirmation{}, &AuditEvent{}, &CapabilityDefinition{}, &PolicyRule{}, &PolicyDecision{}, &ApprovalReceipt{}, &KillSwitch{}, &GovernanceScanResult{}}
 }
