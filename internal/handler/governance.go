@@ -150,6 +150,60 @@ func (h *GovernanceHandler) Evaluate(c *gin.Context) {
 	response.OK(c, decision)
 }
 
+func (h *GovernanceHandler) CreateApprovalReceipt(c *gin.Context) {
+	var req struct {
+		PolicyDecisionID string         `json:"policy_decision_id"`
+		ActorUserID      string         `json:"actor_user_id"`
+		SubjectType      string         `json:"subject_type"`
+		SubjectID        string         `json:"subject_id"`
+		CapabilityKey    string         `json:"capability_key"`
+		Decision         string         `json:"decision"`
+		ExpiresInSeconds int            `json:"expires_in_seconds"`
+		Metadata         map[string]any `json:"metadata"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid request body")
+		return
+	}
+	decisionID, err := uuid.Parse(req.PolicyDecisionID)
+	if err != nil {
+		response.BadRequest(c, "invalid policy_decision_id")
+		return
+	}
+	actorID, err := uuid.Parse(req.ActorUserID)
+	if err != nil {
+		response.BadRequest(c, "invalid actor_user_id")
+		return
+	}
+	ttl := req.ExpiresInSeconds
+	if ttl <= 0 || ttl > 3600 {
+		ttl = 900
+	}
+	receipt, token, err := h.svc.CreateApprovalReceipt(service.CreateApprovalReceiptInput{PolicyDecisionID: decisionID, ActorUserID: actorID, SubjectType: req.SubjectType, SubjectID: req.SubjectID, CapabilityKey: req.CapabilityKey, Decision: req.Decision, ExpiresAt: time.Now().UTC().Add(time.Duration(ttl) * time.Second), Metadata: req.Metadata})
+	if err != nil {
+		h.writeGovernanceError(c, err)
+		return
+	}
+	response.Created(c, gin.H{"receipt": receipt, "approval_token": token})
+}
+
+func (h *GovernanceHandler) ConsumeApprovalReceipt(c *gin.Context) {
+	var req struct {
+		ApprovalToken string `json:"approval_token"`
+		ConsumedBy    string `json:"consumed_by"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid request body")
+		return
+	}
+	receipt, err := h.svc.ConsumeApprovalReceipt(req.ApprovalToken, req.ConsumedBy)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.OK(c, receipt)
+}
+
 func (h *GovernanceHandler) writeGovernanceError(c *gin.Context, err error) {
 	if errors.Is(err, service.ErrGovernanceInvalidInput) {
 		response.BadRequest(c, err.Error())

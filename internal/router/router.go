@@ -69,6 +69,9 @@ func Setup(
 	sagePluginRepo := repository.NewSAGEPluginRepo(db)
 	governanceRepo := repository.NewGovernanceRepo(db)
 	governanceSvc := service.NewGovernanceService(governanceRepo)
+	governanceEnforcer := service.NewGovernanceEnforcer(governanceSvc, service.GovernanceEnforcementConfig{Mode: cfg.Governance.EnforcementMode, SAGEMode: cfg.Governance.SAGEEnforcementMode, ObjectMode: cfg.Governance.ObjectEnforcementMode, KBMode: cfg.Governance.KBEnforcementMode})
+	governanceScanner := service.NewGovernanceScanner(governanceRepo)
+	objectSvc.SetGovernanceEnforcer(governanceEnforcer)
 	billingRepo := repository.NewBillingRepo(db)
 	billingSvc := service.NewKBBillingService(billingRepo)
 	kbSearchRepo := repository.NewKBSearchRepo(db)
@@ -81,11 +84,14 @@ func Setup(
 	kbHubSvc := service.NewKBHubService(kbHubRepo, knowledgeEntriesRepo, objectSvc)
 	kbHubSvc.SetBillingService(billingSvc)
 	kbHubSvc.SetSearchService(kbSearchSvc)
+	kbHubSvc.SetGovernanceEnforcer(governanceEnforcer)
 	sagePluginSvc := service.NewSAGEPluginService(sagePluginRepo)
 	sagePluginSvc.SetSyncService(syncSvc)
 	sagePluginSvc.SetAuditService(auditSvc)
 	sagePluginSvc.SetSensitiveOperationService(sensitiveOperationSvc)
 	sagePluginSvc.SetObjectService(objectSvc)
+	sagePluginSvc.SetGovernanceEnforcer(governanceEnforcer)
+	sagePluginSvc.SetGovernanceScanner(governanceScanner)
 
 	// Handlers
 	readinessH := handler.NewReadinessHandler(db)
@@ -197,6 +203,7 @@ func Setup(
 			protected.POST("/sync/ack", syncH.AckEvents)
 
 			protected.POST("/sensitive-operations/confirmations", sensitiveOperationH.IssueConfirmation)
+			protected.POST("/governance/approval-receipts/consume", governanceH.ConsumeApprovalReceipt)
 
 			protected.POST("/sage/plugins", sagePluginH.CreatePlugin)
 			protected.POST("/sage/plugins/:plugin_id/versions", sagePluginH.SubmitVersion)
@@ -286,6 +293,7 @@ func Setup(
 			admin.GET("/governance/policy-rules", governanceH.ListPolicyRules)
 			admin.POST("/governance/kill-switches", governanceH.CreateKillSwitch)
 			admin.POST("/governance/evaluate", governanceH.Evaluate)
+			admin.POST("/governance/approval-receipts", governanceH.CreateApprovalReceipt)
 			admin.GET("/ops/background-job-runs", opsH.ListBackgroundJobRuns)
 			admin.GET("/ops/background-job-runs/:id", opsH.GetBackgroundJobRun)
 			admin.POST("/ops/background-jobs/run-once", opsH.RunBackgroundJobsOnce)

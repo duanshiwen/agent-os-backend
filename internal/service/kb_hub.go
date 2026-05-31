@@ -29,11 +29,12 @@ var (
 const maxKBFullTextBytes int64 = 2 << 20
 
 type KBHubService struct {
-	kbRepo        *repository.KBHubRepo
-	knowledgeRepo *repository.KnowledgeEntriesRepo
-	objectSvc     *ObjectService
-	billingSvc    *KBBillingService
-	searchSvc     *KBSearchService
+	kbRepo             *repository.KBHubRepo
+	knowledgeRepo      *repository.KnowledgeEntriesRepo
+	objectSvc          *ObjectService
+	billingSvc         *KBBillingService
+	searchSvc          *KBSearchService
+	governanceEnforcer *GovernanceEnforcer
 }
 
 type CreateKBCollectionInput struct {
@@ -201,6 +202,10 @@ func (s *KBHubService) SetSearchService(searchSvc *KBSearchService) {
 	s.searchSvc = searchSvc
 }
 
+func (s *KBHubService) SetGovernanceEnforcer(enforcer *GovernanceEnforcer) {
+	s.governanceEnforcer = enforcer
+}
+
 func (s *KBHubService) CreateCollection(ownerID uuid.UUID, input CreateKBCollectionInput) (*model.KBCollection, error) {
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
@@ -313,6 +318,9 @@ func (s *KBHubService) ReviewCollection(adminID, collectionID uuid.UUID, input R
 	default:
 		return nil, fmt.Errorf("%w: review_status must be approved, rejected, or takedown", ErrKBInvalid)
 	}
+	if err := s.enforceKBGovernance(adminID, collectionID.String(), "kb.collection.review."+status, GovernanceRiskHigh, map[string]any{"collection_id": collectionID.String(), "review_status": status, "reason": strings.TrimSpace(input.Reason)}); err != nil {
+		return nil, err
+	}
 	collection, err := s.kbRepo.UpdateCollectionReview(collectionID, adminID, status, strings.TrimSpace(input.Reason))
 	if err != nil {
 		if repository.IsNotFound(err) {
@@ -418,6 +426,9 @@ func (s *KBHubService) UpdateCollectionPricing(ownerID, collectionID uuid.UUID, 
 		isFree = true
 		pricingModel = "free"
 		monthlyPrice = 0
+	}
+	if err := s.enforceKBGovernance(ownerID, collectionID.String(), "kb.collection.pricing.update", GovernanceRiskHigh, map[string]any{"collection_id": collectionID.String(), "pricing_model": pricingModel, "monthly_price": monthlyPrice, "entitlement_mode": entitlement, "billing_interval": billingInterval, "currency": currency}); err != nil {
+		return nil, err
 	}
 	collection.IsFree = isFree
 	collection.PricingModel = pricingModel
@@ -577,6 +588,9 @@ func (s *KBHubService) ArchiveSnapshot(ownerID, collectionID, snapshotID uuid.UU
 	if _, err := s.GetCollection(ownerID, collectionID); err != nil {
 		return nil, err
 	}
+	if err := s.enforceKBGovernance(ownerID, snapshotID.String(), "kb.snapshot.archive", GovernanceRiskMedium, map[string]any{"collection_id": collectionID.String(), "snapshot_id": snapshotID.String()}); err != nil {
+		return nil, err
+	}
 	snapshot, err := s.kbRepo.ArchiveSnapshot(collectionID, snapshotID)
 	if err != nil {
 		if repository.IsNotFound(err) {
@@ -591,6 +605,9 @@ func (s *KBHubService) RestoreSnapshot(ownerID, collectionID, snapshotID uuid.UU
 	if _, err := s.GetCollection(ownerID, collectionID); err != nil {
 		return nil, err
 	}
+	if err := s.enforceKBGovernance(ownerID, snapshotID.String(), "kb.snapshot.restore", GovernanceRiskMedium, map[string]any{"collection_id": collectionID.String(), "snapshot_id": snapshotID.String()}); err != nil {
+		return nil, err
+	}
 	snapshot, err := s.kbRepo.RestoreSnapshot(collectionID, snapshotID)
 	if err != nil {
 		if repository.IsNotFound(err) {
@@ -599,6 +616,15 @@ func (s *KBHubService) RestoreSnapshot(ownerID, collectionID, snapshotID uuid.UU
 		return nil, err
 	}
 	return snapshot, nil
+}
+
+func (s *KBHubService) enforceKBGovernance(actorID uuid.UUID, subjectID, capabilityKey, risk string, context map[string]any) error {
+	if s.governanceEnforcer == nil {
+		return nil
+	}
+	actor := actorID
+	_, err := s.governanceEnforcer.Enforce(GovernanceEnforcementInput{ActorUserID: &actor, SubjectType: GovernanceSubjectKBOperation, SubjectID: subjectID, CapabilityKey: capabilityKey, RiskLevel: risk, Context: context})
+	return err
 }
 
 func (s *KBHubService) DiffSnapshots(ownerID, collectionID, fromSnapshotID, toSnapshotID uuid.UUID) (*KBSnapshotDiff, error) {

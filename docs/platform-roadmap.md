@@ -271,3 +271,7 @@ Recommended next implementation targets:
 3. active session invalidation for revoked devices;
 4. persisted job execution history plus admin job trigger/list APIs;
 5. SAGE/Governance schema design docs before broad plugin code.
+
+### Stage 4B Governance Enforcement Integration
+
+Stage 4B wires governance evaluation into SAGE permission grants/invocations, object storage lifecycle operations, and KB high-impact operations. The default mode is `observe`, which records decisions and would-block evidence without interrupting business execution. Operators can later switch global or domain-specific modes to `enforce`.

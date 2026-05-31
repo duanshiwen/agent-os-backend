@@ -12,7 +12,7 @@ import (
 )
 
 func TestKBHubStage2GovernanceModerationAndTakedown(t *testing.T) {
-	svc, knowledgeRepo, _, ownerID := newKBHubServiceTestEnv(t)
+	svc, knowledgeRepo, _, ownerID, _ := newKBHubServiceTestEnv(t)
 	adminID := uuid.New()
 	reporterID := uuid.New()
 	if err := knowledgeRepo.Create(&model.UserKnowledgeEntry{UserID: ownerID, EntryID: "stage2/governance", Title: "Governance", ContentMarkdown: "# Governance", Status: repository.KnowledgeEntryStatusActive, Version: 1, ContentHash: strings.Repeat("f", 64)}); err != nil {
@@ -66,7 +66,7 @@ func TestKBHubStage2GovernanceModerationAndTakedown(t *testing.T) {
 }
 
 func TestKBHubStage2SnapshotLifecycleDiffAndSubscriptionExpiry(t *testing.T) {
-	svc, knowledgeRepo, _, ownerID := newKBHubServiceTestEnv(t)
+	svc, knowledgeRepo, _, ownerID, _ := newKBHubServiceTestEnv(t)
 	consumerID := uuid.New()
 	if err := knowledgeRepo.Create(&model.UserKnowledgeEntry{UserID: ownerID, EntryID: "stage2/alpha", Title: "Alpha", ContentMarkdown: "# Alpha v1", Status: repository.KnowledgeEntryStatusActive, Version: 1, ContentHash: strings.Repeat("1", 64)}); err != nil {
 		t.Fatalf("create alpha: %v", err)
@@ -138,5 +138,36 @@ func TestKBHubStage2SnapshotLifecycleDiffAndSubscriptionExpiry(t *testing.T) {
 	}
 	if _, err := svc.CreateInstalledManifestDownloadURL(context.Background(), consumerID, collection.ID, restored.ID); err == nil || !strings.Contains(err.Error(), ErrKBSubscriptionNeeded.Error()) {
 		t.Fatalf("expected access denial after expiry, got %v", err)
+	}
+}
+
+func TestKBHubGovernanceObserveRecordsReviewAndPricingWithoutBlocking(t *testing.T) {
+	svc, _, _, ownerID, db := newKBHubServiceTestEnv(t)
+	governance := NewGovernanceService(repository.NewGovernanceRepo(db))
+	if _, err := governance.CreatePolicyRule(CreatePolicyRuleInput{Name: "Observe deny KB takedown", CapabilityKey: "kb.collection.review.takedown", SubjectType: GovernanceSubjectKBOperation, Effect: GovernanceDecisionDeny, Priority: 1, Status: GovernanceStatusActive}); err != nil {
+		t.Fatalf("create takedown rule: %v", err)
+	}
+	if _, err := governance.CreatePolicyRule(CreatePolicyRuleInput{Name: "Observe deny KB pricing", CapabilityKey: "kb.collection.pricing.update", SubjectType: GovernanceSubjectKBOperation, Effect: GovernanceDecisionDeny, Priority: 1, Status: GovernanceStatusActive}); err != nil {
+		t.Fatalf("create pricing rule: %v", err)
+	}
+	svc.SetGovernanceEnforcer(NewGovernanceEnforcer(governance, GovernanceEnforcementConfig{}))
+
+	collection, err := svc.CreateCollection(ownerID, CreateKBCollectionInput{Name: "Governed KB"})
+	if err != nil {
+		t.Fatalf("create collection: %v", err)
+	}
+	priced, err := svc.UpdateCollectionPricing(ownerID, collection.ID, UpdateKBCollectionPricingInput{IsFree: boolPtr(false), PricingModel: "monthly", MonthlyPrice: 9900})
+	if err != nil {
+		t.Fatalf("observe mode should not block pricing: %v", err)
+	}
+	if priced.MonthlyPrice != 9900 {
+		t.Fatalf("expected pricing update to proceed, got %#v", priced)
+	}
+	reviewed, err := svc.ReviewCollection(uuid.New(), collection.ID, ReviewKBCollectionInput{ReviewStatus: repository.KBReviewStatusTakedown, Reason: "observe"})
+	if err != nil {
+		t.Fatalf("observe mode should not block takedown: %v", err)
+	}
+	if reviewed.ReviewStatus != repository.KBReviewStatusTakedown {
+		t.Fatalf("expected review update to proceed, got %#v", reviewed)
 	}
 }

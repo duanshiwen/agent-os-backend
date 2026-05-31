@@ -46,9 +46,10 @@ type ObjectHead struct {
 }
 
 type ObjectService struct {
-	repo    *repository.ObjectRecordsRepo
-	storage ObjectStorageBackend
-	cfg     config.ObjectStorageConfig
+	repo               *repository.ObjectRecordsRepo
+	storage            ObjectStorageBackend
+	cfg                config.ObjectStorageConfig
+	governanceEnforcer *GovernanceEnforcer
 }
 
 type CreateUploadIntentInput struct {
@@ -90,6 +91,10 @@ type StoreObjectInput struct {
 
 func NewObjectService(repo *repository.ObjectRecordsRepo, storage ObjectStorageBackend, cfg config.ObjectStorageConfig) *ObjectService {
 	return &ObjectService{repo: repo, storage: storage, cfg: cfg}
+}
+
+func (s *ObjectService) SetGovernanceEnforcer(enforcer *GovernanceEnforcer) {
+	s.governanceEnforcer = enforcer
 }
 
 func (s *ObjectService) StoreObject(ctx context.Context, ownerID uuid.UUID, input StoreObjectInput) (*model.ObjectRecord, error) {
@@ -147,6 +152,9 @@ func (s *ObjectService) CreateUploadIntent(ctx context.Context, ownerID uuid.UUI
 		return nil, ErrObjectForbidden
 	}
 	if err := validateUploadIntentInput(input); err != nil {
+		return nil, err
+	}
+	if err := s.enforceObjectGovernance(ownerID, "upload", input.Scope, strings.TrimSpace(input.Scope), map[string]any{"scope": input.Scope, "filename": input.Filename, "content_type": input.ContentType, "content_size": input.ContentSize}); err != nil {
 		return nil, err
 	}
 	if err := s.storage.EnsureBucket(ctx, s.cfg.Bucket); err != nil {
@@ -236,6 +244,9 @@ func (s *ObjectService) CreateDownloadURL(ctx context.Context, ownerID uuid.UUID
 	if err != nil {
 		return nil, err
 	}
+	if err := s.enforceObjectGovernance(ownerID, "download", record.Scope, record.ID.String(), map[string]any{"object_id": record.ID.String(), "scope": record.Scope, "content_type": record.ContentType}); err != nil {
+		return nil, err
+	}
 	return s.createDownloadURLForRecord(ctx, record, input)
 }
 
@@ -299,6 +310,9 @@ func (s *ObjectService) DeleteObject(ownerID uuid.UUID, objectID uuid.UUID) (*mo
 	if err != nil {
 		return nil, err
 	}
+	if err := s.enforceObjectGovernance(ownerID, "delete", record.Scope, record.ID.String(), map[string]any{"object_id": record.ID.String(), "scope": record.Scope}); err != nil {
+		return nil, err
+	}
 	if record.RefCount > 0 {
 		return nil, ErrObjectHasReferences
 	}
@@ -309,6 +323,25 @@ func (s *ObjectService) DeleteObject(ownerID uuid.UUID, objectID uuid.UUID) (*mo
 		return nil, err
 	}
 	return s.repo.GetByIDForOwner(ownerID, objectID)
+}
+
+func (s *ObjectService) enforceObjectGovernance(ownerID uuid.UUID, operation, scope, subjectID string, context map[string]any) error {
+	if s.governanceEnforcer == nil {
+		return nil
+	}
+	actorID := ownerID
+	_, err := s.governanceEnforcer.Enforce(GovernanceEnforcementInput{ActorUserID: &actorID, SubjectType: GovernanceSubjectObjectOperation, SubjectID: subjectID, CapabilityKey: objectCapability(operation, scope), RiskLevel: GovernanceRiskMedium, Context: context})
+	return err
+}
+
+func objectCapability(operation, scope string) string {
+	normalized := strings.TrimSpace(scope)
+	normalized = strings.ReplaceAll(normalized, "-", "_")
+	normalized = strings.ReplaceAll(normalized, "/", "_")
+	if normalized == "" {
+		return "object." + strings.TrimSpace(operation)
+	}
+	return "object." + strings.TrimSpace(operation) + "." + normalized
 }
 
 func (s *ObjectService) getOwned(ownerID uuid.UUID, objectID uuid.UUID) (*model.ObjectRecord, error) {

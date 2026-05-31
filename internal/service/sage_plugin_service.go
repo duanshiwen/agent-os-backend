@@ -30,6 +30,8 @@ type SAGEPluginService struct {
 	auditSvc              *AuditService
 	sensitiveOperationSvc *SensitiveOperationService
 	objectSvc             *ObjectService
+	governanceEnforcer    *GovernanceEnforcer
+	governanceScanner     *GovernanceScanner
 }
 
 func NewSAGEPluginService(repo *repository.SAGEPluginRepo) *SAGEPluginService {
@@ -41,6 +43,12 @@ func (s *SAGEPluginService) SetSensitiveOperationService(svc *SensitiveOperation
 	s.sensitiveOperationSvc = svc
 }
 func (s *SAGEPluginService) SetObjectService(objectSvc *ObjectService) { s.objectSvc = objectSvc }
+func (s *SAGEPluginService) SetGovernanceEnforcer(enforcer *GovernanceEnforcer) {
+	s.governanceEnforcer = enforcer
+}
+func (s *SAGEPluginService) SetGovernanceScanner(scanner *GovernanceScanner) {
+	s.governanceScanner = scanner
+}
 
 type CreateSAGEPluginInput struct {
 	PluginKey    string     `json:"plugin_key"`
@@ -70,6 +78,7 @@ type GrantSAGEPermissionInput struct {
 	PermissionKey     string         `json:"permission_key"`
 	GrantScope        map[string]any `json:"grant_scope"`
 	ConfirmationToken string         `json:"confirmation_token"`
+	ApprovalToken     string         `json:"approval_token"`
 	ExpiresAt         *time.Time     `json:"expires_at"`
 }
 type CreateSAGEInvocationInput struct {
@@ -212,6 +221,12 @@ func (s *SAGEPluginService) SubmitVersion(developerID, pluginID uuid.UUID, input
 	})
 	if err != nil {
 		return nil, nil, err
+	}
+	if s.governanceScanner != nil {
+		findings := s.governanceScanner.ScanSAGEManifest(plugin.ID.String(), v.ID.String(), result.Snapshot)
+		if err := s.governanceScanner.PersistFindings(GovernanceSubjectSAGEPlugin, plugin.ID.String(), findings); err != nil {
+			return nil, nil, err
+		}
 	}
 	s.recordAudit(&developerID, "", AuditActionSAGEPluginVersionSubmitted, "sage_plugin_version", v.ID.String(), AuditOutcomeSuccess, map[string]any{"plugin_id": plugin.ID.String(), "valid": result.Valid})
 	return v, result, nil
@@ -409,6 +424,9 @@ func (s *SAGEPluginService) GrantPermission(userID uuid.UUID, deviceID string, i
 	if risk == "" {
 		risk = SAGERiskMedium
 	}
+	if _, err := s.enforceGovernance(GovernanceEnforcementInput{ActorUserID: &userID, ActorDeviceID: deviceID, SubjectType: GovernanceSubjectSAGEPermissionGrant, SubjectID: installationID.String(), CapabilityKey: key, RiskLevel: risk, Context: map[string]any{"installation_id": installationID.String(), "plugin_id": inst.PluginID.String(), "permission_key": key, "grant_scope": input.GrantScope}, ApprovalToken: input.ApprovalToken, ApprovalConsumedBy: deviceID}); err != nil {
+		return nil, err
+	}
 	requires := riskRank(risk) >= riskRank(SAGERiskHigh)
 	if requires {
 		if s.sensitiveOperationSvc == nil {
@@ -512,7 +530,27 @@ func (s *SAGEPluginService) CreateInvocation(userID uuid.UUID, deviceID string, 
 	if risk == "" {
 		risk = plugin.RiskLevel
 	}
-	inv := &model.SAGEPluginInvocation{UserID: userID, DeviceID: deviceID, PluginID: plugin.ID, InstallationID: &inst.ID, ClientRequestID: clientID, UserIntent: strings.TrimSpace(input.UserIntent), FlowID: strings.TrimSpace(input.FlowID), FlowHash: strings.TrimSpace(input.FlowHash), Status: repository.SAGEInvocationStatusCreated, RiskLevel: risk, PolicyDecision: datatypes.JSONMap(input.PolicyDecision), PermissionsUsed: datatypes.JSONSlice[string](input.PermissionsUsed), StartedAt: &now}
+	capabilityKey := "sage.invocation.create"
+	if len(input.PermissionsUsed) > 0 && strings.TrimSpace(input.PermissionsUsed[0]) != "" {
+		capabilityKey = strings.TrimSpace(input.PermissionsUsed[0])
+	}
+	governanceResult, err := s.enforceGovernance(GovernanceEnforcementInput{ActorUserID: &userID, ActorDeviceID: deviceID, SubjectType: GovernanceSubjectSAGEInvocation, SubjectID: plugin.ID.String(), CapabilityKey: capabilityKey, RiskLevel: risk, Context: map[string]any{"plugin_key": plugin.PluginKey, "installation_id": inst.ID.String(), "client_request_id": clientID, "flow_id": input.FlowID, "permissions_used": input.PermissionsUsed}})
+	if err != nil {
+		return nil, err
+	}
+	policyDecision := datatypes.JSONMap(input.PolicyDecision)
+	if policyDecision == nil {
+		policyDecision = datatypes.JSONMap{}
+	}
+	if governanceResult != nil {
+		policyDecision["mode"] = governanceResult.Mode
+		policyDecision["would_have_blocked"] = governanceResult.WouldHaveBlocked
+		if governanceResult.Decision != nil {
+			policyDecision["governance_decision_id"] = governanceResult.Decision.ID.String()
+			policyDecision["decision"] = governanceResult.Decision.Decision
+		}
+	}
+	inv := &model.SAGEPluginInvocation{UserID: userID, DeviceID: deviceID, PluginID: plugin.ID, InstallationID: &inst.ID, ClientRequestID: clientID, UserIntent: strings.TrimSpace(input.UserIntent), FlowID: strings.TrimSpace(input.FlowID), FlowHash: strings.TrimSpace(input.FlowHash), Status: repository.SAGEInvocationStatusCreated, RiskLevel: risk, PolicyDecision: policyDecision, PermissionsUsed: datatypes.JSONSlice[string](input.PermissionsUsed), StartedAt: &now}
 	if inv.PolicyDecision == nil {
 		inv.PolicyDecision = datatypes.JSONMap{}
 	}
@@ -520,6 +558,13 @@ func (s *SAGEPluginService) CreateInvocation(userID uuid.UUID, deviceID string, 
 		return nil, err
 	}
 	return inv, nil
+}
+
+func (s *SAGEPluginService) enforceGovernance(input GovernanceEnforcementInput) (*GovernanceEnforcementResult, error) {
+	if s.governanceEnforcer == nil {
+		return nil, nil
+	}
+	return s.governanceEnforcer.Enforce(input)
 }
 
 func (s *SAGEPluginService) SubmitReport(userID uuid.UUID, invocationID uuid.UUID, input SubmitSAGEExecutionReportInput) (*model.SAGEPluginExecutionReport, error) {
