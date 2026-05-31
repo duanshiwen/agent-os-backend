@@ -494,7 +494,7 @@ agent-os-backend/
 
 ### Governance Enforcement Modes
 
-Stage 4C governance enforcement is enabled in safe rollout mode by default:
+Stage 4D governance enforcement is enabled in safe rollout mode by default:
 
 ```bash
 GOVERNANCE_ENFORCEMENT_MODE=observe
@@ -520,7 +520,9 @@ Governance errors returned by SAGE, Object, and KB surfaces include stable machi
 - `governance_approval_required`
 - `governance_approval_invalid`
 
-Stage 4C approval receipt consumption is bound to actor, subject type, subject id, and capability key when used through `GovernanceEnforcer`, so an approval token for one operation cannot authorize another operation.
+Stage 4D error responses also include stable `details` when the failure comes from `GovernanceEnforcer`: `policy_decision_id`, subject type/id, capability key, risk level, decision/reason, and approval receipt expiry metadata when available.
+
+Approval receipt consumption is bound to actor, subject type, subject id, and capability key when used through `GovernanceEnforcer`, so an approval token for one operation cannot authorize another operation. Admin approval operations remain one-time-token safe: raw tokens are only returned on create/reissue responses, list APIs never expose tokens, reissue rotates the stored token hash and invalidates old tokens, and revoked/consumed/expired receipts cannot be reissued.
 
 Admin governance APIs:
 
@@ -537,6 +539,8 @@ Admin governance APIs:
 | GET | `/api/v1/admin/governance/policy-decisions/:id` | 查看单个 policy decision |
 | POST | `/api/v1/admin/governance/approval-receipts` | 创建 approval receipt，并只在响应中返回一次 raw token |
 | GET | `/api/v1/admin/governance/approval-receipts` | 查看 approval receipts，不暴露 raw token |
+| POST | `/api/v1/admin/governance/approval-receipts/:id/reissue-token` | 对 pending 且未过期 receipt 轮换 raw token；旧 token 立即失效 |
+| POST | `/api/v1/admin/governance/approval-receipts/:id/revoke` | 撤销 pending approval receipt，阻止后续消费或 reissue |
 | GET | `/api/v1/admin/governance/scan-results` | 查看 scanner findings |
 | POST | `/api/v1/admin/governance/scan-results/:id/resolve` | 标记 scanner finding resolved |
 
@@ -546,7 +550,7 @@ When a local stack is running, verify governance evaluation and audit-chain comp
 BASE_URL=http://localhost:8080 ./scripts/smoke-governance-enforcement.sh
 ```
 
-To verify enforce-mode denial behavior, stable error codes, admin evidence APIs, and governance summary:
+To verify enforce-mode denial behavior, stable error codes/details, admin evidence APIs, governance summary, and Stage 4D approval receipt reissue/revoke semantics:
 
 ```bash
 BASE_URL=http://localhost:8080 ./scripts/smoke-governance-enforce-readiness.sh
