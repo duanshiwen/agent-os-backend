@@ -55,6 +55,7 @@ const (
 const (
 	GovernanceApprovalPending  = "pending"
 	GovernanceApprovalConsumed = "consumed"
+	GovernanceApprovalRevoked  = "revoked"
 )
 
 var ErrGovernanceInvalidInput = errors.New("invalid governance input")
@@ -351,6 +352,17 @@ func (s *GovernanceService) ListApprovalReceipts(input ListApprovalReceiptsInput
 		return nil, err
 	}
 	return &GovernanceApprovalReceiptsPage{Items: items, Limit: limit, Offset: offset, Total: total}, nil
+}
+
+func (s *GovernanceService) RevokeApprovalReceipt(id uuid.UUID, reason string) (*model.ApprovalReceipt, error) {
+	if s == nil || s.repo == nil || id == uuid.Nil {
+		return nil, ErrGovernanceInvalidInput
+	}
+	receipt, err := s.repo.RevokeApprovalReceipt(id, strings.TrimSpace(reason), time.Now().UTC())
+	if err != nil {
+		return nil, ErrApprovalReceiptInvalid
+	}
+	return receipt, nil
 }
 
 type ListScanResultsInput struct {

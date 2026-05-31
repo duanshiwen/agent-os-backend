@@ -230,6 +230,26 @@ func (h *GovernanceHandler) ListApprovalReceipts(c *gin.Context) {
 	response.OK(c, page)
 }
 
+func (h *GovernanceHandler) RevokeApprovalReceipt(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.BadRequest(c, "invalid approval receipt id")
+		return
+	}
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	if c.Request.Body != nil {
+		_ = c.ShouldBindJSON(&req)
+	}
+	receipt, err := h.svc.RevokeApprovalReceipt(id, req.Reason)
+	if err != nil {
+		h.writeGovernanceError(c, err)
+		return
+	}
+	response.OK(c, receipt)
+}
+
 func (h *GovernanceHandler) ListScanResults(c *gin.Context) {
 	page, err := h.svc.ListScanResults(service.ListScanResultsInput{SubjectType: c.Query("subject_type"), SubjectID: c.Query("subject_id"), Scanner: c.Query("scanner"), Severity: c.Query("severity"), Status: c.Query("status")}, parseGovernanceIntQuery(c, "limit", 50), parseGovernanceIntQuery(c, "offset", 0))
 	if err != nil {
