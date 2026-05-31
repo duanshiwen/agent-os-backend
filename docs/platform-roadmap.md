@@ -48,7 +48,7 @@ Current known major gaps:
 - Multi-server federation is not implemented beyond local user server-list sync.
 - Governance/policy/audit is not yet a platform-wide control plane.
 - Production observability, admin operations, release gates, and background job unification are incomplete.
-- KB Hub now has a Stage 2 productionization foundation for review/takedown/reporting, source/copyright declarations, snapshot archive/restore/diff, subscription expiry cleanup, per-plan entitlement modes, invoice/refund/dispute records, and payout period aggregation; remaining gaps are real payment integration, tax/export operations, unified background scheduling, and chunk-level search quality.
+- KB Hub now has a Stage 2 productionization foundation for review/takedown/reporting, source/copyright declarations, snapshot archive/restore/diff, subscription expiry cleanup, per-plan entitlement modes, invoice/refund/dispute records, payout period aggregation, and a unified background job runner; remaining gaps are real payment integration, tax/export operations, renewal collection policy, and chunk-level search quality.
 
 ## 3. Platform Completion Stages
 
@@ -156,13 +156,15 @@ Remaining Stage 2 gaps:
 Remaining Stage 2 billing gaps:
 
 - external payment provider integration;
-- automated renewal and collection job runner;
+- automated renewal collection policy;
+- external payment retry/reconciliation;
 - tax/export documents;
 - payout dispute and hold policy;
 - owner/admin entitlement revocation.
 
 4. Operations
-   - unified background scheduler for expiry, cleanup, billing, embedding, and moderation jobs.
+   - unified background job runner for offline message cleanup, sync event cleanup, expired sensitive operation confirmations, KB subscription expiry, and optional in-process KB embedding worker.
+   - remaining: persisted job execution history, admin job trigger/list APIs, renewal collection jobs, and future moderation jobs.
 
 ## 7. Stage 3 — Full SAGE Plugin Marketplace
 
@@ -279,5 +281,5 @@ Recommended next implementation targets:
 1. admin bootstrap and broader fine-grained admin role policy;
 2. audit hash-chain / tamper-evidence design and migration;
 3. active session invalidation for revoked devices;
-4. unified background job runner for cleanup, billing, embedding, and future moderation jobs;
+4. persisted job execution history plus admin job trigger/list APIs;
 5. SAGE/Governance schema design docs before broad plugin code.

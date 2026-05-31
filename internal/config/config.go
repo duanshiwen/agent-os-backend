@@ -19,6 +19,7 @@ type Config struct {
 	IdentityVerifier IdentityVerifierConfig
 	ObjectStorage    ObjectStorageConfig
 	Embedding        EmbeddingConfig
+	Background       BackgroundConfig
 }
 
 type AppConfig struct {
@@ -64,6 +65,18 @@ type EmbeddingConfig struct {
 	MaxBatchSize int
 }
 
+type BackgroundConfig struct {
+	RunOnStart                           bool
+	OfflineMessageCleanupIntervalSeconds int
+	SyncEventCleanupIntervalSeconds      int
+	SensitiveConfirmationIntervalSeconds int
+	KBSubscriptionExpiryIntervalSeconds  int
+	EmbeddingWorkerEnabled               bool
+	EmbeddingWorkerID                    string
+	EmbeddingWorkerBatchSize             int
+	EmbeddingWorkerPollIntervalSeconds   int
+}
+
 func (d DatabaseConfig) DSN() string {
 	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s TimeZone=Asia/Shanghai", d.Host, d.Port, d.User, d.Password, d.DBName, d.SSLMode)
 }
@@ -97,6 +110,17 @@ func Load() (*Config, error) {
 			Dimensions:   getEnvInt("EMBEDDING_DIMENSIONS", 1024),
 			TimeoutSecs:  getEnvInt("EMBEDDING_TIMEOUT_SECONDS", 30),
 			MaxBatchSize: getEnvInt("EMBEDDING_MAX_BATCH_SIZE", 16),
+		},
+		Background: BackgroundConfig{
+			RunOnStart:                           getEnvBool("BACKGROUND_RUN_ON_START", false),
+			OfflineMessageCleanupIntervalSeconds: getEnvInt("BACKGROUND_OFFLINE_CLEANUP_INTERVAL_SECONDS", 3600),
+			SyncEventCleanupIntervalSeconds:      getEnvInt("BACKGROUND_SYNC_CLEANUP_INTERVAL_SECONDS", 21600),
+			SensitiveConfirmationIntervalSeconds: getEnvInt("BACKGROUND_SENSITIVE_CONFIRMATION_INTERVAL_SECONDS", 900),
+			KBSubscriptionExpiryIntervalSeconds:  getEnvInt("BACKGROUND_KB_SUBSCRIPTION_EXPIRY_INTERVAL_SECONDS", 900),
+			EmbeddingWorkerEnabled:               getEnvBool("BACKGROUND_EMBEDDING_WORKER_ENABLED", false),
+			EmbeddingWorkerID:                    getEnv("BACKGROUND_EMBEDDING_WORKER_ID", ""),
+			EmbeddingWorkerBatchSize:             getEnvInt("BACKGROUND_EMBEDDING_WORKER_BATCH_SIZE", 8),
+			EmbeddingWorkerPollIntervalSeconds:   getEnvInt("BACKGROUND_EMBEDDING_WORKER_POLL_INTERVAL_SECONDS", 2),
 		},
 	}
 	return cfg, cfg.Validate()
@@ -147,6 +171,24 @@ func (c *Config) Validate() error {
 	}
 	if c.Embedding.Provider == "local_http" && strings.TrimSpace(c.Embedding.Endpoint) == "" {
 		return fmt.Errorf("EMBEDDING_ENDPOINT is required when EMBEDDING_PROVIDER=local_http")
+	}
+	if c.Background.OfflineMessageCleanupIntervalSeconds <= 0 {
+		return fmt.Errorf("BACKGROUND_OFFLINE_CLEANUP_INTERVAL_SECONDS must be positive")
+	}
+	if c.Background.SyncEventCleanupIntervalSeconds <= 0 {
+		return fmt.Errorf("BACKGROUND_SYNC_CLEANUP_INTERVAL_SECONDS must be positive")
+	}
+	if c.Background.SensitiveConfirmationIntervalSeconds <= 0 {
+		return fmt.Errorf("BACKGROUND_SENSITIVE_CONFIRMATION_INTERVAL_SECONDS must be positive")
+	}
+	if c.Background.KBSubscriptionExpiryIntervalSeconds <= 0 {
+		return fmt.Errorf("BACKGROUND_KB_SUBSCRIPTION_EXPIRY_INTERVAL_SECONDS must be positive")
+	}
+	if c.Background.EmbeddingWorkerBatchSize <= 0 {
+		return fmt.Errorf("BACKGROUND_EMBEDDING_WORKER_BATCH_SIZE must be positive")
+	}
+	if c.Background.EmbeddingWorkerPollIntervalSeconds <= 0 {
+		return fmt.Errorf("BACKGROUND_EMBEDDING_WORKER_POLL_INTERVAL_SECONDS must be positive")
 	}
 	return nil
 }

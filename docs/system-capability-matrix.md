@@ -14,7 +14,7 @@ Legend:
 
 ```text
 Backend: go test ./...
-Result: 139 passed in 11 packages
+Result: 141 passed in 11 packages
 
 Rust SDK: cargo test --workspace --all-targets --locked
 Result: 1560 passed, 2 ignored, 110 suites
@@ -75,7 +75,7 @@ Backend working tree at Stage 0 start had one existing README documentation diff
 | Search | Real BGE-M3 worker | 🟡 | Python worker exists; compose service exists | live operational verification and resource constraints |
 | Search | Hybrid fallback | ✅ | semantic unavailable is explicit | quality scoring / rerank |
 | Search | Chunk-level passage embeddings | ⬜ | entry-level documents only | chunk tables, chunk jobs, passage retrieval |
-| Queue | Embedding durable queue | ✅ | `kb_embedding_jobs`; `FOR UPDATE SKIP LOCKED` | unified background job system |
+| Queue | Embedding durable queue | ✅ | `kb_embedding_jobs`; `FOR UPDATE SKIP LOCKED`; optional in-process worker in unified runner | persisted job history / dead-lettering |
 | Plugin | Go model placeholders | 🟡 | `Plugin`, `PluginVersion`, `PluginUsageRecord` in models | no migration coverage beyond AutoMigrate expectations, no routes/services |
 | Plugin | Marketplace registry | ⬜ | none | models, migrations, repository, service, handlers, tests |
 | Plugin | Plugin package storage | ⬜ | object storage could support it | package object records and review workflow |
@@ -101,12 +101,13 @@ Backend working tree at Stage 0 start had one existing README documentation diff
 | Admin | Admission admin | ✅ | admin admission routes | broader admin console API |
 | Admin | KB admin/moderation | ✅ | review list, review/takedown, report list/resolve, subscription expiry API | reviewer roles and moderation dashboard |
 | Admin | Plugin admin/review | ⬜ | none | review queue and revoke APIs |
-| Admin | Security/admin ops | ⬜ | none | audit/security/job dashboards |
+| Admin | Security/admin ops | 🟡 | audit listing plus unified background runner foundation | job dashboards and manual job trigger APIs |
 | Observability | `/health` | ✅ | database/redis/verifier checks | metrics and structured status |
 | Observability | `/ready` | ✅ | database readiness endpoint | broader dependency readiness policy |
 | Observability | Request IDs | ✅ | `X-Request-ID` middleware; generated or propagated | structured log integration |
 | Observability | Structured logging | ⬜ | standard log today | slog and correlation-aware logs |
-| Release | Go unit/integration tests | ✅ | 139 passed | release-gate script |
+| Ops | Background job runner | ✅ | offline cleanup, sync cleanup, sensitive confirmation cleanup, KB subscription expiry, optional embedding worker | persisted job execution history and admin triggers |
+| Release | Go unit/integration tests | ✅ | 141 passed | release-gate script |
 | Release | Rust SDK tests | ✅ | 1560 passed | backend-pinned FFI artifact gate |
 | Release | Smoke scripts | 🟡 | many M2/M3 smoke scripts exist | unified full platform release gate |
 
