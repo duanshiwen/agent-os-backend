@@ -43,11 +43,16 @@ type CreateKBCollectionInput struct {
 }
 
 type UpdateKBCollectionPricingInput struct {
-	PricingModel     string `json:"pricing_model"`
-	MonthlyPrice     int64  `json:"monthly_price"`
-	IsFree           *bool  `json:"is_free"`
-	PlatformMinPrice int64  `json:"platform_min_price"`
-	PlatformMaxPrice int64  `json:"platform_max_price"`
+	PricingModel     string         `json:"pricing_model"`
+	MonthlyPrice     int64          `json:"monthly_price"`
+	IsFree           *bool          `json:"is_free"`
+	PlatformMinPrice int64          `json:"platform_min_price"`
+	PlatformMaxPrice int64          `json:"platform_max_price"`
+	EntitlementMode  string         `json:"entitlement_mode"`
+	BillingInterval  string         `json:"billing_interval"`
+	TrialDays        int            `json:"trial_days"`
+	Currency         string         `json:"currency"`
+	Metadata         map[string]any `json:"metadata"`
 }
 
 type SearchKBCollectionsInput struct {
@@ -63,9 +68,11 @@ type PublishKBSnapshotInput struct {
 }
 
 type InstallKBCollectionInput struct {
-	TrackMode     string     `json:"track_mode"`
-	PinnedVersion *int       `json:"pinned_version"`
-	ExpiresAt     *time.Time `json:"expires_at"`
+	TrackMode       string     `json:"track_mode"`
+	PinnedVersion   *int       `json:"pinned_version"`
+	ExpiresAt       *time.Time `json:"expires_at"`
+	EntitlementType string     `json:"entitlement_type"`
+	GrantReason     string     `json:"grant_reason"`
 }
 
 type UpdateKBCollectionDeclarationsInput struct {
@@ -385,13 +392,49 @@ func (s *KBHubService) UpdateCollectionPricing(ownerID, collectionID uuid.UUID, 
 			return nil, fmt.Errorf("%w: monthly_price above platform maximum", ErrKBInvalid)
 		}
 	}
+	entitlement := ""
+	if strings.TrimSpace(input.EntitlementMode) != "" {
+		entitlement = normalizeEntitlement(input.EntitlementMode)
+		if entitlement == "" {
+			return nil, fmt.Errorf("%w: invalid entitlement_mode", ErrKBInvalid)
+		}
+	}
+	if entitlement == "" {
+		if isFree {
+			entitlement = KBEntitlementFree
+		} else {
+			entitlement = KBEntitlementPaid
+		}
+	}
+	billingInterval := normalizeBillingInterval(input.BillingInterval, entitlement)
+	if billingInterval == "" {
+		return nil, fmt.Errorf("%w: invalid billing_interval", ErrKBInvalid)
+	}
+	currency := strings.TrimSpace(input.Currency)
+	if currency == "" {
+		currency = "CNY"
+	}
+	if entitlement == KBEntitlementFree || entitlement == KBEntitlementGranted {
+		isFree = true
+		pricingModel = "free"
+		monthlyPrice = 0
+	}
 	collection.IsFree = isFree
 	collection.PricingModel = pricingModel
 	collection.MonthlyPrice = monthlyPrice
 	collection.PlatformMinPrice = input.PlatformMinPrice
 	collection.PlatformMaxPrice = input.PlatformMaxPrice
+	collection.EntitlementMode = entitlement
+	collection.BillingInterval = billingInterval
+	collection.TrialDays = input.TrialDays
+	collection.Currency = currency
 	if err := s.kbRepo.UpdateCollection(collection); err != nil {
 		return nil, err
+	}
+	if s.billingSvc != nil {
+		if _, err := s.billingSvc.UpsertBillingPlan(UpsertKBBillingPlanInput{CollectionID: collectionID, EntitlementType: entitlement, BillingInterval: billingInterval, Price: monthlyPrice, Currency: currency, TrialDays: input.TrialDays, Metadata: input.Metadata}); err != nil {
+			return nil, err
+		}
 	}
 	return collection, nil
 }
@@ -630,7 +673,8 @@ func (s *KBHubService) InstallCollection(userID, collectionID uuid.UUID, input I
 	if userID == uuid.Nil {
 		return nil, fmt.Errorf("%w: user is required", ErrKBInvalid)
 	}
-	if _, err := s.GetPublicCollection(collectionID); err != nil {
+	public, err := s.GetPublicCollection(collectionID)
+	if err != nil {
 		return nil, err
 	}
 	trackMode := strings.TrimSpace(input.TrackMode)
@@ -641,7 +685,6 @@ func (s *KBHubService) InstallCollection(userID, collectionID uuid.UUID, input I
 		return nil, fmt.Errorf("%w: track_mode must be latest or pinned", ErrKBInvalid)
 	}
 	var snapshot *model.KBSnapshot
-	var err error
 	var pinnedVersion *int
 	if trackMode == "pinned" {
 		if input.PinnedVersion == nil || *input.PinnedVersion <= 0 {
@@ -660,15 +703,58 @@ func (s *KBHubService) InstallCollection(userID, collectionID uuid.UUID, input I
 		return nil, err
 	}
 	now := time.Now().UTC()
+	entitlement := normalizeEntitlement(input.EntitlementType)
+	if entitlement == "" {
+		entitlement = public.Collection.EntitlementMode
+	}
+	if entitlement == "" {
+		if public.Collection.IsFree {
+			entitlement = KBEntitlementFree
+		} else {
+			entitlement = KBEntitlementPaid
+		}
+	}
+	expiresAt := input.ExpiresAt
+	periodStart := now
+	periodEnd := expiresAt
+	renewalStatus := "none"
+	if entitlement == KBEntitlementTrial {
+		if periodEnd == nil {
+			trialDays := public.Collection.TrialDays
+			if trialDays <= 0 {
+				trialDays = 14
+			}
+			end := now.AddDate(0, 0, trialDays)
+			periodEnd = &end
+			expiresAt = &end
+		}
+		renewalStatus = "active"
+	} else if entitlement == KBEntitlementPaid {
+		if periodEnd == nil {
+			end := addBillingPeriod(now, public.Collection.BillingInterval)
+			periodEnd = &end
+			expiresAt = &end
+		}
+		renewalStatus = "active"
+	} else if entitlement == KBEntitlementGranted {
+		if strings.TrimSpace(input.GrantReason) == "" {
+			return nil, fmt.Errorf("%w: grant_reason is required for granted entitlement", ErrKBInvalid)
+		}
+	}
 	subscription := &model.KBSubscription{
-		UserID:        userID,
-		CollectionID:  collectionID,
-		SnapshotID:    snapshot.ID,
-		TrackMode:     trackMode,
-		PinnedVersion: pinnedVersion,
-		Status:        "active",
-		StartedAt:     now,
-		ExpiresAt:     input.ExpiresAt,
+		UserID:             userID,
+		CollectionID:       collectionID,
+		SnapshotID:         snapshot.ID,
+		TrackMode:          trackMode,
+		PinnedVersion:      pinnedVersion,
+		Status:             "active",
+		StartedAt:          now,
+		ExpiresAt:          expiresAt,
+		EntitlementType:    entitlement,
+		RenewalStatus:      renewalStatus,
+		CurrentPeriodStart: &periodStart,
+		CurrentPeriodEnd:   periodEnd,
+		GrantReason:        strings.TrimSpace(input.GrantReason),
 	}
 	if err := s.kbRepo.UpsertSubscription(subscription); err != nil {
 		return nil, err
@@ -890,6 +976,17 @@ func ownerIDFromCollection(collection *model.KBCollection) uuid.UUID {
 		return uuid.Nil
 	}
 	return collection.OwnerID
+}
+
+func addBillingPeriod(start time.Time, interval string) time.Time {
+	switch strings.TrimSpace(interval) {
+	case KBBillingIntervalYear:
+		return start.AddDate(1, 0, 0)
+	case KBBillingIntervalMonth, "":
+		return start.AddDate(0, 1, 0)
+	default:
+		return start
+	}
 }
 
 func snapshotEntryChanged(from, to model.KBSnapshotEntry) bool {

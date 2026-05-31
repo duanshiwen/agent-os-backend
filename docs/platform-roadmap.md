@@ -48,7 +48,7 @@ Current known major gaps:
 - Multi-server federation is not implemented beyond local user server-list sync.
 - Governance/policy/audit is not yet a platform-wide control plane.
 - Production observability, admin operations, release gates, and background job unification are incomplete.
-- KB Hub now has a Stage 2 productionization foundation for review/takedown/reporting, source/copyright declarations, snapshot archive/restore/diff, and subscription expiry cleanup; remaining gaps are full invoice/payout operations, per-plan entitlement variants, unified background scheduling, and chunk-level search quality.
+- KB Hub now has a Stage 2 productionization foundation for review/takedown/reporting, source/copyright declarations, snapshot archive/restore/diff, subscription expiry cleanup, per-plan entitlement modes, invoice/refund/dispute records, and payout period aggregation; remaining gaps are real payment integration, tax/export operations, unified background scheduling, and chunk-level search quality.
 
 ## 3. Platform Completion Stages
 
@@ -145,17 +145,21 @@ Remaining Stage 2 gaps:
    - hybrid reranking;
    - query logs, feedback, and evaluation fixtures.
 
-2. Billing completion
-   - pricing rule versions;
-   - plans, invoices, invoice items;
-   - contributor payout operations;
-   - refund/dispute records;
-   - platform fee policy.
+2. Billing and entitlements foundation
+   - versioned billing plans;
+   - free / paid / trial / granted entitlement variants;
+   - invoice and invoice item records;
+   - refund and dispute records;
+   - contributor payout period aggregation;
+   - admin invoice paid / refund resolution / dispute resolution / payout paid APIs.
 
-3. Entitlements
-   - free / paid / trial / granted access variants;
-   - owner/admin revocation;
-   - automated renewal job runner.
+Remaining Stage 2 billing gaps:
+
+- external payment provider integration;
+- automated renewal and collection job runner;
+- tax/export documents;
+- payout dispute and hold policy;
+- owner/admin entitlement revocation.
 
 4. Operations
    - unified background scheduler for expiry, cleanup, billing, embedding, and moderation jobs.

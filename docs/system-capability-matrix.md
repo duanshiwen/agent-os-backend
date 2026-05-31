@@ -14,7 +14,7 @@ Legend:
 
 ```text
 Backend: go test ./...
-Result: 137 passed in 11 packages
+Result: 139 passed in 11 packages
 
 Rust SDK: cargo test --workspace --all-targets --locked
 Result: 1560 passed, 2 ignored, 110 suites
@@ -63,11 +63,12 @@ Backend working tree at Stage 0 start had one existing README documentation diff
 | KB Hub | Immutable snapshot publish | ✅ | `KBSnapshot`; manifest and content objects | subscriber impact preview |
 | KB Hub | Snapshot lifecycle | ✅ | active/archived status, archive/restore, diff | retention/version cleanup policy |
 | KB Hub | Public collection discovery | ✅ | public KB routes gated by published + approved state | ranking/curation quality |
-| KB Hub | Install latest/pinned | ✅ | `KBSubscription`; install/list/cancel; optional expiry | renewal job runner |
-| KB Hub | Installed content access gate | ✅ | installed manifest/content/fulltext endpoints require active subscription | per-plan entitlement variants |
-| KB Hub | Usage metering foundation | ✅ | `KBUsageRecord` | pricing rules, invoices, payouts |
-| KB Hub | Billing account/transaction foundation | ✅ | `BillingAccount`, `BillingTransaction` | full ledger invariants and external payment integration |
-| KB Hub | Contributor earnings foundation | ✅ | `ContributorEarning` | payout cycles, disputes, tax/export docs |
+| KB Hub | Install latest/pinned | ✅ | `KBSubscription`; install/list/cancel; optional expiry; entitlement type and renewal status | automated renewal job runner |
+| KB Hub | Installed content access gate | ✅ | installed manifest/content/fulltext endpoints require active subscription | entitlement revocation policy |
+| KB Hub | Usage metering foundation | ✅ | `KBUsageRecord` | pricing quality and usage invoice automation |
+| KB Hub | Billing account/transaction foundation | ✅ | `BillingAccount`, `BillingTransaction`, `KBBillingPlan`, `KBInvoice`, `KBInvoiceItem` | external payment integration |
+| KB Hub | Contributor earnings foundation | ✅ | `ContributorEarning`, `ContributorPayoutPeriod` | payout holds, disputes, tax/export docs |
+| KB Hub | Refund/dispute foundation | ✅ | `KBRefund`, `KBBillingDispute`; user request/open and admin resolve APIs | payment-provider reconciliation |
 | Search | Public lexical search | ✅ | `KBSearchService`; search docs | ranking tuning and language-specific lexical strategy |
 | Search | Metadata search | ✅ | `mode=metadata` | marketplace relevance |
 | Search | Semantic search deterministic path | ✅ | deterministic provider, pgvector model, smoke script | real BGE-M3 live gate and quality eval |
@@ -105,7 +106,7 @@ Backend working tree at Stage 0 start had one existing README documentation diff
 | Observability | `/ready` | ✅ | database readiness endpoint | broader dependency readiness policy |
 | Observability | Request IDs | ✅ | `X-Request-ID` middleware; generated or propagated | structured log integration |
 | Observability | Structured logging | ⬜ | standard log today | slog and correlation-aware logs |
-| Release | Go unit/integration tests | ✅ | 137 passed | release-gate script |
+| Release | Go unit/integration tests | ✅ | 139 passed | release-gate script |
 | Release | Rust SDK tests | ✅ | 1560 passed | backend-pinned FFI artifact gate |
 | Release | Smoke scripts | 🟡 | many M2/M3 smoke scripts exist | unified full platform release gate |
 

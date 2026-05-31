@@ -34,6 +34,14 @@ const (
 	AuditActionKBSnapshotArchived            = "kb.snapshot.archived"
 	AuditActionKBSnapshotRestored            = "kb.snapshot.restored"
 	AuditActionKBSubscriptionsExpired        = "kb.subscriptions.expired"
+	AuditActionKBBillingPlanUpdated          = "kb.billing_plan.updated"
+	AuditActionKBInvoiceIssued               = "kb.invoice.issued"
+	AuditActionKBInvoicePaid                 = "kb.invoice.paid"
+	AuditActionKBRefundRequested             = "kb.refund.requested"
+	AuditActionKBRefundResolved              = "kb.refund.resolved"
+	AuditActionKBBillingDisputeOpened        = "kb.billing_dispute.opened"
+	AuditActionKBBillingDisputeResolved      = "kb.billing_dispute.resolved"
+	AuditActionKBPayoutPaid                  = "kb.payout.paid"
 )
 
 type AuditService struct {

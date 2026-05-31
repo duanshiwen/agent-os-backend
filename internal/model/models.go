@@ -226,6 +226,10 @@ type KBCollection struct {
 	IsFree               bool              `json:"is_free"`
 	PlatformMinPrice     int64             `json:"platform_min_price"`
 	PlatformMaxPrice     int64             `json:"platform_max_price"`
+	EntitlementMode      string            `gorm:"index;not null;default:free" json:"entitlement_mode"`
+	TrialDays            int               `gorm:"not null;default:0" json:"trial_days"`
+	BillingInterval      string            `gorm:"not null;default:month" json:"billing_interval"`
+	Currency             string            `gorm:"not null;default:CNY" json:"currency"`
 }
 type KBSnapshot struct {
 	Base
@@ -256,14 +260,20 @@ type KBSnapshotEntry struct {
 }
 type KBSubscription struct {
 	Base
-	UserID        uuid.UUID  `gorm:"type:uuid;index;not null;uniqueIndex:idx_kb_subscription_user_collection" json:"user_id"`
-	CollectionID  uuid.UUID  `gorm:"type:uuid;index;not null;uniqueIndex:idx_kb_subscription_user_collection" json:"collection_id"`
-	SnapshotID    uuid.UUID  `gorm:"type:uuid;index" json:"snapshot_id"`
-	TrackMode     string     `gorm:"index;not null;default:latest" json:"track_mode"`
-	PinnedVersion *int       `json:"pinned_version"`
-	Status        string     `gorm:"index;not null;default:active" json:"status"`
-	StartedAt     time.Time  `json:"started_at"`
-	ExpiresAt     *time.Time `json:"expires_at"`
+	UserID             uuid.UUID  `gorm:"type:uuid;index;not null;uniqueIndex:idx_kb_subscription_user_collection" json:"user_id"`
+	CollectionID       uuid.UUID  `gorm:"type:uuid;index;not null;uniqueIndex:idx_kb_subscription_user_collection" json:"collection_id"`
+	SnapshotID         uuid.UUID  `gorm:"type:uuid;index" json:"snapshot_id"`
+	TrackMode          string     `gorm:"index;not null;default:latest" json:"track_mode"`
+	PinnedVersion      *int       `json:"pinned_version"`
+	Status             string     `gorm:"index;not null;default:active" json:"status"`
+	StartedAt          time.Time  `json:"started_at"`
+	ExpiresAt          *time.Time `json:"expires_at"`
+	EntitlementType    string     `gorm:"index;not null;default:free" json:"entitlement_type"`
+	RenewalStatus      string     `gorm:"index;not null;default:none" json:"renewal_status"`
+	CurrentPeriodStart *time.Time `json:"current_period_start"`
+	CurrentPeriodEnd   *time.Time `gorm:"index" json:"current_period_end"`
+	GrantedBy          *uuid.UUID `gorm:"type:uuid;index" json:"granted_by"`
+	GrantReason        string     `gorm:"type:text" json:"grant_reason"`
 }
 type KBModerationReport struct {
 	Base
@@ -373,6 +383,86 @@ type PluginUsageRecord struct {
 	TokensUsed  int        `json:"tokens_used"`
 }
 
+type KBBillingPlan struct {
+	Base
+	CollectionID    uuid.UUID         `gorm:"type:uuid;index;not null;uniqueIndex:idx_kb_billing_plan_collection_version" json:"collection_id"`
+	Version         int               `gorm:"not null;uniqueIndex:idx_kb_billing_plan_collection_version" json:"version"`
+	EntitlementType string            `gorm:"index;not null" json:"entitlement_type"`
+	BillingInterval string            `gorm:"not null;default:month" json:"billing_interval"`
+	Price           int64             `gorm:"not null;default:0" json:"price"`
+	Currency        string            `gorm:"not null;default:CNY" json:"currency"`
+	TrialDays       int               `gorm:"not null;default:0" json:"trial_days"`
+	Status          string            `gorm:"index;not null;default:active" json:"status"`
+	EffectiveAt     time.Time         `gorm:"index;not null" json:"effective_at"`
+	Metadata        datatypes.JSONMap `gorm:"type:jsonb" json:"metadata"`
+}
+
+type KBInvoice struct {
+	Base
+	UserID         uuid.UUID         `gorm:"type:uuid;index;not null" json:"user_id"`
+	CollectionID   *uuid.UUID        `gorm:"type:uuid;index" json:"collection_id"`
+	SubscriptionID *uuid.UUID        `gorm:"type:uuid;index" json:"subscription_id"`
+	Status         string            `gorm:"index;not null;default:draft" json:"status"`
+	Currency       string            `gorm:"not null;default:CNY" json:"currency"`
+	Subtotal       int64             `gorm:"not null;default:0" json:"subtotal"`
+	PlatformFee    int64             `gorm:"not null;default:0" json:"platform_fee"`
+	Total          int64             `gorm:"not null;default:0" json:"total"`
+	PeriodStart    *time.Time        `json:"period_start"`
+	PeriodEnd      *time.Time        `json:"period_end"`
+	IssuedAt       *time.Time        `json:"issued_at"`
+	PaidAt         *time.Time        `json:"paid_at"`
+	VoidedAt       *time.Time        `json:"voided_at"`
+	Metadata       datatypes.JSONMap `gorm:"type:jsonb" json:"metadata"`
+}
+
+type KBInvoiceItem struct {
+	Base
+	InvoiceID     uuid.UUID         `gorm:"type:uuid;index;not null" json:"invoice_id"`
+	UsageRecordID *uuid.UUID        `gorm:"type:uuid;index" json:"usage_record_id"`
+	Description   string            `gorm:"not null" json:"description"`
+	Quantity      int64             `gorm:"not null;default:1" json:"quantity"`
+	UnitPrice     int64             `gorm:"not null;default:0" json:"unit_price"`
+	Amount        int64             `gorm:"not null;default:0" json:"amount"`
+	Metadata      datatypes.JSONMap `gorm:"type:jsonb" json:"metadata"`
+}
+
+type ContributorPayoutPeriod struct {
+	Base
+	ContributorID uuid.UUID         `gorm:"type:uuid;index;not null;uniqueIndex:idx_contributor_payout_period" json:"contributor_id"`
+	Period        string            `gorm:"index;not null;uniqueIndex:idx_contributor_payout_period" json:"period"`
+	Status        string            `gorm:"index;not null;default:open" json:"status"`
+	GrossAmount   int64             `gorm:"not null;default:0" json:"gross_amount"`
+	PlatformFee   int64             `gorm:"not null;default:0" json:"platform_fee"`
+	NetAmount     int64             `gorm:"not null;default:0" json:"net_amount"`
+	PaidAt        *time.Time        `json:"paid_at"`
+	Metadata      datatypes.JSONMap `gorm:"type:jsonb" json:"metadata"`
+}
+
+type KBRefund struct {
+	Base
+	InvoiceID   uuid.UUID         `gorm:"type:uuid;index;not null" json:"invoice_id"`
+	UserID      uuid.UUID         `gorm:"type:uuid;index;not null" json:"user_id"`
+	Amount      int64             `gorm:"not null" json:"amount"`
+	Reason      string            `gorm:"type:text;not null" json:"reason"`
+	Status      string            `gorm:"index;not null;default:pending" json:"status"`
+	ProcessedBy *uuid.UUID        `gorm:"type:uuid;index" json:"processed_by"`
+	ProcessedAt *time.Time        `json:"processed_at"`
+	Metadata    datatypes.JSONMap `gorm:"type:jsonb" json:"metadata"`
+}
+
+type KBBillingDispute struct {
+	Base
+	InvoiceID  uuid.UUID         `gorm:"type:uuid;index;not null" json:"invoice_id"`
+	UserID     uuid.UUID         `gorm:"type:uuid;index;not null" json:"user_id"`
+	Reason     string            `gorm:"type:text;not null" json:"reason"`
+	Detail     string            `gorm:"type:text" json:"detail"`
+	Status     string            `gorm:"index;not null;default:open" json:"status"`
+	ResolvedBy *uuid.UUID        `gorm:"type:uuid;index" json:"resolved_by"`
+	ResolvedAt *time.Time        `json:"resolved_at"`
+	Resolution string            `gorm:"type:text" json:"resolution"`
+	Metadata   datatypes.JSONMap `gorm:"type:jsonb" json:"metadata"`
+}
+
 type BillingAccount struct {
 	Base
 	UserID   uuid.UUID `gorm:"type:uuid;uniqueIndex" json:"user_id"`
@@ -424,5 +514,5 @@ type AuditEvent struct {
 }
 
 func AllModels() []any {
-	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &UserAgentSetting{}, &UserServerConnection{}, &UserKnowledgeEntry{}, &ObjectRecord{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBModerationReport{}, &KBUsageRecord{}, &KBSearchDocument{}, &KBEmbeddingJob{}, &KBSearchEmbedding{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}, &SensitiveOperationConfirmation{}, &AuditEvent{}}
+	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &UserAgentSetting{}, &UserServerConnection{}, &UserKnowledgeEntry{}, &ObjectRecord{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBModerationReport{}, &KBUsageRecord{}, &KBSearchDocument{}, &KBEmbeddingJob{}, &KBSearchEmbedding{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &KBBillingPlan{}, &KBInvoice{}, &KBInvoiceItem{}, &ContributorPayoutPeriod{}, &KBRefund{}, &KBBillingDispute{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}, &SensitiveOperationConfirmation{}, &AuditEvent{}}
 }

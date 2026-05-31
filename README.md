@@ -232,7 +232,63 @@ curl -H "Authorization: Bearer $TOKEN" \
   "http://localhost:8080/api/v1/kb/collections/$COLLECTION_ID/snapshot-diff?from_snapshot_id=$FROM_SNAPSHOT_ID&to_snapshot_id=$TO_SNAPSHOT_ID"
 ```
 
-Stage 2 尚未包含 Federated KB Discovery；KB Hub 仍保持 local-server scoped。后续仍需完成 invoice / payout / refund、per-plan entitlement variants、统一 background scheduler、chunk-level search quality 和真实 BGE-M3 live gate。
+Stage 2 尚未包含 Federated KB Discovery；KB Hub 仍保持 local-server scoped。
+
+#### KB Hub Billing / Entitlements（Stage 2）
+
+Stage 2 继续补齐 KB Hub 商业化基础能力：
+
+- collection entitlement mode：`free`、`paid`、`trial`、`granted`；
+- billing interval：`none`、`month`、`year`；
+- versioned billing plans；
+- subscription entitlement type、renewal status、current period；
+- invoice / invoice item；
+- refund request / admin resolution；
+- billing dispute / admin resolution；
+- contributor payout period aggregation and admin paid marker。
+
+User / owner APIs：
+
+| 方法 | 路径 | 描述 |
+|------|------|------|
+| GET | `/api/v1/billing/invoices` | 查看当前用户 invoices |
+| GET | `/api/v1/billing/invoices/:invoice_id` | 查看 invoice detail 和 items |
+| POST | `/api/v1/billing/refunds` | 发起退款请求 |
+| GET | `/api/v1/billing/refunds` | 查看当前用户退款请求 |
+| POST | `/api/v1/billing/disputes` | 发起账单争议 |
+| GET | `/api/v1/billing/disputes` | 查看当前用户账单争议 |
+| GET | `/api/v1/billing/payout-periods` | contributor 查看 payout periods |
+| GET | `/api/v1/kb/collections/:id/billing-plans` | collection owner 查看 billing plan versions |
+
+Admin APIs：
+
+| 方法 | 路径 | 描述 |
+|------|------|------|
+| POST | `/api/v1/admin/kb/billing/invoices` | 创建并 issue invoice |
+| POST | `/api/v1/admin/kb/billing/invoices/:invoice_id/pay` | 标记 invoice paid |
+| POST | `/api/v1/admin/kb/billing/refunds/:refund_id/resolve` | 审核退款：`approved` / `rejected` / `processed` |
+| POST | `/api/v1/admin/kb/billing/disputes/:dispute_id/resolve` | 处理争议：`accepted` / `rejected` / `cancelled` |
+| POST | `/api/v1/admin/kb/billing/payout-periods/:payout_id/pay` | 标记 contributor payout period paid |
+
+示例：设置 paid monthly entitlement：
+
+```bash
+curl -X PUT -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"is_free":false,"pricing_model":"monthly","monthly_price":9900,"entitlement_mode":"paid","billing_interval":"month","currency":"CNY","trial_days":7}' \
+  http://localhost:8080/api/v1/kb/collections/$COLLECTION_ID/pricing
+```
+
+示例：创建 invoice：
+
+```bash
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"'$USER_ID'","collection_id":"'$COLLECTION_ID'","currency":"CNY","items":[{"description":"Monthly KB access","quantity":1,"unit_price":9900}]}' \
+  http://localhost:8080/api/v1/admin/kb/billing/invoices
+```
+
+仍未包含真实外部支付通道、自动扣款、税务/发票导出和统一 background scheduler。
 
 #### KB Hub 语义搜索（M3.5）
 

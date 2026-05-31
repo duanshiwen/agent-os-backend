@@ -360,6 +360,28 @@ func (h *KBHubHandler) UpdateCollectionPricing(c *gin.Context) {
 	response.OK(c, collection)
 }
 
+func (h *KBHubHandler) ListCollectionBillingPlans(c *gin.Context) {
+	if h.billingSvc == nil {
+		response.InternalError(c, "billing service not configured")
+		return
+	}
+	userID := middleware.MustGetUserID(c)
+	collectionID, ok := parseUUIDParam(c, "id")
+	if !ok {
+		return
+	}
+	if _, err := h.svc.GetCollection(userID, collectionID); err != nil {
+		h.handleError(c, err)
+		return
+	}
+	plans, err := h.billingSvc.ListBillingPlans(collectionID)
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, plans)
+}
+
 func (h *KBHubHandler) GetCollectionStats(c *gin.Context) {
 	userID := middleware.MustGetUserID(c)
 	collectionID, ok := parseUUIDParam(c, "id")
@@ -521,6 +543,203 @@ func (h *KBHubHandler) ListBillingTransactions(c *gin.Context) {
 	response.OK(c, txns)
 }
 
+func (h *KBHubHandler) ListBillingInvoices(c *gin.Context) {
+	if h.billingSvc == nil {
+		response.InternalError(c, "billing service not configured")
+		return
+	}
+	invoices, err := h.billingSvc.ListInvoices(middleware.MustGetUserID(c), parseIntQuery(c, "limit", 50), parseIntQuery(c, "offset", 0))
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, invoices)
+}
+
+func (h *KBHubHandler) GetBillingInvoice(c *gin.Context) {
+	if h.billingSvc == nil {
+		response.InternalError(c, "billing service not configured")
+		return
+	}
+	invoiceID, ok := parseUUIDParam(c, "invoice_id")
+	if !ok {
+		return
+	}
+	detail, err := h.billingSvc.GetInvoiceDetail(middleware.MustGetUserID(c), invoiceID)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	response.OK(c, detail)
+}
+
+func (h *KBHubHandler) RequestBillingRefund(c *gin.Context) {
+	if h.billingSvc == nil {
+		response.InternalError(c, "billing service not configured")
+		return
+	}
+	var req service.RequestKBRefundInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	refund, err := h.billingSvc.RequestRefund(middleware.MustGetUserID(c), req)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	recordAuditFromContext(c, h.auditSvc, service.AuditActionKBRefundRequested, "kb_refund", refund.ID.String(), service.AuditOutcomeSuccess, gin.H{"invoice_id": refund.InvoiceID.String(), "amount": refund.Amount})
+	response.Created(c, refund)
+}
+
+func (h *KBHubHandler) ListBillingRefunds(c *gin.Context) {
+	if h.billingSvc == nil {
+		response.InternalError(c, "billing service not configured")
+		return
+	}
+	refunds, err := h.billingSvc.ListRefunds(middleware.MustGetUserID(c), parseIntQuery(c, "limit", 50), parseIntQuery(c, "offset", 0))
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, refunds)
+}
+
+func (h *KBHubHandler) OpenBillingDispute(c *gin.Context) {
+	if h.billingSvc == nil {
+		response.InternalError(c, "billing service not configured")
+		return
+	}
+	var req service.OpenKBBillingDisputeInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	dispute, err := h.billingSvc.OpenDispute(middleware.MustGetUserID(c), req)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	recordAuditFromContext(c, h.auditSvc, service.AuditActionKBBillingDisputeOpened, "kb_billing_dispute", dispute.ID.String(), service.AuditOutcomeSuccess, gin.H{"invoice_id": dispute.InvoiceID.String(), "reason": dispute.Reason})
+	response.Created(c, dispute)
+}
+
+func (h *KBHubHandler) ListBillingDisputes(c *gin.Context) {
+	if h.billingSvc == nil {
+		response.InternalError(c, "billing service not configured")
+		return
+	}
+	disputes, err := h.billingSvc.ListDisputes(middleware.MustGetUserID(c), parseIntQuery(c, "limit", 50), parseIntQuery(c, "offset", 0))
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, disputes)
+}
+
+func (h *KBHubHandler) AdminCreateBillingInvoice(c *gin.Context) {
+	if h.billingSvc == nil {
+		response.InternalError(c, "billing service not configured")
+		return
+	}
+	var req service.CreateKBInvoiceInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	detail, err := h.billingSvc.CreateInvoice(req)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	recordAuditFromContext(c, h.auditSvc, service.AuditActionKBInvoiceIssued, "kb_invoice", detail.Invoice.ID.String(), service.AuditOutcomeSuccess, gin.H{"user_id": detail.Invoice.UserID.String(), "total": detail.Invoice.Total})
+	response.Created(c, detail)
+}
+
+func (h *KBHubHandler) AdminMarkInvoicePaid(c *gin.Context) {
+	if h.billingSvc == nil {
+		response.InternalError(c, "billing service not configured")
+		return
+	}
+	invoiceID, ok := parseUUIDParam(c, "invoice_id")
+	if !ok {
+		return
+	}
+	invoice, err := h.billingSvc.MarkInvoicePaid(invoiceID)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	recordAuditFromContext(c, h.auditSvc, service.AuditActionKBInvoicePaid, "kb_invoice", invoice.ID.String(), service.AuditOutcomeSuccess, gin.H{"total": invoice.Total})
+	response.OK(c, invoice)
+}
+
+func (h *KBHubHandler) AdminResolveRefund(c *gin.Context) {
+	if h.billingSvc == nil {
+		response.InternalError(c, "billing service not configured")
+		return
+	}
+	adminID := middleware.MustGetUserID(c)
+	refundID, ok := parseUUIDParam(c, "refund_id")
+	if !ok {
+		return
+	}
+	var req service.ResolveKBRefundInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	refund, err := h.billingSvc.ResolveRefund(adminID, refundID, req)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	recordAuditFromContext(c, h.auditSvc, service.AuditActionKBRefundResolved, "kb_refund", refund.ID.String(), service.AuditOutcomeSuccess, gin.H{"status": refund.Status})
+	response.OK(c, refund)
+}
+
+func (h *KBHubHandler) AdminResolveDispute(c *gin.Context) {
+	if h.billingSvc == nil {
+		response.InternalError(c, "billing service not configured")
+		return
+	}
+	adminID := middleware.MustGetUserID(c)
+	disputeID, ok := parseUUIDParam(c, "dispute_id")
+	if !ok {
+		return
+	}
+	var req service.ResolveKBBillingDisputeInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	dispute, err := h.billingSvc.ResolveDispute(adminID, disputeID, req)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	recordAuditFromContext(c, h.auditSvc, service.AuditActionKBBillingDisputeResolved, "kb_billing_dispute", dispute.ID.String(), service.AuditOutcomeSuccess, gin.H{"status": dispute.Status})
+	response.OK(c, dispute)
+}
+
+func (h *KBHubHandler) AdminMarkPayoutPaid(c *gin.Context) {
+	if h.billingSvc == nil {
+		response.InternalError(c, "billing service not configured")
+		return
+	}
+	payoutID, ok := parseUUIDParam(c, "payout_id")
+	if !ok {
+		return
+	}
+	payout, err := h.billingSvc.MarkPayoutPaid(payoutID)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	recordAuditFromContext(c, h.auditSvc, service.AuditActionKBPayoutPaid, "contributor_payout_period", payout.ID.String(), service.AuditOutcomeSuccess, gin.H{"period": payout.Period, "net_amount": payout.NetAmount})
+	response.OK(c, payout)
+}
+
 func (h *KBHubHandler) AdminListCollectionsForReview(c *gin.Context) {
 	collections, err := h.svc.ListCollectionsForReview(c.Query("review_status"), parseIntQuery(c, "limit", 50), parseIntQuery(c, "offset", 0))
 	if err != nil {
@@ -586,6 +805,19 @@ func (h *KBHubHandler) AdminExpireSubscriptions(c *gin.Context) {
 	}
 	recordAuditFromContext(c, h.auditSvc, service.AuditActionKBSubscriptionsExpired, "kb_subscription", "expired", service.AuditOutcomeSuccess, gin.H{"expired": count})
 	response.OK(c, gin.H{"expired": count})
+}
+
+func (h *KBHubHandler) ListContributorPayoutPeriods(c *gin.Context) {
+	if h.billingSvc == nil {
+		response.InternalError(c, "billing service not configured")
+		return
+	}
+	payouts, err := h.billingSvc.ListPayoutPeriods(middleware.MustGetUserID(c), parseIntQuery(c, "limit", 50), parseIntQuery(c, "offset", 0))
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, payouts)
 }
 
 func (h *KBHubHandler) ListContributorEarnings(c *gin.Context) {
