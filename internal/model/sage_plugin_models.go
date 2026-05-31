@@ -37,6 +37,7 @@ type SAGEPluginVersion struct {
 	ManifestHash        string                      `gorm:"index;not null" json:"manifest_hash"`
 	ManifestSnapshot    datatypes.JSONMap           `gorm:"type:jsonb;not null" json:"manifest_snapshot"`
 	RawManifestObjectID *uuid.UUID                  `gorm:"type:uuid" json:"raw_manifest_object_id"`
+	PackageObjectID     *uuid.UUID                  `gorm:"type:uuid" json:"package_object_id"`
 	ValidationStatus    string                      `gorm:"index;not null;default:pending" json:"validation_status"`
 	ValidationErrors    datatypes.JSONSlice[string] `gorm:"type:jsonb;not null" json:"validation_errors"`
 	ValidationWarnings  datatypes.JSONSlice[string] `gorm:"type:jsonb;not null" json:"validation_warnings"`

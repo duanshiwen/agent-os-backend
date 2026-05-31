@@ -360,6 +360,14 @@ APP_PORT=18080 EMBEDDING_PROVIDER=deterministic EMBEDDING_MODEL=deterministic-te
 BASE_URL=http://localhost:18080 ./scripts/smoke-kb-semantic-deterministic.sh
 ```
 
+真实 BGE-M3 / `local_http` 端到端 smoke（验证真实 embedding worker → publish → durable queue → Go worker → pgvector → semantic search）：
+
+```bash
+docker compose up -d postgres redis minio embedding-worker
+APP_PORT=18081 EMBEDDING_PROVIDER=local_http EMBEDDING_ENDPOINT=http://localhost:8091 EMBEDDING_MODEL=BAAI/bge-m3 EMBEDDING_DIMENSIONS=1024 go run ./cmd/server
+BASE_URL=http://localhost:18081 EMBEDDING_ENDPOINT=http://localhost:8091 ./scripts/smoke-kb-semantic-local-http.sh
+```
+
 查询 snapshot embedding 状态：
 
 ```bash
@@ -374,6 +382,18 @@ curl -H "Authorization: Bearer $TOKEN" \
 - `mode=hybrid`：semantic 不可用时降级 lexical，并返回 `semantic_available=false` 与原因
 
 普通 Go CI 使用 deterministic provider / SQLite fallback，不下载真实 BGE-M3。
+
+#### SAGE Plugin Runtime / Control-Plane Smoke
+
+SAGE Backend 是开放平台控制面，不执行第三方插件 Flow。可用自包含 smoke 验证 object upload → icon/package binding → developer submit → admin review → user install/grant → sync events → policy bundle → mock client flow call → invocation/report → developer metrics：
+
+```bash
+# 需要 PostgreSQL/Redis/MinIO 与后端 API 已启动。
+# 脚本会启动 examples/sage-plugins/hotel-booking/mock_server.py 作为第三方 Plugin Server mock。
+BASE_URL=http://localhost:8080 ./scripts/smoke-sage-plugin-runtime.sh
+```
+
+该 smoke 会通过 ObjectService / MinIO 上传插件 icon 与 package mock 资产，并验证 catalog 只返回安全资产 metadata（object id、filename、content type、hash、size）。它也会在本地 PostgreSQL 中把临时 smoke 用户标记为 admin，以覆盖 review route。正式产品仍需要独立 admin bootstrap 策略。
 
 #### WebSocket
 

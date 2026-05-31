@@ -14,7 +14,7 @@ Legend:
 
 ```text
 Backend: go test ./...
-Result: 141 passed in 11 packages
+Result: 150 passed in 11 packages
 
 Rust SDK: cargo test --workspace --all-targets --locked
 Result: 1560 passed, 2 ignored, 110 suites
@@ -50,9 +50,9 @@ Backend working tree at Stage 0 start had one existing README documentation diff
 | Sync | Message sync | ✅ | `message.created` | full conversation reconstruction solely from sync not complete |
 | Sync | Skill settings sync | ✅ | settings routes and events | schema version evolution |
 | Sync | Agent settings sync | ✅ | settings routes and events | schema version evolution |
-| Sync | Server list sync | ✅ | `/servers` routes and events | not federation |
+| Sync | Server list and plugin sync | ✅ | `/servers` routes and `plugin.installed/uninstalled/enabled/disabled/permission_granted/permission_revoked` events | not federation |
 | Sync | Personal knowledge sync | ✅ | entry CRUD, tombstone, version conflict, content hash | restore operation and full client merge engine |
-| Sync | Plugin sync taxonomy | ⬜ | central contract includes `plugin` type but no plugin subsystem | plugin install/grant events and tests |
+| Sync | Plugin sync taxonomy | 🟡 | SAGE subsystem exists but install/grant state is not yet emitted as sync events | plugin install/grant/enable/disable events and tests |
 | Sync | Schema version negotiation | ⬜ | schema_version stored | `/sync/capabilities`, compatibility strategy |
 | Object storage | Object record metadata | ✅ | `object_records` migration/model | lifecycle cleanup job |
 | Object storage | Upload intent / complete / download / delete APIs | ✅ | `ObjectService`; authenticated routes | malware/content scanning and quota policy |
@@ -72,17 +72,17 @@ Backend working tree at Stage 0 start had one existing README documentation diff
 | Search | Public lexical search | ✅ | `KBSearchService`; search docs | ranking tuning and language-specific lexical strategy |
 | Search | Metadata search | ✅ | `mode=metadata` | marketplace relevance |
 | Search | Semantic search deterministic path | ✅ | deterministic provider, pgvector model, smoke script | real BGE-M3 live gate and quality eval |
-| Search | Real BGE-M3 worker | 🟡 | Python worker exists; compose service exists | live operational verification and resource constraints |
+| Search | Real BGE-M3 worker | ✅ | Python worker, compose service, `scripts/smoke-kb-embedding-worker.sh`, `scripts/smoke-kb-semantic-local-http.sh` | resource constraints, eval fixtures, and search-quality tuning |
 | Search | Hybrid fallback | ✅ | semantic unavailable is explicit | quality scoring / rerank |
 | Search | Chunk-level passage embeddings | ⬜ | entry-level documents only | chunk tables, chunk jobs, passage retrieval |
 | Queue | Embedding durable queue | ✅ | `kb_embedding_jobs`; `FOR UPDATE SKIP LOCKED`; optional in-process worker in unified runner | persisted job history / dead-lettering |
-| Plugin | Go model placeholders | 🟡 | `Plugin`, `PluginVersion`, `PluginUsageRecord` in models | no migration coverage beyond AutoMigrate expectations, no routes/services |
-| Plugin | Marketplace registry | ⬜ | none | models, migrations, repository, service, handlers, tests |
-| Plugin | Plugin package storage | ⬜ | object storage could support it | package object records and review workflow |
-| Plugin | Tool Manifest | ⬜ | none | SAGE schema validation |
-| Plugin | Flow Definition | ⬜ | none | SAGE engine |
-| Plugin | Execution Report | ⬜ | none | report ledger, idempotency, billing, audit |
-| Plugin | Installation / grants | ⬜ | none | capability grants and sync events |
+| Plugin | SAGE Open Platform models | ✅ | `sage_*` models and migrations `022_sage_plugin_open_platform.sql`, `023_sage_plugin_asset_bindings.sql` | richer lifecycle states |
+| Plugin | Marketplace registry | ✅ | developer create plugin, submit versions, public catalog, repository/service/handler tests | developer profile polish and richer catalog ranking |
+| Plugin | Plugin package/icon storage | ✅ | ObjectService/MinIO-backed icon and package bindings; active developer-owned object validation; safe catalog asset metadata | review-time asset scanning and signing |
+| Plugin | SAGE Manifest | ✅ | `SAGEManifestValidator`, manifest hash, permission/risk summaries, validation tests | stronger schema evolution and compatibility policy |
+| Plugin | Runtime Flow contract | ✅ | mock plugin server + `scripts/smoke-sage-plugin-runtime.sh`; Backend intentionally does not execute Flow | real AgentOS Client integration |
+| Plugin | Execution Report | ✅ | invocation and execution report APIs, usage ledger / metrics foundation | idempotency hardening and billing integration |
+| Plugin | Installation / grants | ✅ | install/uninstall/enable/disable/grant/revoke APIs, high-risk grants use sensitive confirmation, `plugin.*` sync events | richer grant scopes and real AgentOS Client integration |
 | Governance | Capability taxonomy | ⬜ | none | platform-wide capability model |
 | Governance | Policy engine | ⬜ | none | allow/approval/deny decisions |
 | Governance | Tool definition scanning | ⬜ | none | injection/typosquatting/capability mismatch scanner |
@@ -100,16 +100,16 @@ Backend working tree at Stage 0 start had one existing README documentation diff
 | Federation | Cross-server DB replication | 🚫 | intentionally not part of design | preserve server independence |
 | Admin | Admission admin | ✅ | admin admission routes | broader admin console API |
 | Admin | KB admin/moderation | ✅ | review list, review/takedown, report list/resolve, subscription expiry API | reviewer roles and moderation dashboard |
-| Admin | Plugin admin/review | ⬜ | none | review queue and revoke APIs |
+| Admin | Plugin admin/review | ✅ | SAGE review queue, approve/reject/request_changes, suspend APIs | richer reviewer roles and policy dashboards |
 | Admin | Security/admin ops | 🟡 | audit listing plus unified background runner foundation | job dashboards and manual job trigger APIs |
 | Observability | `/health` | ✅ | database/redis/verifier checks | metrics and structured status |
 | Observability | `/ready` | ✅ | database readiness endpoint | broader dependency readiness policy |
 | Observability | Request IDs | ✅ | `X-Request-ID` middleware; generated or propagated | structured log integration |
 | Observability | Structured logging | ⬜ | standard log today | slog and correlation-aware logs |
 | Ops | Background job runner | ✅ | offline cleanup, sync cleanup, sensitive confirmation cleanup, KB subscription expiry, optional embedding worker | persisted job execution history and admin triggers |
-| Release | Go unit/integration tests | ✅ | 141 passed | release-gate script |
+| Release | Go unit/integration tests | ✅ | 150 passed | release-gate script |
 | Release | Rust SDK tests | ✅ | 1560 passed | backend-pinned FFI artifact gate |
-| Release | Smoke scripts | 🟡 | many M2/M3 smoke scripts exist | unified full platform release gate |
+| Release | Smoke scripts | 🟡 | M2/M3 semantic and SAGE runtime smoke scripts exist | unified full platform release gate |
 
 ## 3. Existing API Surface Summary
 
@@ -120,6 +120,7 @@ Public / unauthenticated:
 - `POST /api/v1/auth/register` — Gone
 - `GET /api/v1/ws?token=...`
 - `POST /api/v1/devices/pairing/claim`
+- SAGE catalog plugin list/detail;
 - `GET /api/v1/kb/public/collections`
 - `GET /api/v1/kb/public/search`
 - `GET /api/v1/kb/public/collections/:id`
@@ -139,13 +140,15 @@ Authenticated:
 - KB collection owner, publishing, pricing, stats, earnings;
 - KB install/cancel/list subscriptions;
 - installed manifest/content/fulltext access;
-- embedding status and retry failed jobs.
+- embedding status and retry failed jobs;
+- SAGE developer plugin registry, manifest submission/validation, install/grants, policy bundle, invocation/report, developer metrics.
 
 Admin:
 
 - admission policy;
 - invitation code;
-- admission request list/approve/reject.
+- admission request list/approve/reject;
+- SAGE plugin review queue, review decision, and suspend APIs.
 
 ## 4. Stage 0 Decisions from Matrix
 
@@ -153,4 +156,4 @@ Admin:
 2. Plugin/SAGE should be built as a complete subsystem with governance and audit dependencies, not as ungoverned tool execution.
 3. Multi-server federation should reuse identity, sync references, governance, and trust records; it should not introduce cross-server database replication.
 4. The existing plugin model placeholders should be treated as provisional and can be replaced by proper migrations/models if needed.
-5. Search quality next step is chunk-level passage retrieval only after real BGE-M3 operational path is verified.
+5. Real BGE-M3 operational path is now verified locally; search quality next step is chunk-level passage retrieval plus retrieval-quality fixtures, not provider-architecture churn.

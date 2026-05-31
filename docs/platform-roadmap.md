@@ -21,7 +21,7 @@ Fresh local verification before this roadmap:
 
 ```text
 Backend: go test ./...
-Result: 122 passed in 11 packages
+Result: 150 passed in 11 packages
 
 Rust SDK: cargo test --workspace --all-targets --locked
 Result: 1560 passed, 2 ignored, 110 suites
@@ -43,8 +43,8 @@ Current backend implementation includes:
 
 Current known major gaps:
 
-- Plugin Marketplace / SAGE routes are not implemented.
-- Plugin data types exist in Go model definitions but are not yet a coherent product subsystem.
+- SAGE Plugin Open Platform backend foundation is implemented: registry, manifest validation, review/catalog, installation/grants, policy bundle, invocation/report, and developer metrics.
+- SAGE runtime/control-plane smoke is implemented via `scripts/smoke-sage-plugin-runtime.sh`; plugin lifecycle/permission state sync and icon/package object bindings are implemented. Remaining SAGE gaps are richer governance scanning and production policy operations.
 - Multi-server federation is not implemented beyond local user server-list sync.
 - Governance/policy/audit is not yet a platform-wide control plane.
 - Production observability, admin operations, release gates, and background job unification are incomplete.
@@ -138,9 +138,9 @@ Completed Stage 2 foundation:
 
 Remaining Stage 2 gaps:
 
-1. Real semantic search operational gate and quality
-   - real BGE-M3 worker path live smoke;
-   - chunk-level search documents;
+1. Semantic search quality
+   - real BGE-M3 worker path live smoke is verified locally via `scripts/smoke-kb-embedding-worker.sh` and `scripts/smoke-kb-semantic-local-http.sh`;
+   - remaining work is chunk-level search documents;
    - passage embeddings;
    - hybrid reranking;
    - query logs, feedback, and evaluation fixtures.
@@ -166,45 +166,35 @@ Remaining Stage 2 billing gaps:
    - unified background job runner for offline message cleanup, sync event cleanup, expired sensitive operation confirmations, KB subscription expiry, and optional in-process KB embedding worker.
    - remaining: persisted job execution history, admin job trigger/list APIs, renewal collection jobs, and future moderation jobs.
 
-## 7. Stage 3 — Full SAGE Plugin Marketplace
+## 7. Stage 3 — SAGE Client-Ready Plugin Platform
 
-Goal: implement the plugin economy and SAGE protocol as complete server-side product surfaces.
+Goal: move the implemented SAGE backend foundation from control-plane APIs to a client-ready platform slice with runtime contract smoke, multi-device sync semantics, object-backed plugin assets, and release-gated evidence.
 
 Primary workstreams:
 
-1. Plugin registry
-   - developer profiles;
-   - plugin metadata;
-   - semantic version records;
-   - package/icon object storage;
-   - statuses: draft, submitted, under_review, approved, rejected, suspended, deprecated, archived.
+1. Runtime contract smoke
+   - implemented with `examples/sage-plugins/hotel-booking/mock_server.py` and `scripts/smoke-sage-plugin-runtime.sh`;
+   - verified path: create → submit → approve → install → grant → policy bundle → mock flow call → invocation/report → metrics.
 
-2. Manifest contract
-   - Tool Manifest schema;
-   - capability declarations;
-   - privacy declarations;
-   - billing declarations;
-   - output schema and risk metadata.
+2. Plugin state sync
+   - implemented events: `plugin.installed`, `plugin.uninstalled`, `plugin.enabled`, `plugin.disabled`, `plugin.permission_granted`, `plugin.permission_revoked`;
+   - verified by service tests and `scripts/smoke-sage-plugin-runtime.sh` public sync pull assertions.
 
-3. Review workflow
-   - manifest validation;
-   - injection scan;
-   - typosquatting scan;
-   - capability/risk review;
-   - admin approval/rejection/revocation.
+3. Plugin assets
+   - implemented package/icon object storage using `ObjectService` / MinIO;
+   - developer-owned active object validation for icon/package bindings;
+   - catalog-safe asset metadata for icon/package records.
 
-4. Installation and grants
-   - user installation;
-   - capability grants/revocation;
-   - plugin enable/disable sync events;
-   - installed plugin listing.
+4. Governance hardening
+   - injection scan and typosquatting scan;
+   - capability/risk review quality;
+   - admin revoke/suspend operational policy.
 
-5. SAGE flow engine
-   - Flow Definition;
-   - step state;
-   - approval gates;
-   - execution report ledger;
-   - usage/billing integration.
+5. Reporting and billing integration
+   - strengthen execution report ledger idempotency;
+   - connect invocation usage to future billing without implementing real payment in this stage.
+
+Non-goal: Backend does not execute third-party SAGE Flow definitions and does not host arbitrary plugin code.
 
 ## 8. Stage 4 — Agent Tool Governance Plane
 

@@ -18,13 +18,17 @@ const (
 )
 
 const (
-	SyncOperationCreated  = "created"
-	SyncOperationUpdated  = "updated"
-	SyncOperationDeleted  = "deleted"
-	SyncOperationAdded    = "added"
-	SyncOperationRemoved  = "removed"
-	SyncOperationEnabled  = "enabled"
-	SyncOperationDisabled = "disabled"
+	SyncOperationCreated           = "created"
+	SyncOperationUpdated           = "updated"
+	SyncOperationDeleted           = "deleted"
+	SyncOperationAdded             = "added"
+	SyncOperationRemoved           = "removed"
+	SyncOperationEnabled           = "enabled"
+	SyncOperationDisabled          = "disabled"
+	SyncOperationInstalled         = "installed"
+	SyncOperationUninstalled       = "uninstalled"
+	SyncOperationPermissionGranted = "permission_granted"
+	SyncOperationPermissionRevoked = "permission_revoked"
 )
 
 // Compatibility aliases kept while the rest of the backend still uses the
@@ -38,18 +42,22 @@ const (
 	SyncEventPlugin    = SyncObjectPlugin
 	SyncEventProfile   = SyncObjectProfile
 
-	SyncActionCreated  = SyncOperationCreated
-	SyncActionUpdated  = SyncOperationUpdated
-	SyncActionDeleted  = SyncOperationDeleted
-	SyncActionAdded    = SyncOperationAdded
-	SyncActionRemoved  = SyncOperationRemoved
-	SyncActionEnabled  = SyncOperationEnabled
-	SyncActionDisabled = SyncOperationDisabled
+	SyncActionCreated           = SyncOperationCreated
+	SyncActionUpdated           = SyncOperationUpdated
+	SyncActionDeleted           = SyncOperationDeleted
+	SyncActionAdded             = SyncOperationAdded
+	SyncActionRemoved           = SyncOperationRemoved
+	SyncActionEnabled           = SyncOperationEnabled
+	SyncActionDisabled          = SyncOperationDisabled
+	SyncActionInstalled         = SyncOperationInstalled
+	SyncActionUninstalled       = SyncOperationUninstalled
+	SyncActionPermissionGranted = SyncOperationPermissionGranted
+	SyncActionPermissionRevoked = SyncOperationPermissionRevoked
 )
 
 var (
-	ErrUnsupportedSyncEvent     = errors.New("unsupported sync event")
-	ErrSyncIdempotencyConflict  = errors.New("sync idempotency conflict")
+	ErrUnsupportedSyncEvent    = errors.New("unsupported sync event")
+	ErrSyncIdempotencyConflict = errors.New("sync idempotency conflict")
 )
 
 var supportedSyncOperations = map[string]map[string]bool{
@@ -77,9 +85,15 @@ var supportedSyncOperations = map[string]map[string]bool{
 		SyncOperationRemoved: true,
 	},
 	SyncObjectPlugin: {
-		SyncOperationAdded:   true,
-		SyncOperationUpdated: true,
-		SyncOperationRemoved: true,
+		SyncOperationAdded:             true,
+		SyncOperationUpdated:           true,
+		SyncOperationRemoved:           true,
+		SyncOperationInstalled:         true,
+		SyncOperationUninstalled:       true,
+		SyncOperationEnabled:           true,
+		SyncOperationDisabled:          true,
+		SyncOperationPermissionGranted: true,
+		SyncOperationPermissionRevoked: true,
 	},
 	SyncObjectProfile: {
 		SyncOperationUpdated: true,
