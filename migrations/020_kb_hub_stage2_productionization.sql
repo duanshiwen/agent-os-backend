@@ -18,9 +18,13 @@ SET review_status = CASE
     ELSE COALESCE(NULLIF(review_status, ''), 'pending')
 END;
 
-ALTER TABLE kb_collections
-    ADD CONSTRAINT IF NOT EXISTS chk_kb_collections_review_status
-    CHECK (review_status IN ('pending', 'approved', 'rejected', 'takedown', 'archived'));
+DO $$ BEGIN
+    ALTER TABLE kb_collections
+        ADD CONSTRAINT chk_kb_collections_review_status
+        CHECK (review_status IN ('pending', 'approved', 'rejected', 'takedown', 'archived'));
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_kb_collections_review_status ON kb_collections(review_status);
 CREATE INDEX IF NOT EXISTS idx_kb_collections_reviewed_by ON kb_collections(reviewed_by);
@@ -30,9 +34,13 @@ ALTER TABLE kb_snapshots
     ADD COLUMN IF NOT EXISTS status VARCHAR(32) NOT NULL DEFAULT 'active',
     ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
 
-ALTER TABLE kb_snapshots
-    ADD CONSTRAINT IF NOT EXISTS chk_kb_snapshots_status
-    CHECK (status IN ('active', 'archived'));
+DO $$ BEGIN
+    ALTER TABLE kb_snapshots
+        ADD CONSTRAINT chk_kb_snapshots_status
+        CHECK (status IN ('active', 'archived'));
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_kb_snapshots_status ON kb_snapshots(status);
 CREATE INDEX IF NOT EXISTS idx_kb_snapshots_archived_at ON kb_snapshots(archived_at);

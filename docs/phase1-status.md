@@ -799,13 +799,13 @@ M5 Platform Ops Gate foundation is now implemented:
 
 - background maintenance jobs record persisted run history in `background_job_runs`;
 - admins can list job runs and trigger maintenance jobs once through `/api/v1/admin/ops/*`;
-- `scripts/release-gate-local.sh` runs Go tests, script syntax checks, Python syntax checks, and optional live object/SAGE/semantic smokes.
+- `scripts/release-gate-local.sh` runs Go tests, script syntax checks, Python syntax checks, optional migration apply gate, and optional live object/SAGE/semantic smokes.
 
 Current Stage 3A gaps:
 
 - richer manifest governance scans such as injection and typosquatting checks are still pending;
 - Backend still intentionally does not execute third-party Flow definitions or host plugin code;
-- real payment, refund, tax, settlement integration, and CI migration apply gates remain out of scope for the foundation.
+- real payment, refund, tax, settlement integration, and CI-hosted release automation remain out of scope for the foundation.
 
 ## Recommended Next Milestone
 

@@ -393,11 +393,19 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 #### Local Release Gate
 
-默认 release gate 会运行 Go tests、shell syntax checks、Python syntax checks，不要求真实 BGE-M3：
+默认 release gate 会运行 Go tests、shell syntax checks、Python syntax checks，不要求 PostgreSQL 或真实 BGE-M3：
 
 ```bash
 ./scripts/release-gate-local.sh
 ```
+
+本地 PostgreSQL 已启动时，可打开 migration apply gate：
+
+```bash
+RUN_MIGRATION_GATE=1 ./scripts/release-gate-local.sh
+```
+
+该 gate 会创建 disposable database，按顺序 apply `migrations/*.sql`，完成后自动删除数据库。若本机没有 `psql`，脚本会 fallback 到 `docker compose exec postgres psql`。
 
 本地完整栈已启动时，可加 live smoke：
 
