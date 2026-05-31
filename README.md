@@ -9,7 +9,7 @@ Stage 0 已将 backend 从“分阶段 MVP”重新锁定为完整平台化交�
 - [`docs/platform-roadmap.md`](docs/platform-roadmap.md) — 一步到位平台完成路线图
 - [`docs/system-capability-matrix.md`](docs/system-capability-matrix.md) — 已实现 / 部分实现 / 待实现能力矩阵
 - [`docs/architecture-boundaries.md`](docs/architecture-boundaries.md) — Go/Rust、存储、同步、KB、SAGE、治理、联邦等边界冻结
-- [`docs/phase1-status.md`](docs/phase1-status.md) — 当前 Phase 1 → M3.5 实现状态和验证记录
+- [`docs/phase1-status.md`](docs/phase1-status.md) — 当前 Phase 1 → M3.5 / Stage 2 实现状态和验证记录
 
 ## 快速开始
 
@@ -172,6 +172,67 @@ M2.1 配置对象同步的本地 smoke 验证：
 ```
 
 完整契约见 `docs/sync-contract.md`。
+
+#### KB Hub 生产化治理（Stage 2）
+
+Stage 2 将 KB Hub 从发布/安装/搜索基础能力推进到可治理的本地知识市场基础。当前已实现：
+
+- collection source / copyright declarations；
+- collection review 状态：`pending`、`approved`、`rejected`、`takedown`、`archived`；
+- public collection 只暴露 `status=published` 且 `review_status=approved` 的合集；
+- user moderation report；
+- admin review / takedown / report resolve；
+- snapshot `active` / `archived` lifecycle；
+- snapshot diff；
+- subscription `expires_at` 和过期清理；
+- 对高影响 KB governance 操作写入 audit events。
+
+Owner / user APIs：
+
+| 方法 | 路径 | 描述 |
+|------|------|------|
+| PUT | `/api/v1/kb/collections/:id/declarations` | 更新 collection 来源/版权声明，更新后回到 `pending` review 状态 |
+| POST | `/api/v1/kb/collections/:id/reports` | 举报 collection |
+| POST | `/api/v1/kb/collections/:id/snapshots/:snapshot_id/archive` | 归档 snapshot；不会修改 snapshot 内容 |
+| POST | `/api/v1/kb/collections/:id/snapshots/:snapshot_id/restore` | 恢复 archived snapshot |
+| GET | `/api/v1/kb/collections/:id/snapshot-diff?from_snapshot_id=...&to_snapshot_id=...` | 比较两个 snapshot 的 added / removed / changed / unchanged entries |
+
+Admin APIs：
+
+| 方法 | 路径 | 描述 |
+|------|------|------|
+| GET | `/api/v1/admin/kb/collections/review` | 查看 review queue；支持 `review_status`、`limit`、`offset` |
+| POST | `/api/v1/admin/kb/collections/:id/review` | 审核、拒绝或 takedown collection |
+| GET | `/api/v1/admin/kb/moderation/reports` | 查看 moderation reports；支持 `status`、`limit`、`offset` |
+| POST | `/api/v1/admin/kb/moderation/reports/:report_id/resolve` | 标记 report 为 `resolved` 或 `dismissed` |
+| POST | `/api/v1/admin/kb/subscriptions/expire` | 将已过期 active subscriptions 标记为 `expired` |
+
+示例：更新 collection 声明：
+
+```bash
+curl -X PUT -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"source_declaration":"Original notes","copyright_declaration":"Owned by author"}' \
+  http://localhost:8080/api/v1/kb/collections/$COLLECTION_ID/declarations
+```
+
+示例：admin 审核通过：
+
+```bash
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"review_status":"approved","reason":"source declaration accepted"}' \
+  http://localhost:8080/api/v1/admin/kb/collections/$COLLECTION_ID/review
+```
+
+示例：snapshot diff：
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8080/api/v1/kb/collections/$COLLECTION_ID/snapshot-diff?from_snapshot_id=$FROM_SNAPSHOT_ID&to_snapshot_id=$TO_SNAPSHOT_ID"
+```
+
+Stage 2 尚未包含 Federated KB Discovery；KB Hub 仍保持 local-server scoped。后续仍需完成 invoice / payout / refund、per-plan entitlement variants、统一 background scheduler、chunk-level search quality 和真实 BGE-M3 live gate。
 
 #### KB Hub 语义搜索（M3.5）
 
