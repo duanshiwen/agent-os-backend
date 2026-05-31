@@ -63,12 +63,12 @@ Implemented:
 - hash-chain append in `AuditService.Record`;
 - repository append transaction;
 - full-chain verification service method;
+- admin HTTP endpoint: `GET /api/v1/admin/audit/verify-chain`;
 - migration `026_audit_hash_chain.sql`;
 - tests for valid chain and tamper detection.
 
 Not yet implemented:
 
-- admin HTTP endpoint for verification;
 - periodic background verification job;
 - external anchoring / notarization;
 - partitioned per-tenant chains.

@@ -17,6 +17,16 @@ func NewAuditHandler(svc *service.AuditService) *AuditHandler {
 	return &AuditHandler{svc: svc}
 }
 
+// GET /api/v1/admin/audit/verify-chain
+func (h *AuditHandler) VerifyHashChain(c *gin.Context) {
+	verification, err := h.svc.VerifyHashChain(service.VerifyAuditHashChainInput{Limit: parseAuditIntQuery(c, "limit", 0)})
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, verification)
+}
+
 // GET /api/v1/admin/audit/events
 func (h *AuditHandler) List(c *gin.Context) {
 	input := service.ListAuditEventsInput{

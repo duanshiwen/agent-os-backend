@@ -276,6 +276,7 @@ func Setup(
 		admin.Use(middleware.AdminMiddleware(userRepo))
 		{
 			admin.GET("/audit/events", auditH.List)
+			admin.GET("/audit/verify-chain", auditH.VerifyHashChain)
 			admin.GET("/ops/background-job-runs", opsH.ListBackgroundJobRuns)
 			admin.GET("/ops/background-job-runs/:id", opsH.GetBackgroundJobRun)
 			admin.POST("/ops/background-jobs/run-once", opsH.RunBackgroundJobsOnce)
