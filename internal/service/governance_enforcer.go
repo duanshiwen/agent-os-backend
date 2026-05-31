@@ -64,6 +64,26 @@ type GovernanceEnforcementResult struct {
 	ConsumedApprovalReceipt *model.ApprovalReceipt `json:"consumed_approval_receipt,omitempty"`
 }
 
+type GovernanceEnforcementError struct {
+	Cause  error
+	Input  GovernanceEnforcementInput
+	Result *GovernanceEnforcementResult
+}
+
+func (e *GovernanceEnforcementError) Error() string {
+	if e == nil || e.Cause == nil {
+		return "governance enforcement error"
+	}
+	return e.Cause.Error()
+}
+
+func (e *GovernanceEnforcementError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Cause
+}
+
 func (e *GovernanceEnforcer) Enforce(input GovernanceEnforcementInput) (*GovernanceEnforcementResult, error) {
 	if e == nil || e.governance == nil {
 		return nil, ErrGovernanceInvalidInput
@@ -89,7 +109,8 @@ func (e *GovernanceEnforcer) Enforce(input GovernanceEnforcementInput) (*Governa
 			if mode == GovernanceEnforcementModeObserve {
 				return &GovernanceEnforcementResult{Allowed: true, Mode: mode, WouldHaveBlocked: true}, nil
 			}
-			return nil, ErrGovernanceApprovalInvalid
+			result := &GovernanceEnforcementResult{Allowed: false, Mode: mode, WouldHaveBlocked: true}
+			return result, &GovernanceEnforcementError{Cause: ErrGovernanceApprovalInvalid, Input: input, Result: result}
 		}
 		return &GovernanceEnforcementResult{Allowed: true, Mode: mode, ConsumedApprovalReceipt: receipt}, nil
 	}
@@ -105,7 +126,8 @@ func (e *GovernanceEnforcer) Enforce(input GovernanceEnforcementInput) (*Governa
 	case GovernanceDecisionAllow:
 		return &GovernanceEnforcementResult{Allowed: true, Mode: mode, Decision: decision}, nil
 	case GovernanceDecisionDeny:
-		return &GovernanceEnforcementResult{Allowed: false, Mode: mode, WouldHaveBlocked: true, Decision: decision}, ErrGovernanceDenied
+		result := &GovernanceEnforcementResult{Allowed: false, Mode: mode, WouldHaveBlocked: true, Decision: decision}
+		return result, &GovernanceEnforcementError{Cause: ErrGovernanceDenied, Input: input, Result: result}
 	case GovernanceDecisionRequireUserApproval, GovernanceDecisionRequireAdminApproval:
 		result := &GovernanceEnforcementResult{Allowed: false, Mode: mode, WouldHaveBlocked: true, Decision: decision}
 		if input.ActorUserID != nil && *input.ActorUserID != uuid.Nil {
@@ -116,9 +138,10 @@ func (e *GovernanceEnforcer) Enforce(input GovernanceEnforcementInput) (*Governa
 			result.ApprovalReceipt = receipt
 			result.ApprovalToken = token
 		}
-		return result, ErrGovernanceApprovalRequired
+		return result, &GovernanceEnforcementError{Cause: ErrGovernanceApprovalRequired, Input: input, Result: result}
 	default:
-		return &GovernanceEnforcementResult{Allowed: false, Mode: mode, WouldHaveBlocked: true, Decision: decision}, ErrGovernanceDenied
+		result := &GovernanceEnforcementResult{Allowed: false, Mode: mode, WouldHaveBlocked: true, Decision: decision}
+		return result, &GovernanceEnforcementError{Cause: ErrGovernanceDenied, Input: input, Result: result}
 	}
 }
 

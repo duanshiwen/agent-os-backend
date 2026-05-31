@@ -292,6 +292,48 @@ func TestGovernanceHandlerScanResultListAndResolve(t *testing.T) {
 	}
 }
 
+func TestGovernanceHandlerErrorIncludesStableDetails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	decisionID := mustParseUUID(t, "44444444-4444-4444-4444-444444444444")
+	err := &service.GovernanceEnforcementError{
+		Cause:  service.ErrGovernanceDenied,
+		Input:  service.GovernanceEnforcementInput{SubjectType: service.GovernanceSubjectObjectOperation, SubjectID: "scope-a", CapabilityKey: "object.upload.scope_a", RiskLevel: service.GovernanceRiskMedium},
+		Result: &service.GovernanceEnforcementResult{Decision: &model.PolicyDecision{Base: model.Base{ID: decisionID}, SubjectType: service.GovernanceSubjectObjectOperation, SubjectID: "scope-a", CapabilityKey: "object.upload.scope_a", RiskLevel: service.GovernanceRiskMedium, Decision: service.GovernanceDecisionDeny, Reason: "matched policy rule"}},
+	}
+	r := gin.New()
+	r.GET("/blocked", func(c *gin.Context) {
+		if !handleGovernanceError(c, err) {
+			t.Fatalf("expected governance error to be handled")
+		}
+	})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/blocked", nil))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected forbidden, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+			Details struct {
+				PolicyDecisionID string `json:"policy_decision_id"`
+				SubjectType      string `json:"subject_type"`
+				SubjectID        string `json:"subject_id"`
+				CapabilityKey    string `json:"capability_key"`
+				RiskLevel        string `json:"risk_level"`
+				Decision         string `json:"decision"`
+				Reason           string `json:"reason"`
+			} `json:"details"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if body.Error.Code != GovernanceErrorCodeDenied || body.Error.Details.PolicyDecisionID != decisionID.String() || body.Error.Details.CapabilityKey != "object.upload.scope_a" || body.Error.Details.Decision != service.GovernanceDecisionDeny {
+		t.Fatalf("unexpected governance error body: %+v", body)
+	}
+}
+
 func TestGovernanceHandlerApprovalReceiptRoutes(t *testing.T) {
 	r := newGovernanceHandlerTestRouter(t)
 	actorID := "11111111-1111-1111-1111-111111111111"
