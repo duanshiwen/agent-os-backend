@@ -694,7 +694,7 @@ Semantic query returned entry: notes/kb-semantic-local-1780209235
 Full M3 / M3.5 intentionally did not include SAGE routes, but `main` now includes the M4 SAGE Plugin Open Platform foundation. Current platform limitations are:
 
 - SAGE client runtime integration beyond backend policy bundle / invocation report contract;
-- multi-server federation or remote server authentication;
+- Federation / multi-server networking or remote server authentication, which is intentionally out of the current roadmap;
 - a full client-side merge engine;
 - full conversation history reconstruction solely from sync events;
 - production observability stack;

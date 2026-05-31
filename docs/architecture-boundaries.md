@@ -1,7 +1,7 @@
 # AgentOS Backend Architecture Boundaries
 
 Updated: 2026-05-31
-Status: Stage 0 architecture freeze
+Status: Stage 0 architecture freeze; federation removed from current roadmap on 2026-05-31
 
 This document defines the boundaries that should remain stable while AgentOS Backend moves from current M3.5 foundation toward full platform completion.
 
@@ -16,7 +16,7 @@ This document defines the boundaries that should remain stable while AgentOS Bac
 7. Prefer durable queues in PostgreSQL for business-auditable work.
 8. Make every external execution surface policy-gated and auditable.
 9. Do not fake semantic, policy, or billing success when a subsystem is unavailable.
-10. Keep federation metadata-oriented; do not introduce hidden cross-server database replication.
+10. Keep Federation / multi-server networking out of the current roadmap; do not introduce server discovery, remote trust, or cross-server data synchronization yet.
 
 ## 2. Go vs Rust Boundary
 
@@ -32,7 +32,7 @@ Go is the AgentOS Backend service runtime and owns:
 - device pairing;
 - sync event recording;
 - KB Hub publishing/access/billing/search orchestration;
-- future SAGE, plugin marketplace, federation, admin APIs, governance, and audit orchestration.
+- future SAGE, plugin marketplace, admin APIs, governance, and audit orchestration.
 
 Rust SDK is integrated only through explicitly exported FFI functions. Current verified FFI surfaces:
 
@@ -98,7 +98,7 @@ PostgreSQL owns:
 - personal knowledge entries;
 - object metadata;
 - KB Hub collections/snapshots/subscriptions/usage/billing/search docs/embedding jobs/embedding vectors;
-- future plugins/SAGE/federation/audit/admin/job records.
+- future plugins/SAGE/audit/admin/job records.
 
 ### Redis
 
@@ -214,13 +214,13 @@ The client/Agent runtime owns:
 - Every flow creation must record policy decision context.
 - Execution reports must be idempotent and auditable.
 - High-risk capabilities require explicit approval gates.
-- Remote/federated plugins are never allowed to bypass local server policy.
+- Any future remote plugin concept is out of scope for now and must not bypass local server policy if it is ever reintroduced.
 
 ## 9. Governance Boundary
 
 ### Decision
 
-AgentOS needs a platform-wide governance plane before broad SAGE/federation execution.
+AgentOS needs a platform-wide governance plane before broad SAGE, high-risk tool, billing, object, and admin execution.
 
 Governance owns:
 
@@ -261,34 +261,28 @@ Billing foundation exists as internal ledger records:
 - Pricing changes must be versioned or auditable.
 - Plugin and KB billing should share ledger primitives but keep domain-specific usage records.
 
-## 11. Federation Boundary
+## 11. Deferred Scope: Federation / Multi-Server Networking
 
 ### Decision
 
-Federation is identity/trust/metadata interoperability, not database replication.
+Federation / multi-server networking is removed from the current architecture and roadmap. The existing `user_server_connections` / `/api/v1/servers` capability remains only a local user configuration object that can be synced across the same user's devices. It does not imply server-to-server trust, remote authentication, or cross-server data synchronization.
 
-Allowed:
+Not in current scope:
 
-- server identity;
-- server public key discovery;
-- capability discovery;
-- signed handshakes;
+- server identity and public key discovery;
+- `.well-known/agentos-server.json`;
+- federation capability discovery;
+- signed server handshakes;
+- remote server trust scores;
 - remote plugin metadata discovery;
-- local references to remote plugin/server resources;
-- local trust records.
-
-Deferred:
-
-- Federated KB Discovery / remote KB metadata discovery. KB Hub remains local-server scoped until a separate product/security review explicitly reopens this boundary.
-
-Not allowed in current architecture:
-
+- remote install references for plugin/server resources;
+- Federated KB Discovery / remote KB metadata discovery;
 - cross-server strong consistency;
 - hidden remote database writes;
-- global timeline requiring all servers to agree;
-- remote plugins bypassing local governance;
-- remote KB metadata discovery in the current implementation plan;
-- remote content access without local permission checks and signed remote authorization.
+- global timeline requiring multiple servers to agree;
+- remote content access based on cross-server authorization.
+
+Reopening rule: Federation can only be reconsidered after a separate product/security review, and only after single-server governance, audit, policy, kill switch, and approval primitives are mature.
 
 ## 12. Admin and Observability Boundary
 
@@ -302,7 +296,7 @@ Not allowed in current architecture:
 
 - Add `/ready` separately from `/health`.
 - Add request IDs and structured logs.
-- Add admin APIs for jobs, audit, security, plugins, KB moderation, billing, and federation.
+- Add admin APIs for jobs, audit, security, plugins, KB moderation, and billing.
 - Add release gates that validate migrations, smoke tests, and security invariants.
 - Do not rely only on unit tests for deployment-critical flows.
 
@@ -330,3 +324,4 @@ Not allowed in current architecture:
 - No generic external sync write endpoint without governance.
 - No arbitrary plugin code execution in the Go API process.
 - No cross-server database replication.
+- No Federation / multi-server networking in the current roadmap.

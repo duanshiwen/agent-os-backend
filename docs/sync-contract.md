@@ -24,7 +24,7 @@ M2 covers the stable contract for:
 
 M2.1 currently has implemented and verified domain-specific write coverage for `profile`, `message`, `skill`, `agent`, and `server` object families.
 
-M2 does not implement KB Hub, Plugin Marketplace, Billing, multi-server federation, generic external sync writes, or a full merge engine.
+M2 does not implement KB Hub, Plugin Marketplace, Billing, Federation / multi-server networking, generic external sync writes, or a full merge engine. Federation is not part of the current roadmap.
 
 ## 2. Event Envelope
 
@@ -354,7 +354,7 @@ Minimum remove payload:
 
 The source device is recorded in `source_device_id`; other devices can pull the event through `/sync/events` and receive real-time `sync.event` notification when connected.
 
-This sync object only covers a user's server list configuration. It does not implement federation or cross-server data sync.
+This sync object only covers a user's local server list configuration. It does not implement Federation, server-to-server trust, remote authentication, or cross-server data sync.
 
 ## 14. Error Semantics
 

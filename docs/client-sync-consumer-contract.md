@@ -39,7 +39,7 @@ Out of scope for M2.3:
 
 - KB Hub publishing, snapshots, subscriptions, marketplace discovery, semantic indexing, billing, and search;
 - generic external sync write endpoint;
-- multi-server federation conflict semantics;
+- Federation / multi-server networking conflict semantics, because Federation is not part of the current roadmap;
 - full CRDT/merge engine;
 - plugin marketplace / SAGE sync semantics beyond reserved taxonomy.
 

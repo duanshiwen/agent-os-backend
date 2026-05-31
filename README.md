@@ -1,6 +1,6 @@
 # AgentOS Backend
 
-Agent OS 联邦化网络的服务端进程（Go + Rust SDK FFI），提供身份接入、即时通讯、跨设备同步、知识库 Hub、插件市场和多服务器支持。
+Agent OS 单服务器服务端进程（Go + Rust SDK FFI），提供身份接入、即时通讯、跨设备同步、知识库 Hub、SAGE Plugin Open Platform、对象存储、平台治理与运维能力。Federation / 多服务器网络暂时不做；现有服务器列表 API 仅用于同步用户本地服务器配置。
 
 ## 平台规划文档
 
@@ -8,7 +8,7 @@ Stage 0 已将 backend 从“分阶段 MVP”重新锁定为完整平台化交�
 
 - [`docs/platform-roadmap.md`](docs/platform-roadmap.md) — 一步到位平台完成路线图
 - [`docs/system-capability-matrix.md`](docs/system-capability-matrix.md) — 已实现 / 部分实现 / 待实现能力矩阵
-- [`docs/architecture-boundaries.md`](docs/architecture-boundaries.md) — Go/Rust、存储、同步、KB、SAGE、治理、联邦等边界冻结
+- [`docs/architecture-boundaries.md`](docs/architecture-boundaries.md) — Go/Rust、存储、同步、KB、SAGE、治理、对象存储等边界冻结
 - [`docs/phase1-status.md`](docs/phase1-status.md) — 当前 Phase 1 → M3.5 / Stage 2 实现状态和验证记录
 
 ## 快速开始
@@ -232,7 +232,7 @@ curl -H "Authorization: Bearer $TOKEN" \
   "http://localhost:8080/api/v1/kb/collections/$COLLECTION_ID/snapshot-diff?from_snapshot_id=$FROM_SNAPSHOT_ID&to_snapshot_id=$TO_SNAPSHOT_ID"
 ```
 
-Stage 2 尚未包含 Federated KB Discovery；KB Hub 仍保持 local-server scoped。
+Federation / Federated KB Discovery 暂时不做；KB Hub 保持 single-server / local-server scoped。
 
 #### KB Hub Billing / Entitlements（Stage 2）
 

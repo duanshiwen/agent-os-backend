@@ -6,6 +6,7 @@ import (
 	"github.com/agent-os/backend/internal/model"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type AuditRepo struct {
@@ -28,6 +29,36 @@ type AuditEventsQuery struct {
 
 func (r *AuditRepo) Create(event *model.AuditEvent) error {
 	return r.db.Create(event).Error
+}
+
+func (r *AuditRepo) AppendHashChained(event *model.AuditEvent, prepare func(previous *model.AuditEvent, nextSequence int64) error) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var previous model.AuditEvent
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Order("sequence DESC").First(&previous).Error
+		if err != nil && err != gorm.ErrRecordNotFound {
+			return err
+		}
+		var previousPtr *model.AuditEvent
+		nextSequence := int64(1)
+		if err == nil {
+			previousPtr = &previous
+			nextSequence = previous.Sequence + 1
+		}
+		if err := prepare(previousPtr, nextSequence); err != nil {
+			return err
+		}
+		return tx.Create(event).Error
+	})
+}
+
+func (r *AuditRepo) ListHashChain(limit int) ([]model.AuditEvent, error) {
+	db := r.db.Model(&model.AuditEvent{}).Order("sequence ASC")
+	if limit > 0 {
+		db = db.Limit(limit)
+	}
+	var events []model.AuditEvent
+	err := db.Find(&events).Error
+	return events, err
 }
 
 func (r *AuditRepo) List(query AuditEventsQuery) ([]model.AuditEvent, error) {

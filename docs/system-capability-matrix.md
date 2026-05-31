@@ -89,15 +89,11 @@ Backend working tree at Stage 0 start had one existing README documentation diff
 | Governance | Response inspection | ⬜ | none | unsafe output / secret detection |
 | Governance | Approval receipts | ⬜ | none | user/admin approval record |
 | Audit | Queryable audit event log | ✅ | `audit_events`; admin list endpoint; admission/device/sensitive-operation events | hash chain / tamper-evidence |
-| Security | Sensitive operation confirmation | ✅ | password-backed one-time confirmation tokens; device/admission enforcement | broaden to plugin grants, billing, federation admin operations |
-| Security | Kill switch | ⬜ | none | plugin/user/capability/server kill switches |
-| Federation | Local server list | ✅ | `user_server_connections` | local config only |
-| Federation | Server identity | ⬜ | none | server public key and trust records |
-| Federation | Well-known discovery | ⬜ | none | `.well-known/agentos-server.json` |
-| Federation | Federation handshake | ⬜ | none | signed challenge protocol |
-| Federation | Remote plugin discovery | ⬜ | none | metadata APIs and trust policy |
-| Federation | Federated KB Discovery | 🚫 | explicitly deferred | not part of current implementation plan; KB Hub remains local-server scoped |
-| Federation | Cross-server DB replication | 🚫 | intentionally not part of design | preserve server independence |
+| Security | Sensitive operation confirmation | ✅ | password-backed one-time confirmation tokens; device/admission enforcement | broaden to plugin grants, billing, and high-risk admin operations |
+| Security | Kill switch | ⬜ | none | plugin/user/capability/server-local kill switches |
+| Server config | Local server list sync | ✅ | `user_server_connections` and `/servers` routes | local configuration only; not Federation |
+| Deferred scope | Federation / multi-server networking | 🚫 | intentionally removed from current roadmap | no server discovery, signed server handshake, remote plugin discovery, remote KB discovery, or cross-server sync |
+| Deferred scope | Cross-server DB replication | 🚫 | intentionally not part of design | preserve single-server product boundary |
 | Admin | Admission admin | ✅ | admin admission routes | broader admin console API |
 | Admin | KB admin/moderation | ✅ | review list, review/takedown, report list/resolve, subscription expiry API | reviewer roles and moderation dashboard |
 | Admin | Plugin admin/review | ✅ | SAGE review queue, approve/reject/request_changes, suspend APIs | richer reviewer roles and policy dashboards |
@@ -154,6 +150,6 @@ Admin:
 
 1. The next platform phase must not duplicate KB Hub basics; it should harden and govern them.
 2. Plugin/SAGE should be built as a complete subsystem with governance and audit dependencies, not as ungoverned tool execution.
-3. Multi-server federation should reuse identity, sync references, governance, and trust records; it should not introduce cross-server database replication.
+3. Federation / multi-server networking is removed from the current roadmap; keep `/servers` as local user configuration sync only.
 4. The existing plugin model placeholders should be treated as provisional and can be replaced by proper migrations/models if needed.
 5. Real BGE-M3 operational path is now verified locally; search quality next step is chunk-level passage retrieval plus retrieval-quality fixtures, not provider-architecture churn.
