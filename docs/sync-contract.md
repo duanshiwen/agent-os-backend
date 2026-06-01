@@ -52,6 +52,8 @@ Each persisted sync event has these contract fields:
 Supported object types:
 
 - `message`
+- `conversation`
+- `participant`
 - `knowledge`
 - `skill`
 - `agent`
@@ -68,12 +70,17 @@ Supported operations:
 - `removed`
 - `enabled`
 - `disabled`
+- `read`
+- `reaction_added`
+- `reaction_removed`
 
 Allowed combinations in M2:
 
 | Object type | Operations |
 |---|---|
-| `message` | `created`, `updated`, `deleted` |
+| `message` | `created`, `updated`, `deleted`, `reaction_added`, `reaction_removed` |
+| `conversation` | `created`, `updated`, `read` |
+| `participant` | `added`, `updated`, `removed` |
 | `knowledge` | `created`, `updated`, `deleted` |
 | `skill` | `enabled`, `disabled`, `updated` |
 | `agent` | `updated` |
@@ -186,7 +193,7 @@ Clients load conversation list and message history through existing REST APIs:
 
 ### Incremental changes
 
-Conversations are represented as `conversation.created` and `conversation.updated` sync events. Membership changes are represented as `participant.added` and `participant.removed` sync events.
+Conversations are represented as `conversation.created`, `conversation.updated`, and actor-owned `conversation.read` sync events. Membership changes are represented as `participant.added`, `participant.updated`, and `participant.removed` sync events.
 
 Minimum `conversation.created` / `conversation.updated` payload:
 
@@ -220,6 +227,8 @@ Minimum `participant.added` payload:
 }
 ```
 
+Minimum `participant.updated` payload includes the same reconstruction fields as `participant.added`, plus `updated_by`.
+
 Minimum `participant.removed` payload:
 
 ```json
@@ -235,7 +244,19 @@ Minimum `participant.removed` payload:
 }
 ```
 
-Messages are represented as `message.created`, `message.updated`, and `message.deleted` sync events.
+Read cursors are represented as actor-owned `conversation.read` events and are emitted only to the reading user's sync stream for multi-device convergence:
+
+```json
+{
+  "object_id": "conversation uuid:user uuid",
+  "conversation_id": "conversation uuid",
+  "user_id": "reader user uuid",
+  "last_read_message_id": "message uuid",
+  "last_read_at": "..."
+}
+```
+
+Messages are represented as `message.created`, `message.updated`, `message.deleted`, `message.reaction_added`, and `message.reaction_removed` sync events.
 
 Minimum `message.created` / `message.updated` payload:
 
@@ -272,11 +293,31 @@ Minimum `message.deleted` payload:
 }
 ```
 
+Minimum `message.reaction_added` / `message.reaction_removed` payload:
+
+```json
+{
+  "object_id": "message uuid:user uuid:emoji",
+  "conversation_id": "conversation uuid",
+  "message_id": "message uuid",
+  "user_id": "reactor user uuid",
+  "emoji": "👍",
+  "created_at": "..."
+}
+```
+
 Message send accepts optional `client_event_id` for retry idempotency and optional `reply_to`, `thread_id`, and `visibility` fields aligned with the SDK `conversation-core` message shape. Edits and deletes are currently sender-only and use soft-delete/tombstone semantics.
+
+Rich message type constraints:
+
+- `text` and `system` messages may omit rich metadata.
+- `image`, `file`, `audio`, and `video` messages require `metadata.object_id`.
+- `card` messages require `metadata.card_type`.
+- Object/Asset service remains the authority for binary object lifecycle.
 
 ### Real-time path
 
-Connected devices may receive immediate WebSocket message delivery and/or `sync.event` notification.
+Connected devices may receive immediate WebSocket message delivery and/or `sync.event` notification. Ephemeral typing signals (`typing.start`, `typing.stop`) are WebSocket-only, scoped to current conversation participants, and are not persisted into `/sync/events`.
 
 ### Catch-up path
 

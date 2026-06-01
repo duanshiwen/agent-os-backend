@@ -199,14 +199,17 @@ Supported events:
 
 - `conversation.created`
 - `conversation.updated`
+- `conversation.read`
 - `participant.added`
+- `participant.updated`
 - `participant.removed`
 
 Apply rule:
 
 ```text
 conversation.created/updated: upsert conversation by conversation_id / object_id
-participant.added: upsert membership by conversation_id + user_id with status=active
+conversation.read: upsert actor-owned read cursor by conversation_id + user_id
+participant.added/updated: upsert membership by conversation_id + user_id with status=active
 participant.removed: tombstone/remove membership by conversation_id + user_id with status=removed
 ignore duplicate object_id / sequence
 ```
@@ -220,8 +223,10 @@ Supported events:
 - `message.created`
 - `message.updated`
 - `message.deleted`
+- `message.reaction_added`
+- `message.reaction_removed`
 
-Payload includes message identity and projection fields: `message_id`, `conversation_id`, `sender_id`, `type`, `content`, `metadata`, `reply_to`, `thread_id`, `visibility`, `status`, `created_at`, `edited_at`, `deleted_at`, and `deleted_by` when applicable.
+Payload includes message identity and projection fields: `message_id`, `conversation_id`, `sender_id`, `type`, `content`, `metadata`, `reply_to`, `thread_id`, `visibility`, `status`, `created_at`, `edited_at`, `deleted_at`, and `deleted_by` when applicable. Reaction payloads include `message_id`, `conversation_id`, `user_id`, `emoji`, and `created_at`.
 
 Apply rule:
 
@@ -502,8 +507,8 @@ Minimum SDK/client tests:
 2. reject unsupported schema version;
 3. ignore duplicate or already-applied sequence;
 4. apply `profile.updated`;
-5. apply `conversation.created`, `conversation.updated`, `participant.added`, and `participant.removed` idempotently;
-6. apply `message.created`, `message.updated`, and `message.deleted` idempotently;
+5. apply `conversation.created`, `conversation.updated`, `conversation.read`, `participant.added`, `participant.updated`, and `participant.removed` idempotently;
+6. apply `message.created`, `message.updated`, `message.deleted`, `message.reaction_added`, and `message.reaction_removed` idempotently;
 7. apply `skill.enabled`, `skill.disabled`, `skill.updated`;
 8. apply `agent.updated`;
 9. apply `server.added`, `server.updated`, `server.removed`;

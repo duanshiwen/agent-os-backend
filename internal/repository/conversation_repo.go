@@ -28,6 +28,10 @@ func (r *ConversationRepo) GetByID(id uuid.UUID) (*model.Conversation, error) {
 	return &c, err
 }
 
+func (r *ConversationRepo) UpdateConversation(c *model.Conversation) error {
+	return r.db.Save(c).Error
+}
+
 func (r *ConversationRepo) GetUserConversations(userID uuid.UUID) ([]model.Conversation, error) {
 	var convs []model.Conversation
 	err := r.db.
@@ -67,6 +71,28 @@ func (r *ConversationRepo) GetParticipant(conversationID, userID uuid.UUID) (*mo
 	var cp model.ConversationParticipant
 	err := r.db.Where("conversation_id = ? AND user_id = ?", conversationID, userID).First(&cp).Error
 	return &cp, err
+}
+
+func (r *ConversationRepo) UpdateParticipant(cp *model.ConversationParticipant) error {
+	return r.db.Save(cp).Error
+}
+
+func (r *ConversationRepo) CountParticipantsByRole(conversationID uuid.UUID, role string) (int64, error) {
+	var count int64
+	err := r.db.Model(&model.ConversationParticipant{}).
+		Where("conversation_id = ? AND role = ?", conversationID, role).
+		Count(&count).Error
+	return count, err
+}
+
+func (r *ConversationRepo) UpsertReadState(state *model.ConversationReadState) error {
+	return r.db.Save(state).Error
+}
+
+func (r *ConversationRepo) GetReadState(conversationID, userID uuid.UUID) (*model.ConversationReadState, error) {
+	var state model.ConversationReadState
+	err := r.db.Where("conversation_id = ? AND user_id = ?", conversationID, userID).First(&state).Error
+	return &state, err
 }
 
 func (r *ConversationRepo) FindPrivateConversation(userA, userB uuid.UUID) (*model.Conversation, error) {
@@ -138,6 +164,21 @@ func (r *ConversationRepo) GetMessagesByIDs(ids []uuid.UUID) ([]model.Message, e
 	var msgs []model.Message
 	err := r.db.Where("id IN ?", ids).Find(&msgs).Error
 	return msgs, err
+}
+
+func (r *ConversationRepo) AddReaction(reaction *model.MessageReaction) error {
+	return r.db.FirstOrCreate(reaction, model.MessageReaction{MessageID: reaction.MessageID, UserID: reaction.UserID, Emoji: reaction.Emoji}).Error
+}
+
+func (r *ConversationRepo) GetReaction(messageID, userID uuid.UUID, emoji string) (*model.MessageReaction, error) {
+	var reaction model.MessageReaction
+	err := r.db.Where("message_id = ? AND user_id = ? AND emoji = ?", messageID, userID, emoji).First(&reaction).Error
+	return &reaction, err
+}
+
+func (r *ConversationRepo) RemoveReaction(messageID, userID uuid.UUID, emoji string) error {
+	return r.db.Where("message_id = ? AND user_id = ? AND emoji = ?", messageID, userID, emoji).
+		Delete(&model.MessageReaction{}).Error
 }
 
 // === OfflineMessage ===

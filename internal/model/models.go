@@ -96,6 +96,15 @@ type ConversationParticipant struct {
 	Role           string    `json:"role"`
 	JoinedAt       time.Time `json:"joined_at"`
 }
+
+type ConversationReadState struct {
+	ConversationID    uuid.UUID  `gorm:"type:uuid;primaryKey" json:"conversation_id"`
+	UserID            uuid.UUID  `gorm:"type:uuid;primaryKey" json:"user_id"`
+	LastReadMessageID *uuid.UUID `gorm:"type:uuid;index" json:"last_read_message_id"`
+	LastReadAt        time.Time  `gorm:"index;not null" json:"last_read_at"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+}
 type Message struct {
 	Base
 	ConversationID uuid.UUID         `gorm:"type:uuid;index;not null" json:"conversation_id"`
@@ -120,6 +129,14 @@ type OfflineMessage struct {
 	MessageID uuid.UUID `gorm:"type:uuid;index" json:"message_id"`
 	Message   Message   `gorm:"foreignKey:MessageID" json:"message,omitempty"`
 	Delivered bool      `json:"delivered"`
+}
+
+type MessageReaction struct {
+	Base
+	ConversationID uuid.UUID `gorm:"type:uuid;index;not null" json:"conversation_id"`
+	MessageID      uuid.UUID `gorm:"type:uuid;index;not null;uniqueIndex:idx_message_reaction_unique" json:"message_id"`
+	UserID         uuid.UUID `gorm:"type:uuid;index;not null;uniqueIndex:idx_message_reaction_unique" json:"user_id"`
+	Emoji          string    `gorm:"not null;uniqueIndex:idx_message_reaction_unique" json:"emoji"`
 }
 
 type SyncEvent struct {
@@ -620,5 +637,5 @@ type GovernanceScanResult struct {
 }
 
 func AllModels() []any {
-	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &Message{}, &OfflineMessage{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &UserAgentSetting{}, &UserServerConnection{}, &UserKnowledgeEntry{}, &ObjectRecord{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBModerationReport{}, &KBUsageRecord{}, &KBSearchDocument{}, &BackgroundJobRun{}, &KBEmbeddingJob{}, &KBSearchEmbedding{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &SAGEPlugin{}, &SAGEPluginVersion{}, &SAGEPluginReview{}, &SAGEPluginInstallation{}, &SAGEPluginPermissionGrant{}, &SAGEPluginInvocation{}, &SAGEPluginExecutionReport{}, &SAGEPluginUsageLedger{}, &KBBillingPlan{}, &KBInvoice{}, &KBInvoiceItem{}, &ContributorPayoutPeriod{}, &KBRefund{}, &KBBillingDispute{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}, &SensitiveOperationConfirmation{}, &AuditEvent{}, &CapabilityDefinition{}, &PolicyRule{}, &PolicyDecision{}, &ApprovalReceipt{}, &KillSwitch{}, &GovernanceScanResult{}}
+	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &ConversationReadState{}, &Message{}, &OfflineMessage{}, &MessageReaction{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &UserAgentSetting{}, &UserServerConnection{}, &UserKnowledgeEntry{}, &ObjectRecord{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBModerationReport{}, &KBUsageRecord{}, &KBSearchDocument{}, &BackgroundJobRun{}, &KBEmbeddingJob{}, &KBSearchEmbedding{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &SAGEPlugin{}, &SAGEPluginVersion{}, &SAGEPluginReview{}, &SAGEPluginInstallation{}, &SAGEPluginPermissionGrant{}, &SAGEPluginInvocation{}, &SAGEPluginExecutionReport{}, &SAGEPluginUsageLedger{}, &KBBillingPlan{}, &KBInvoice{}, &KBInvoiceItem{}, &ContributorPayoutPeriod{}, &KBRefund{}, &KBBillingDispute{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}, &SensitiveOperationConfirmation{}, &AuditEvent{}, &CapabilityDefinition{}, &PolicyRule{}, &PolicyDecision{}, &ApprovalReceipt{}, &KillSwitch{}, &GovernanceScanResult{}}
 }

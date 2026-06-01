@@ -73,6 +73,9 @@ func (s *MessageService) SendMessage(senderID uuid.UUID, req *SendMessageRequest
 	if metadata == nil {
 		metadata = datatypes.JSONMap{}
 	}
+	if err := validateMessageMetadata(msgType, metadata); err != nil {
+		return nil, err
+	}
 	visibility := req.Visibility
 	if visibility == nil {
 		visibility = datatypes.JSONMap{"scope": "conversation"}
@@ -178,6 +181,68 @@ func (s *MessageService) DeleteMessage(actorID, conversationID, messageID uuid.U
 	return deleted, nil
 }
 
+type AddReactionRequest struct {
+	Emoji string `json:"emoji" binding:"required"`
+}
+
+func (s *MessageService) AddReaction(actorID, conversationID, messageID uuid.UUID, req AddReactionRequest) (*model.MessageReaction, error) {
+	if req.Emoji == "" {
+		return nil, fmt.Errorf("emoji is required")
+	}
+	msg, err := s.convRepo.GetMessageByID(messageID)
+	if err != nil {
+		return nil, fmt.Errorf("message not found")
+	}
+	if msg.ConversationID != conversationID {
+		return nil, fmt.Errorf("message is not in the conversation")
+	}
+	isParticipant, err := s.convRepo.IsParticipant(conversationID, actorID)
+	if err != nil || !isParticipant {
+		return nil, fmt.Errorf("access denied: not a participant")
+	}
+	reaction := &model.MessageReaction{ConversationID: conversationID, MessageID: messageID, UserID: actorID, Emoji: req.Emoji}
+	if err := s.convRepo.AddReaction(reaction); err != nil {
+		return nil, fmt.Errorf("add reaction: %w", err)
+	}
+	stored, err := s.convRepo.GetReaction(messageID, actorID, req.Emoji)
+	if err != nil {
+		return nil, fmt.Errorf("get reaction: %w", err)
+	}
+	participants, err := s.convRepo.GetParticipants(conversationID)
+	if err != nil {
+		return nil, fmt.Errorf("get participants: %w", err)
+	}
+	s.recordReactionSyncEvents(participants, stored, SyncActionReactionAdded)
+	return stored, nil
+}
+
+func (s *MessageService) RemoveReaction(actorID, conversationID, messageID uuid.UUID, emoji string) error {
+	msg, err := s.convRepo.GetMessageByID(messageID)
+	if err != nil {
+		return fmt.Errorf("message not found")
+	}
+	if msg.ConversationID != conversationID {
+		return fmt.Errorf("message is not in the conversation")
+	}
+	isParticipant, err := s.convRepo.IsParticipant(conversationID, actorID)
+	if err != nil || !isParticipant {
+		return fmt.Errorf("access denied: not a participant")
+	}
+	reaction, err := s.convRepo.GetReaction(messageID, actorID, emoji)
+	if err != nil {
+		return nil
+	}
+	if err := s.convRepo.RemoveReaction(messageID, actorID, emoji); err != nil {
+		return fmt.Errorf("remove reaction: %w", err)
+	}
+	participants, err := s.convRepo.GetParticipants(conversationID)
+	if err != nil {
+		return fmt.Errorf("get participants: %w", err)
+	}
+	s.recordReactionSyncEvents(participants, reaction, SyncActionReactionRemoved)
+	return nil
+}
+
 func (s *MessageService) recordMessageSyncEvents(participants []model.ConversationParticipant, msg *model.Message, operation, clientEventID string) {
 	if s.syncSvc == nil {
 		return
@@ -192,6 +257,53 @@ func (s *MessageService) recordMessageSyncEvents(participants []model.Conversati
 			ClientEventID: clientEventID,
 			Payload:       payload,
 		})
+	}
+}
+
+func (s *MessageService) recordReactionSyncEvents(participants []model.ConversationParticipant, reaction *model.MessageReaction, operation string) {
+	if s.syncSvc == nil {
+		return
+	}
+	payload := reactionSyncPayload(reaction)
+	objectID := reaction.MessageID.String() + ":" + reaction.UserID.String() + ":" + reaction.Emoji
+	for _, p := range participants {
+		_, _ = s.syncSvc.RecordEnvelope(SyncEnvelope{
+			UserID:     p.UserID,
+			ObjectType: SyncObjectMessage,
+			ObjectID:   objectID,
+			Operation:  operation,
+			Payload:    payload,
+		})
+	}
+}
+
+func reactionSyncPayload(reaction *model.MessageReaction) datatypes.JSONMap {
+	return datatypes.JSONMap{
+		"object_id":       reaction.MessageID.String() + ":" + reaction.UserID.String() + ":" + reaction.Emoji,
+		"conversation_id": reaction.ConversationID.String(),
+		"message_id":      reaction.MessageID.String(),
+		"user_id":         reaction.UserID.String(),
+		"emoji":           reaction.Emoji,
+		"created_at":      reaction.CreatedAt,
+	}
+}
+
+func validateMessageMetadata(msgType string, metadata datatypes.JSONMap) error {
+	switch msgType {
+	case "", "text", "system":
+		return nil
+	case "image", "file", "audio", "video":
+		if metadata["object_id"] == nil || metadata["object_id"] == "" {
+			return fmt.Errorf("metadata.object_id is required for %s messages", msgType)
+		}
+		return nil
+	case "card":
+		if metadata["card_type"] == nil || metadata["card_type"] == "" {
+			return fmt.Errorf("metadata.card_type is required for card messages")
+		}
+		return nil
+	default:
+		return fmt.Errorf("unsupported message type: %s", msgType)
 	}
 }
 

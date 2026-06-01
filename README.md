@@ -94,10 +94,16 @@ go run ./cmd/server
 | POST | `/api/v1/conversations` | 创建会话，产生 `conversation.created` 同步事件 |
 | GET | `/api/v1/conversations` | 获取会话列表 |
 | GET | `/api/v1/conversations/:id` | 获取会话详情 |
+| PATCH | `/api/v1/conversations/:id` | 更新会话名称/地理元数据，产生 `conversation.updated` 同步事件 |
+| POST | `/api/v1/conversations/:id/read-state` | 标记会话已读，产生 actor-owned `conversation.read` 同步事件 |
 | GET | `/api/v1/conversations/:id/messages` | 获取消息历史 |
 | PUT | `/api/v1/conversations/:id/messages/:message_id` | 编辑本人发送的消息，产生 `message.updated` 同步事件 |
 | DELETE | `/api/v1/conversations/:id/messages/:message_id` | 软删除本人发送的消息，产生 `message.deleted` 同步事件 |
+| POST | `/api/v1/conversations/:id/messages/:message_id/reactions` | 添加消息 reaction，产生 `message.reaction_added` 同步事件 |
+| DELETE | `/api/v1/conversations/:id/messages/:message_id/reactions/:emoji` | 移除消息 reaction，产生 `message.reaction_removed` 同步事件 |
 | POST | `/api/v1/conversations/:id/participants` | 添加参与者，产生 `participant.added` 同步事件 |
+| PATCH | `/api/v1/conversations/:id/participants/:user_id` | 更新参与者角色，产生 `participant.updated` 同步事件 |
+| DELETE | `/api/v1/conversations/:id/participants/:user_id` | 管理员移除参与者，产生 `participant.removed` 同步事件 |
 | DELETE | `/api/v1/conversations/:id/participants/me` | 退出会话，产生 `participant.removed` 同步事件 |
 
 #### Skill 设置

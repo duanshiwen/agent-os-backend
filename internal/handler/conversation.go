@@ -65,6 +65,46 @@ func (h *ConversationHandler) Get(c *gin.Context) {
 	response.OK(c, conv)
 }
 
+// PATCH /api/v1/conversations/:id
+func (h *ConversationHandler) Update(c *gin.Context) {
+	userID := middleware.MustGetUserID(c)
+	convID, ok := parseUUIDParam(c, "id")
+	if !ok {
+		return
+	}
+	var req service.UpdateConversationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	conv, err := h.convSvc.UpdateConversation(userID, convID, req)
+	if err != nil {
+		response.Forbidden(c, err.Error())
+		return
+	}
+	response.OK(c, conv)
+}
+
+// POST /api/v1/conversations/:id/read-state
+func (h *ConversationHandler) MarkRead(c *gin.Context) {
+	userID := middleware.MustGetUserID(c)
+	convID, ok := parseUUIDParam(c, "id")
+	if !ok {
+		return
+	}
+	var req service.MarkConversationReadRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	state, err := h.convSvc.MarkConversationRead(userID, convID, req)
+	if err != nil {
+		response.Forbidden(c, err.Error())
+		return
+	}
+	response.OK(c, state)
+}
+
 // GET /api/v1/conversations/:id/messages
 func (h *ConversationHandler) GetMessages(c *gin.Context) {
 	userID := middleware.MustGetUserID(c)
@@ -142,6 +182,48 @@ func (h *ConversationHandler) DeleteMessage(c *gin.Context) {
 	response.OK(c, msg)
 }
 
+// POST /api/v1/conversations/:id/messages/:message_id/reactions
+func (h *ConversationHandler) AddReaction(c *gin.Context) {
+	userID := middleware.MustGetUserID(c)
+	convID, ok := parseUUIDParam(c, "id")
+	if !ok {
+		return
+	}
+	msgID, ok := parseUUIDParam(c, "message_id")
+	if !ok {
+		return
+	}
+	var req service.AddReactionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	reaction, err := h.msgSvc.AddReaction(userID, convID, msgID, req)
+	if err != nil {
+		response.Forbidden(c, err.Error())
+		return
+	}
+	response.OK(c, reaction)
+}
+
+// DELETE /api/v1/conversations/:id/messages/:message_id/reactions/:emoji
+func (h *ConversationHandler) RemoveReaction(c *gin.Context) {
+	userID := middleware.MustGetUserID(c)
+	convID, ok := parseUUIDParam(c, "id")
+	if !ok {
+		return
+	}
+	msgID, ok := parseUUIDParam(c, "message_id")
+	if !ok {
+		return
+	}
+	if err := h.msgSvc.RemoveReaction(userID, convID, msgID, c.Param("emoji")); err != nil {
+		response.Forbidden(c, err.Error())
+		return
+	}
+	response.OK(c, gin.H{"status": "removed"})
+}
+
 // POST /api/v1/conversations/:id/participants
 func (h *ConversationHandler) AddParticipant(c *gin.Context) {
 	userID := middleware.MustGetUserID(c)
@@ -163,6 +245,48 @@ func (h *ConversationHandler) AddParticipant(c *gin.Context) {
 		return
 	}
 	response.OK(c, gin.H{"status": "added"})
+}
+
+// PATCH /api/v1/conversations/:id/participants/:user_id
+func (h *ConversationHandler) UpdateParticipant(c *gin.Context) {
+	actorID := middleware.MustGetUserID(c)
+	convID, ok := parseUUIDParam(c, "id")
+	if !ok {
+		return
+	}
+	targetID, ok := parseUUIDParam(c, "user_id")
+	if !ok {
+		return
+	}
+	var req service.UpdateParticipantRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	participant, err := h.convSvc.UpdateParticipant(convID, actorID, targetID, req)
+	if err != nil {
+		response.Forbidden(c, err.Error())
+		return
+	}
+	response.OK(c, participant)
+}
+
+// DELETE /api/v1/conversations/:id/participants/:user_id
+func (h *ConversationHandler) RemoveParticipant(c *gin.Context) {
+	actorID := middleware.MustGetUserID(c)
+	convID, ok := parseUUIDParam(c, "id")
+	if !ok {
+		return
+	}
+	targetID, ok := parseUUIDParam(c, "user_id")
+	if !ok {
+		return
+	}
+	if err := h.convSvc.RemoveParticipant(convID, actorID, targetID); err != nil {
+		response.Forbidden(c, err.Error())
+		return
+	}
+	response.OK(c, gin.H{"status": "removed"})
 }
 
 // DELETE /api/v1/conversations/:id/participants/me
