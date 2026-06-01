@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/agent-os/backend/internal/model"
 	"github.com/agent-os/backend/internal/repository"
@@ -294,46 +295,133 @@ func TestGovernanceHandlerScanResultListAndResolve(t *testing.T) {
 	}
 }
 
-func TestGovernanceHandlerErrorIncludesStableDetails(t *testing.T) {
+func TestGovernanceHandlerClientErrorContract(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	decisionID := mustParseUUID(t, "44444444-4444-4444-4444-444444444444")
-	err := &service.GovernanceEnforcementError{
-		Cause:  service.ErrGovernanceDenied,
-		Input:  service.GovernanceEnforcementInput{SubjectType: service.GovernanceSubjectObjectOperation, SubjectID: "scope-a", CapabilityKey: "object.upload.scope_a", RiskLevel: service.GovernanceRiskMedium},
-		Result: &service.GovernanceEnforcementResult{Decision: &model.PolicyDecision{Base: model.Base{ID: decisionID}, SubjectType: service.GovernanceSubjectObjectOperation, SubjectID: "scope-a", CapabilityKey: "object.upload.scope_a", RiskLevel: service.GovernanceRiskMedium, Decision: service.GovernanceDecisionDeny, Reason: "matched policy rule"}},
+	receiptID := mustParseUUID(t, "55555555-5555-5555-5555-555555555555")
+	actorID := mustParseUUID(t, "66666666-6666-6666-6666-666666666666")
+	expiresAt := time.Date(2026, time.June, 1, 8, 30, 0, 0, time.UTC)
+
+	tests := []struct {
+		name               string
+		err                error
+		expectedStatus     int
+		expectedCode       string
+		expectedDecision   string
+		expectedSubject    string
+		expectedSubjectID  string
+		expectedCapability string
+		expectedRisk       string
+		wantReceipt        bool
+	}{
+		{
+			name: "denied",
+			err: &service.GovernanceEnforcementError{
+				Cause:  service.ErrGovernanceDenied,
+				Input:  service.GovernanceEnforcementInput{SubjectType: service.GovernanceSubjectObjectOperation, SubjectID: "scope-a", CapabilityKey: "object.upload.scope_a", RiskLevel: service.GovernanceRiskMedium},
+				Result: &service.GovernanceEnforcementResult{Decision: &model.PolicyDecision{Base: model.Base{ID: decisionID}, SubjectType: service.GovernanceSubjectObjectOperation, SubjectID: "scope-a", CapabilityKey: "object.upload.scope_a", RiskLevel: service.GovernanceRiskMedium, Decision: service.GovernanceDecisionDeny, Reason: "matched policy rule"}},
+			},
+			expectedStatus:     http.StatusForbidden,
+			expectedCode:       GovernanceErrorCodeDenied,
+			expectedDecision:   service.GovernanceDecisionDeny,
+			expectedSubject:    service.GovernanceSubjectObjectOperation,
+			expectedSubjectID:  "scope-a",
+			expectedCapability: "object.upload.scope_a",
+			expectedRisk:       service.GovernanceRiskMedium,
+		},
+		{
+			name: "approval required",
+			err: &service.GovernanceEnforcementError{
+				Cause: service.ErrGovernanceApprovalRequired,
+				Input: service.GovernanceEnforcementInput{SubjectType: service.GovernanceSubjectSAGEPermissionGrant, SubjectID: "installation-1", CapabilityKey: "third_party.api.call", RiskLevel: service.GovernanceRiskMedium},
+				Result: &service.GovernanceEnforcementResult{
+					Decision:        &model.PolicyDecision{Base: model.Base{ID: decisionID}, SubjectType: service.GovernanceSubjectSAGEPermissionGrant, SubjectID: "installation-1", CapabilityKey: "third_party.api.call", RiskLevel: service.GovernanceRiskMedium, Decision: service.GovernanceDecisionRequireUserApproval, Reason: "requires human approval"},
+					ApprovalReceipt: &model.ApprovalReceipt{Base: model.Base{ID: receiptID}, PolicyDecisionID: decisionID, ActorUserID: actorID, SubjectType: service.GovernanceSubjectSAGEPermissionGrant, SubjectID: "installation-1", CapabilityKey: "third_party.api.call", Decision: service.GovernanceDecisionRequireUserApproval, ExpiresAt: expiresAt},
+					ApprovalToken:   "approval-token-1",
+				},
+			},
+			expectedStatus:     http.StatusPreconditionRequired,
+			expectedCode:       GovernanceErrorCodeApprovalRequired,
+			expectedDecision:   service.GovernanceDecisionRequireUserApproval,
+			expectedSubject:    service.GovernanceSubjectSAGEPermissionGrant,
+			expectedSubjectID:  "installation-1",
+			expectedCapability: "third_party.api.call",
+			expectedRisk:       service.GovernanceRiskMedium,
+			wantReceipt:        true,
+		},
+		{
+			name: "approval invalid",
+			err: &service.GovernanceEnforcementError{
+				Cause:  service.ErrGovernanceApprovalInvalid,
+				Input:  service.GovernanceEnforcementInput{SubjectType: service.GovernanceSubjectSAGEPermissionGrant, SubjectID: "installation-1", CapabilityKey: "third_party.api.call", RiskLevel: service.GovernanceRiskMedium},
+				Result: &service.GovernanceEnforcementResult{Decision: &model.PolicyDecision{Base: model.Base{ID: decisionID}, SubjectType: service.GovernanceSubjectSAGEPermissionGrant, SubjectID: "installation-1", CapabilityKey: "third_party.api.call", RiskLevel: service.GovernanceRiskMedium, Decision: service.GovernanceDecisionRequireUserApproval, Reason: "approval token invalid"}},
+			},
+			expectedStatus:     http.StatusForbidden,
+			expectedCode:       GovernanceErrorCodeApprovalInvalid,
+			expectedDecision:   service.GovernanceDecisionRequireUserApproval,
+			expectedSubject:    service.GovernanceSubjectSAGEPermissionGrant,
+			expectedSubjectID:  "installation-1",
+			expectedCapability: "third_party.api.call",
+			expectedRisk:       service.GovernanceRiskMedium,
+		},
 	}
-	r := gin.New()
-	r.GET("/blocked", func(c *gin.Context) {
-		if !handleGovernanceError(c, err) {
-			t.Fatalf("expected governance error to be handled")
-		}
-	})
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/blocked", nil))
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("expected forbidden, got %d body=%s", rec.Code, rec.Body.String())
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := gin.New()
+			r.GET("/blocked", func(c *gin.Context) {
+				if !handleGovernanceError(c, tt.err) {
+					t.Fatalf("expected governance error to be handled")
+				}
+			})
+			rec := httptest.NewRecorder()
+			r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/blocked", nil))
+			if rec.Code != tt.expectedStatus {
+				t.Fatalf("expected status %d, got %d body=%s", tt.expectedStatus, rec.Code, rec.Body.String())
+			}
+			body := decodeGovernanceClientErrorContract(t, rec)
+			if body.Error.Code != tt.expectedCode || body.Error.Message == "" {
+				t.Fatalf("unexpected error envelope: %+v", body)
+			}
+			if body.Error.Details.PolicyDecisionID != decisionID.String() || body.Error.Details.SubjectType != tt.expectedSubject || body.Error.Details.SubjectID != tt.expectedSubjectID || body.Error.Details.CapabilityKey != tt.expectedCapability || body.Error.Details.RiskLevel != tt.expectedRisk || body.Error.Details.Decision != tt.expectedDecision || body.Error.Details.Reason == "" {
+				t.Fatalf("unexpected governance error details: %+v", body.Error.Details)
+			}
+			if tt.wantReceipt {
+				if body.Error.Details.ApprovalReceiptID != receiptID.String() || body.Error.Details.ApprovalExpiresAt != expiresAt.Format("2006-01-02T15:04:05Z07:00") {
+					t.Fatalf("unexpected approval receipt details: %+v", body.Error.Details)
+				}
+			} else if body.Error.Details.ApprovalReceiptID != "" || body.Error.Details.ApprovalExpiresAt != "" {
+				t.Fatalf("did not expect approval receipt details: %+v", body.Error.Details)
+			}
+		})
 	}
-	var body struct {
-		Error struct {
-			Code    string `json:"code"`
-			Message string `json:"message"`
-			Details struct {
-				PolicyDecisionID string `json:"policy_decision_id"`
-				SubjectType      string `json:"subject_type"`
-				SubjectID        string `json:"subject_id"`
-				CapabilityKey    string `json:"capability_key"`
-				RiskLevel        string `json:"risk_level"`
-				Decision         string `json:"decision"`
-				Reason           string `json:"reason"`
-			} `json:"details"`
-		} `json:"error"`
-	}
+}
+
+type governanceClientErrorContractBody struct {
+	Error struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+		Details struct {
+			PolicyDecisionID  string `json:"policy_decision_id"`
+			SubjectType       string `json:"subject_type"`
+			SubjectID         string `json:"subject_id"`
+			CapabilityKey     string `json:"capability_key"`
+			RiskLevel         string `json:"risk_level"`
+			Decision          string `json:"decision"`
+			Reason            string `json:"reason"`
+			ApprovalReceiptID string `json:"approval_receipt_id"`
+			ApprovalExpiresAt string `json:"approval_expires_at"`
+		} `json:"details"`
+	} `json:"error"`
+}
+
+func decodeGovernanceClientErrorContract(t *testing.T, rec *httptest.ResponseRecorder) governanceClientErrorContractBody {
+	t.Helper()
+	var body governanceClientErrorContractBody
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode error body: %v", err)
 	}
-	if body.Error.Code != GovernanceErrorCodeDenied || body.Error.Details.PolicyDecisionID != decisionID.String() || body.Error.Details.CapabilityKey != "object.upload.scope_a" || body.Error.Details.Decision != service.GovernanceDecisionDeny {
-		t.Fatalf("unexpected governance error body: %+v", body)
-	}
+	return body
 }
 
 func TestGovernanceHandlerApprovalReceiptRoutes(t *testing.T) {

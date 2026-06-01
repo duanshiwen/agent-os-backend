@@ -32,8 +32,17 @@ done
 echo "==> Python syntax checks"
 python3 -m py_compile examples/sage-plugins/hotel-booking/mock_server.py
 
+echo "==> FFI bundled artifact checks"
+./scripts/check-ffi-artifacts.sh
+
 echo "==> Stage 5A client-ready sync bridge smoke"
 ./scripts/smoke-stage5a-sync-bridge.sh
+
+echo "==> SAGE client runtime contract gate"
+./scripts/check-sage-client-runtime-contract.sh
+
+echo "==> Governance client error contract gate"
+./scripts/check-governance-client-error-contract.sh
 
 if [[ "$RUN_MIGRATION_GATE" == "1" ]]; then
   echo "==> PostgreSQL migration apply gate"

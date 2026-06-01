@@ -2,7 +2,7 @@
 
 Updated: 2026-06-01
 Branch: `stage5a-client-ready-platform-slice`
-Status: in progress — sync bridge evidence path implemented
+Status: in progress — Release Gate 1.0 evidence path implemented
 
 ## 1. Purpose
 
@@ -16,10 +16,16 @@ Fresh local verification on 2026-06-01:
 
 ```text
 Backend: go test ./...
-Result: 183 passed in 11 packages
+Result: 189 passed in 11 packages
 
-Rust SDK: cargo test --workspace --all-targets --locked
-Result: 1560 passed, 2 ignored, 110 suites
+Backend release gate: ./scripts/release-gate-local.sh
+Result: Release gate local checks passed.
+
+Stage 5A evidence: ./scripts/stage5a-release-evidence.sh
+Result: writes tmp/stage5a-release-evidence.md after passing core Stage 5A gates.
+
+Rust SDK targeted bridge/FFI check: cargo test -p agentos-client-bridge -p agentos-ffi --locked
+Latest known result: 18 passed, 6 suites
 ```
 
 Backend branch at Stage 5A start:
@@ -97,43 +103,93 @@ go test ./...
 ./scripts/smoke-stage5a-sync-bridge.sh
 ```
 
-### 4.3 SAGE Client Runtime Contract Gate
+### 4.3 FFI Artifact Gate
 
-Goal: prove that the backend control plane emits enough contract data for AgentOS Client to execute SAGE Plugin runtime flows safely.
+Goal: prevent bundled Rust FFI runtime drift from silently breaking Go/backend and native client contract tests.
 
-Deliverables:
+Implemented foundation:
 
-- freeze policy bundle client-facing field names and semantics;
-- extend the mock plugin runtime smoke to include approval-required and denied governance scenarios;
-- verify plugin install/grant/revoke sync events in the same client contract path;
-- verify invocation/report idempotency and developer metrics consistency.
+- `scripts/check-ffi-artifacts.sh` validates bundled Darwin ARM64 and Linux ARM64 artifact presence and architecture.
+- The artifact gate requires the exported symbol set:
+  - `agentos_ffi_version`
+  - `agentos_ffi_free_string`
+  - `agentos_identity_verify_ed25519_challenge`
+  - `agentos_apply_knowledge_sync_events_json`
+  - `agentos_apply_knowledge_sync_pull_response_json`
+  - `agentos_apply_sync_pull_response_json`
+- `TestFFIArtifactContractIntegration` loads the current-platform bundled artifact and verifies FFI version `0.1.0` plus bridge symbol registration.
+- `scripts/release-gate-local.sh` runs the artifact gate before sync bridge smoke tests.
 
 Acceptance checks:
 
 ```bash
+./scripts/check-ffi-artifacts.sh
+./scripts/release-gate-local.sh
+```
+
+### 4.4 SAGE Client Runtime Contract Gate
+
+Goal: prove that the backend control plane emits enough contract data for AgentOS Client to execute SAGE Plugin runtime flows safely.
+
+Implemented foundation:
+
+- `docs/sage-plugin-runtime-contract.md` defines the Stage 5A client runtime contract for policy bundle, Plugin Server flow call, invocation, execution report, and governance errors.
+- `TestSAGEPluginServiceClientRuntimeContract` verifies policy bundle identity fields, granted/denied permission split, runtime guards, stable reporting endpoint, invocation/report idempotency, and developer metrics.
+- `TestSAGEPluginServiceGovernanceEnforceClientRuntimeOutcomes` verifies SAGE enforce-mode denied, approval-required, invalid-approval, and approval-token retry success outcomes.
+- `scripts/check-sage-client-runtime-contract.sh` provides a fast service-level gate.
+- `scripts/release-gate-local.sh` runs the SAGE contract gate in the default local release path; live smoke remains optional through `RUN_LIVE_SMOKES=1`.
+
+Acceptance checks:
+
+```bash
+./scripts/check-sage-client-runtime-contract.sh
 ./scripts/smoke-sage-plugin-runtime.sh
 ./scripts/smoke-governance-enforce-readiness.sh
 ```
 
-### 4.4 Release Gate 1.0
+### 4.5 Governance Client Error Contract Gate
 
-Goal: make local release evidence repeatable before broader client integration.
+Goal: keep client UX stable when backend governance denies, requests approval, or invalidates a request.
 
-Deliverables:
+Implemented foundation:
 
-- keep `scripts/release-gate-local.sh` as the primary local gate;
-- keep the Stage 5A sync bridge smoke in the fast release path;
-- document optional live gates clearly: migration apply, object storage, SAGE runtime, governance enforcement, local_http semantic search;
-- produce release evidence with commit hashes and test results.
+- `docs/governance-client-error-contract.md` defines the HTTP-level error envelope, stable codes, details fields, client actions, and evidence path.
+- `TestGovernanceHandlerClientErrorContract` verifies `403 governance_denied`, `428 governance_approval_required`, and `403 governance_approval_invalid` response shapes.
+- `scripts/check-governance-client-error-contract.sh` provides a fast handler-level contract gate.
+- `scripts/release-gate-local.sh` runs the governance client error contract gate in the default local release path.
+
+Remaining extension:
+
+- add dedicated kill-switch client UX scenarios if/when kill-switch errors diverge from the standard `governance_denied` envelope.
 
 Acceptance checks:
 
 ```bash
+./scripts/check-governance-client-error-contract.sh
+./scripts/smoke-governance-enforce-readiness.sh
+```
+
+### 4.6 Release Gate 1.0
+
+Goal: make local release evidence repeatable before broader client integration.
+
+Implemented foundation:
+
+- `scripts/release-gate-local.sh` remains the primary default local gate.
+- The default release gate now includes Go tests, syntax checks, FFI artifact checks, Stage 5A sync bridge smoke, SAGE client runtime contract gate, and governance client error contract gate.
+- `scripts/stage5a-release-evidence.sh` runs the core Stage 5A gate set and writes a markdown evidence report with branch, commit, command, result, and per-gate log paths.
+- `docs/stage5a-client-integration-handoff.md` summarizes stable client-facing contracts and the recommended client integration order.
+- Optional live gates remain explicit: migration apply, object storage, SAGE runtime, governance enforcement, local_http semantic search.
+
+Acceptance checks:
+
+```bash
+./scripts/stage5a-release-evidence.sh
 ./scripts/release-gate-local.sh
 RUN_MIGRATION_GATE=1 RUN_LIVE_SMOKES=1 RUN_LOCAL_HTTP_SEMANTIC=1 ./scripts/release-gate-local.sh
 ```
 
-### 4.5 Search Quality Follow-up
+### 4.7 Search Quality Follow-up
 
 Goal: improve KB retrieval quality after client-ready contracts are stable.
 
@@ -146,7 +202,7 @@ Deferred but next after Stage 5A contract gate:
 
 This is a quality slice, not a provider-architecture rewrite. BGE-M3 + pgvector + durable queue remain the baseline.
 
-### 4.6 Governance 4E Follow-up
+### 4.8 Governance 4E Follow-up
 
 Goal: move governance from enforce-ready foundation to production policy operations.
 
@@ -163,10 +219,13 @@ Deferred but important:
 ```mermaid
 graph TD
     A[Reality Lock 2.0] --> B[SDK Client Sync Bridge Expansion]
-    B --> C[SAGE Client Runtime Contract Gate]
-    C --> D[Release Gate 1.0]
-    D --> E[KB Chunk Search Quality]
-    D --> F[Governance 4E]
+    B --> C[FFI Artifact Gate]
+    C --> D[SAGE Client Runtime Contract Gate]
+    D --> H[Governance Client Error Contract Gate]
+    H --> G[Release Gate 1.0]
+    G --> I[Client Integration Handoff]
+    I --> E[KB Chunk Search Quality]
+    I --> F[Governance 4E]
 ```
 
 ## 6. Stage 5A Exit Criteria
@@ -175,7 +234,8 @@ Stage 5A is complete when:
 
 1. roadmap/status docs reflect real backend and SDK progress;
 2. backend sync events have SDK-compatible reducer coverage beyond knowledge-only sync;
-3. SAGE policy bundle / invocation / report contract is verified by smoke evidence;
-4. governance approval-required / denied / invalid-approval responses are stable and documented for client consumption;
-5. release gate includes the client-ready evidence path;
-6. `go test ./...` and SDK workspace tests pass with fresh output.
+3. bundled FFI artifacts have required architecture, version, and exported symbol evidence;
+4. SAGE policy bundle / invocation / report contract is verified by smoke evidence;
+5. governance approval-required / denied / invalid-approval responses are stable and documented for client consumption;
+6. release gate includes the client-ready evidence path;
+7. `go test ./...` and SDK workspace tests pass with fresh output.
