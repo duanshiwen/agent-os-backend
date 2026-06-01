@@ -1,27 +1,28 @@
 # AgentOS Client Sync Consumer Contract
 
-Updated: 2026-05-30
-Branch: `m2-3-client-sync-integration`
-Status: Draft for M2.3 SDK/client integration
+Updated: 2026-06-01  
+Status: Stage 5A client-ready contract baseline
 
 ## 1. Purpose
 
-This document defines how AgentOS clients and SDKs should consume the backend cross-device sync contract.
+This document defines how AgentOS clients and SDKs consume the backend cross-device sync contract.
 
 The backend is the authoritative event sequencer. Clients own local durable application of events, local projections, and cursor persistence.
 
-M2.3 turns the backend M2.2 sync foundation into a real multi-device loop:
+The client loop is:
 
 1. load a baseline through domain APIs;
 2. receive WebSocket sync notifications when online;
 3. pull ordered sync events from `/api/v1/sync/events`;
-4. apply events deterministically to local stores;
+4. apply events deterministically to local stores or the SDK bridge projection;
 5. persist the applied cursor;
 6. ack the backend only after durable local apply.
 
+Stage 5A adds a general SDK / FFI reducer path for client-ready pull envelopes, beyond the older knowledge-only bridge.
+
 ## 2. Scope
 
-In scope for M2.3 client consumption:
+In scope for Stage 5A client consumption:
 
 - sync event envelope decoding;
 - profile sync;
@@ -29,19 +30,21 @@ In scope for M2.3 client consumption:
 - skill settings sync;
 - agent settings sync;
 - server list sync;
+- SAGE plugin lifecycle and permission sync;
 - personal knowledge entry sync;
 - cursor persistence and ack discipline;
 - idempotent retry handling;
 - optimistic concurrency conflict handling;
-- offline catch-up.
+- offline catch-up;
+- SDK / FFI bridge application of backend pull envelopes.
 
-Out of scope for M2.3:
+Out of scope:
 
-- KB Hub publishing, snapshots, subscriptions, marketplace discovery, semantic indexing, billing, and search;
+- Federation / multi-server networking conflict semantics;
 - generic external sync write endpoint;
-- Federation / multi-server networking conflict semantics, because Federation is not part of the current roadmap;
 - full CRDT/merge engine;
-- plugin marketplace / SAGE sync semantics beyond reserved taxonomy.
+- Backend-side SAGE Flow execution;
+- external payment-provider sync semantics.
 
 ## 3. Sync Model
 
@@ -67,8 +70,9 @@ WebSocket notifications are hints. Pull remains the source of truth because it r
 | `message` | `GET /api/v1/conversations`, `GET /api/v1/conversations/:id/messages` | Conversation history remains domain-loaded. |
 | `skill` | `GET /api/v1/skills/settings` | User skill settings. |
 | `agent` | `GET /api/v1/agents/settings` | User agent settings. |
-| `server` | `GET /api/v1/servers` | User server connection list. |
-| `knowledge` | `GET /api/v1/knowledge/entries?include_deleted=true` | Clients should include tombstones during reconciliation. |
+| `server` | `GET /api/v1/servers` | User server connection list. Local configuration only; not Federation. |
+| `plugin` | `GET /api/v1/sage/installations`, `GET /api/v1/sage/installations/:installation_id/policy-bundle` | SAGE installation and policy state. |
+| `knowledge` | `GET /api/v1/knowledge/entries?include_deleted=true` | Include tombstones during reconciliation. |
 
 ## 5. Incremental Event API
 
@@ -79,15 +83,19 @@ GET /api/v1/sync/events?after_sequence=<last_applied_sequence>&limit=100
 Authorization: Bearer <token>
 ```
 
-Response envelope:
+Backend handler responses wrap the sync payload in the standard API response envelope:
 
 ```json
 {
-  "events": [],
-  "next_after_sequence": 123,
-  "has_more": false,
-  "server_time": 1780054321000,
-  "schema_version": 1
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "events": [],
+    "next_after_sequence": 123,
+    "has_more": false,
+    "server_time": 1780054321000,
+    "schema_version": 1
+  }
 }
 ```
 
@@ -175,41 +183,28 @@ If `schema_version` is unsupported, clients should stop applying that event stre
 
 Event: `profile.updated`
 
-Minimum payload fields:
-
-- `user_id`
-- `display_name`
-- `avatar_url`
-- `updated_at`
-
 Apply rule:
 
 ```text
-upsert local profile by user_id
+upsert local profile by user_id / object_id
 set display_name/avatar_url from payload
-record source sequence as last applied after durable write
+record source sequence after durable write
 ```
 
 ### 9.2 Message
 
-Event: `message.created`
+Supported events:
 
-Minimum payload fields:
-
-- `message_id`
-- `conversation_id`
-- `sender_id`
-- `type`
-- `content`
-- `metadata`
-- `created_at`
+- `message.created`
+- `message.updated` reserved for future edits
+- `message.deleted` reserved for future deletion/tombstone
 
 Apply rule:
 
 ```text
-upsert message by message_id
-attach to conversation_id
-ignore duplicate message_id
+created/updated: upsert message by message_id / object_id
+deleted: delete or tombstone local message by object_id
+ignore duplicate message_id / sequence
 ```
 
 Conversation membership and history should still be reconciled through baseline conversation APIs.
@@ -225,7 +220,7 @@ Events:
 Apply rule:
 
 ```text
-upsert skill setting by skill_id
+upsert skill setting by skill_id / object_id
 set enabled/config fields from payload
 for disabled events, set enabled=false
 ```
@@ -237,7 +232,7 @@ Event: `agent.updated`
 Apply rule:
 
 ```text
-upsert agent setting by agent_id
+upsert agent setting by agent_id / object_id
 replace config fields from payload
 ```
 
@@ -257,7 +252,35 @@ server.updated: replace server connection by id if present; otherwise upsert
 server.removed: delete or tombstone local server connection by id
 ```
 
-### 9.6 Personal Knowledge Entries
+Server list sync is local user configuration only. It does not imply Federation, server trust, remote plugin discovery, or cross-server data sync.
+
+### 9.6 SAGE Plugin Lifecycle and Permissions
+
+Events:
+
+- `plugin.installed`
+- `plugin.uninstalled`
+- `plugin.enabled`
+- `plugin.disabled`
+- `plugin.permission_granted`
+- `plugin.permission_revoked`
+
+Apply rule:
+
+```text
+plugin.installed/enabled/disabled/updated: upsert plugin installation by installation_id / object_id
+plugin.uninstalled/removed: remove installation and associated permission grants
+plugin.permission_granted: upsert grant by grant_id, falling back to installation_id:permission_key
+plugin.permission_revoked: remove grant by grant_id, falling back to installation_id:permission_key
+```
+
+Client runtime should treat plugin sync state as installation / authorization state only. Runtime execution still depends on fresh policy bundle retrieval:
+
+```http
+GET /api/v1/sage/installations/:installation_id/policy-bundle
+```
+
+### 9.7 Personal Knowledge Entries
 
 Events:
 
@@ -309,11 +332,67 @@ store status=deleted, version, content_hash, deleted_at.
 active views hide tombstones unless include_deleted/reconciliation mode is enabled.
 ```
 
-## 10. Client-Originated Writes
+## 10. SDK / FFI Bridge Contract
+
+Stage 5A client-ready reducer lives in the Rust SDK:
+
+- crate: `agentos-client-bridge`
+- projection: `ClientReadySyncProjection`
+- Rust helper: `apply_sync_pull_response_json(projection_json, pull_response_json)`
+- FFI export: `agentos_apply_sync_pull_response_json`
+
+The FFI function accepts:
+
+1. `projection_json`: serialized `ClientReadySyncProjection`, or empty string for a new projection;
+2. `pull_response_json`: standard backend `/api/v1/sync/events` response envelope.
+
+It returns a JSON-encoded bridge response:
+
+```json
+{
+  "ok": true,
+  "json": "{...serialized ClientReadySyncProjection...}"
+}
+```
+
+The projection contains:
+
+- `cursor.last_applied_sequence`
+- `knowledge`
+- `profiles`
+- `messages`
+- `skills`
+- `agents`
+- `servers`
+- `plugins`
+- `plugin_permissions`
+
+Backend evidence fixture:
+
+```text
+internal/service/testdata/stage5a_client_ready_sync_pull_response.json
+```
+
+Backend FFI integration test:
+
+```text
+internal/service/ffi_verifier_test.go
+TestFFIClientReadySyncBridgeIntegration
+```
+
+Smoke:
+
+```bash
+./scripts/smoke-stage5a-sync-bridge.sh
+```
+
+This smoke is part of `./scripts/release-gate-local.sh`.
+
+## 11. Client-Originated Writes
 
 Mutating requests should include `client_event_id` whenever possible.
 
-Examples:
+Example:
 
 ```json
 {
@@ -332,7 +411,7 @@ Client rules:
 4. If backend returns idempotent replay, treat it as success.
 5. If backend returns idempotency conflict, stop retrying and surface a client bug or local queue corruption error.
 
-## 11. Optimistic Concurrency for Knowledge
+## 12. Optimistic Concurrency for Knowledge
 
 Knowledge update/delete requests may include `base_version`.
 
@@ -361,9 +440,9 @@ graph TD
     E --> F[Rebase or ask user]
 ```
 
-M2.3 does not require automatic semantic merge. A host may choose last-writer review, manual diff, or local draft preservation.
+Stage 5A does not require automatic semantic merge. A host may choose last-writer review, manual diff, or local draft preservation.
 
-## 12. Offline Catch-up
+## 13. Offline Catch-up
 
 When a device reconnects:
 
@@ -382,7 +461,7 @@ If the device has queued local writes, prefer this order:
 4. submit writes with `base_version` and `client_event_id`;
 5. handle conflicts explicitly.
 
-## 13. Local Reducer Requirements
+## 14. Local Reducer Requirements
 
 A compliant client reducer must be:
 
@@ -393,7 +472,7 @@ A compliant client reducer must be:
 - cursor-safe: no ack before durable apply;
 - compatibility-aware: unsupported schema versions stop apply.
 
-## 14. M2.3 Required SDK Tests
+## 15. Required SDK / Backend Tests
 
 Minimum SDK/client tests:
 
@@ -405,37 +484,31 @@ Minimum SDK/client tests:
 6. apply `skill.enabled`, `skill.disabled`, `skill.updated`;
 7. apply `agent.updated`;
 8. apply `server.added`, `server.updated`, `server.removed`;
-9. apply `knowledge.created`;
-10. apply `knowledge.updated` only when version is newer;
-11. apply `knowledge.deleted` as tombstone;
-12. ignore stale knowledge events;
-13. detect same-version content/status mismatch;
-14. persist cursor only after reducer success;
-15. retry same `client_event_id` as same logical write;
-16. surface idempotency conflict as client/local queue error;
-17. handle stale `base_version` by pulling latest events.
+9. apply `plugin.installed`, `plugin.uninstalled`, `plugin.enabled`, `plugin.disabled`;
+10. apply `plugin.permission_granted`, `plugin.permission_revoked`;
+11. apply `knowledge.created`;
+12. apply `knowledge.updated` only when version is newer;
+13. apply `knowledge.deleted` as tombstone;
+14. ignore stale knowledge events;
+15. detect same-version content/status mismatch;
+16. persist cursor only after reducer success;
+17. retry same `client_event_id` as same logical write;
+18. surface idempotency conflict as client/local queue error;
+19. handle stale `base_version` by pulling latest events.
 
-## 15. Backend E2E Smoke Required Before M3
+Backend Stage 5A evidence:
 
-Before starting KB Hub implementation, the backend should have a live two-device smoke that proves:
+```bash
+./scripts/smoke-stage5a-sync-bridge.sh
+go test ./internal/service -run 'TestFFIClientReadySyncBridgeIntegration' -count=1 -v
+```
 
-1. two authenticated devices under one user;
-2. Device A writes knowledge entry;
-3. Device B receives WebSocket hint or pulls manually;
-4. Device B applies `knowledge.created`;
-5. Device A updates entry with `base_version`;
-6. Device B pulls and applies `knowledge.updated`;
-7. Device B attempts stale update and receives `409`;
-8. Device A deletes entry;
-9. Device B pulls tombstone;
-10. Device B acks final sequence.
+## 16. Stage 5A Gate
 
-## 16. M3 Gate
+Client-ready sync is acceptable when:
 
-KB Hub design and implementation should stay blocked until:
-
-- backend M2.2 tests pass;
-- Postgres migration smoke passes;
-- SDK/client reducer contract is implemented or at least test-specified;
-- two-device sync smoke passes;
-- knowledge tombstone and stale conflict behavior are accepted by the client integration layer.
+- backend emits stable schema-versioned sync envelopes;
+- SDK bridge can apply pull envelopes for profile/message/skill/agent/server/plugin/knowledge;
+- FFI export is present in bundled runtime libraries;
+- smoke and release gate pass;
+- clients ack only after durable local apply.
