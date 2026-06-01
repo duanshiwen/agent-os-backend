@@ -91,14 +91,14 @@ go run ./cmd/server
 
 | 方法 | 路径 | 描述 |
 |------|------|------|
-| POST | `/api/v1/conversations` | 创建会话 |
+| POST | `/api/v1/conversations` | 创建会话，产生 `conversation.created` 同步事件 |
 | GET | `/api/v1/conversations` | 获取会话列表 |
 | GET | `/api/v1/conversations/:id` | 获取会话详情 |
 | GET | `/api/v1/conversations/:id/messages` | 获取消息历史 |
 | PUT | `/api/v1/conversations/:id/messages/:message_id` | 编辑本人发送的消息，产生 `message.updated` 同步事件 |
 | DELETE | `/api/v1/conversations/:id/messages/:message_id` | 软删除本人发送的消息，产生 `message.deleted` 同步事件 |
-| POST | `/api/v1/conversations/:id/participants` | 添加参与者 |
-| DELETE | `/api/v1/conversations/:id/participants/me` | 退出会话 |
+| POST | `/api/v1/conversations/:id/participants` | 添加参与者，产生 `participant.added` 同步事件 |
+| DELETE | `/api/v1/conversations/:id/participants/me` | 退出会话，产生 `participant.removed` 同步事件 |
 
 #### Skill 设置
 

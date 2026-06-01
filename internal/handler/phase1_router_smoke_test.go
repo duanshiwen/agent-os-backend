@@ -40,10 +40,10 @@ func TestPhase1RouterSmokeAuthConversationSyncAndQRPairing(t *testing.T) {
 	}
 
 	bobEvents := env.getSyncEvents(t, bob.AccessToken, 100)
-	if len(bobEvents) != 1 || bobEvents[0].EventType != "message.created" || bobEvents[0].Payload["message_id"] != delivery.Message.ID.String() {
-		t.Fatalf("expected bob message.created event for sent message, got %+v", bobEvents)
+	if len(bobEvents) != 2 || bobEvents[0].EventType != "conversation.created" || bobEvents[1].EventType != "message.created" || bobEvents[1].Payload["message_id"] != delivery.Message.ID.String() {
+		t.Fatalf("expected bob conversation.created and message.created events, got %+v", bobEvents)
 	}
-	env.ackSyncEvents(t, bob.AccessToken, bobEvents[0].Sequence)
+	env.ackSyncEvents(t, bob.AccessToken, bobEvents[1].Sequence)
 	bobEvents = env.getSyncEvents(t, bob.AccessToken, 100)
 	if len(bobEvents) != 0 {
 		t.Fatalf("expected no bob sync events after ack, got %+v", bobEvents)
@@ -53,7 +53,7 @@ func TestPhase1RouterSmokeAuthConversationSyncAndQRPairing(t *testing.T) {
 	if aliceProfile.ID != alice.User.ID || aliceProfile.DisplayName != "Alice Router Smoke" {
 		t.Fatalf("unexpected updated profile: %+v", aliceProfile)
 	}
-	aliceEvents := env.getSyncEventsAfter(t, alice.AccessToken, 1, 100)
+	aliceEvents := env.getSyncEventsAfter(t, alice.AccessToken, 2, 100)
 	if len(aliceEvents) != 1 || aliceEvents[0].EventType != "profile.updated" || aliceEvents[0].ObjectType != service.SyncEventProfile || aliceEvents[0].ObjectID != alice.User.ID.String() || aliceEvents[0].Operation != service.SyncActionUpdated || aliceEvents[0].SourceDeviceID != alice.Device.DeviceID {
 		t.Fatalf("expected alice profile.updated sync event, got %+v", aliceEvents)
 	}
