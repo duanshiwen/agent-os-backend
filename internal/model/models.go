@@ -103,6 +103,14 @@ type Message struct {
 	Type           string            `json:"type"`
 	Content        string            `json:"content"`
 	Metadata       datatypes.JSONMap `gorm:"type:jsonb" json:"metadata"`
+	ReplyTo        *uuid.UUID        `gorm:"type:uuid;index" json:"reply_to"`
+	ThreadID       string            `gorm:"index" json:"thread_id"`
+	Visibility     datatypes.JSONMap `gorm:"type:jsonb" json:"visibility"`
+	ClientEventID  string            `gorm:"index" json:"client_event_id"`
+	Status         string            `gorm:"index;not null;default:active" json:"status"`
+	EditedAt       *time.Time        `json:"edited_at"`
+	DeletedAt      *time.Time        `json:"deleted_at"`
+	DeletedBy      *uuid.UUID        `gorm:"type:uuid;index" json:"deleted_by"`
 	DeliveredAt    *time.Time        `json:"delivered_at"`
 }
 type OfflineMessage struct {

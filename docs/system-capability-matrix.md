@@ -42,16 +42,16 @@ Obsolete Phase/M2/M3 progress-history docs were retired; this matrix is the curr
 | User profile | Get/update self | ✅ | `/users/me`; emits `profile.updated` | Sensitive field policy |
 | Password | Password setup/change/confirmation | ✅ | password set/change routes; one-time sensitive operation confirmation tokens | Password reset/recovery policy |
 | Conversation | Private/group/agent conversation creation path | ✅ | `ConversationService`; routes | richer lifecycle events and moderation |
-| Messaging | Text message persistence | ✅ | `MessageService`; `messages` | edit/delete/reactions not complete |
-| Messaging | Offline fetch/ack foundation | ✅ | `offline_messages`; WS dispatcher | retention policy and delivery observability |
-| Messaging | Rich message types | 🟡 | `messages.type` and metadata are flexible | image/voice/file/video/link/kb/plugin card contracts |
-| WebSocket | Runtime hub and dispatcher | ✅ | `internal/ws`; `message.send`, `offline.fetch`, `message.ack`, `ping` | conversation lifecycle and richer sync hints |
+| Messaging | Text message persistence and lifecycle | ✅ | `MessageService`; `messages`; sender edit/delete; `reply_to` / `thread_id` / `visibility`; message-level `client_event_id` | reactions, receipts, moderation not complete |
+| Messaging | Offline fetch/ack foundation | ✅ | `offline_messages`; WS dispatcher | retention policy and delivery observability; ack naming still needs product cleanup |
+| Messaging | Rich message types | 🟡 | `messages.type` and metadata are flexible; message schema can reference object-backed metadata | image/voice/file/video/link/kb/plugin card validation contracts |
+| WebSocket | Runtime hub and dispatcher | ✅ | `internal/ws`; `message.send` supports reply/thread/visibility/client_event_id; `offline.fetch`, `message.ack`, `ping` | conversation lifecycle and richer sync hints |
 | Sync | Event stream | ✅ | `sync_events`; `SyncService` | retention/compaction |
 | Sync | Per-user monotonic sequence | ✅ | `sync_sequences` | migration/recovery tooling |
 | Sync | Pull and ack APIs | ✅ | `/sync/events`, `/sync/ack`; tests | sync snapshot/repair API |
 | Sync | Idempotency | ✅ | `client_event_id` partial uniqueness | cross-object conflict UX |
 | Sync | Profile sync | ✅ | `profile.updated` | client fixtures for all platforms |
-| Sync | Message sync | ✅ | `message.created` | full conversation reconstruction solely from sync not complete |
+| Sync | Message sync | ✅ | `message.created`, `message.updated`, `message.deleted` with self-contained payloads | conversation/participant lifecycle sync not complete |
 | Sync | Skill settings sync | ✅ | settings routes and `skill.updated/enabled/disabled` events | schema version evolution; this is not full Skill Hub |
 | Sync | Agent settings sync | ✅ | settings routes and events | schema version evolution |
 | Skill Hub | Registry / package versions / catalog | ⬜ | Not implemented in backend; no `skills`, `skill_versions`, `skill_installations`, or publisher restriction migrations yet | Implement after Reality Lock 2.1 using SDK `skill-core` concepts and MinIO object storage |

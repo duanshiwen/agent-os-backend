@@ -196,6 +196,8 @@ func Setup(
 			protected.GET("/conversations", convH.List)
 			protected.GET("/conversations/:id", convH.Get)
 			protected.GET("/conversations/:id/messages", convH.GetMessages)
+			protected.PUT("/conversations/:id/messages/:message_id", convH.UpdateMessage)
+			protected.DELETE("/conversations/:id/messages/:message_id", convH.DeleteMessage)
 			protected.POST("/conversations/:id/participants", convH.AddParticipant)
 			protected.DELETE("/conversations/:id/participants/me", convH.Leave)
 

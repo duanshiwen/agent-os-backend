@@ -27,8 +27,9 @@ type MsgNewMessage struct {
 }
 
 type MsgDeliveryAck struct {
-	MessageID uuid.UUID `json:"message_id"`
-	Status    string    `json:"status"` // delivered, stored
+	MessageID     uuid.UUID `json:"message_id"`
+	Status        string    `json:"status"` // delivered, stored
+	ClientEventID string    `json:"client_event_id,omitempty"`
 }
 
 type MsgOfflineBatch struct {
@@ -57,6 +58,10 @@ type MsgSendMessage struct {
 	Type           string          `json:"type"`
 	Content        string          `json:"content"`
 	Metadata       json.RawMessage `json:"metadata,omitempty"`
+	ReplyTo        *uuid.UUID      `json:"reply_to,omitempty"`
+	ThreadID       string          `json:"thread_id,omitempty"`
+	Visibility     json.RawMessage `json:"visibility,omitempty"`
+	ClientEventID  string          `json:"client_event_id,omitempty"`
 }
 
 type MsgPing struct {

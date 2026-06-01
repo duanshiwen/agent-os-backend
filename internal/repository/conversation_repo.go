@@ -85,6 +85,35 @@ func (r *ConversationRepo) CreateMessage(m *model.Message) error {
 	return r.db.Create(m).Error
 }
 
+func (r *ConversationRepo) GetMessageByID(id uuid.UUID) (*model.Message, error) {
+	var msg model.Message
+	err := r.db.Where("id = ?", id).First(&msg).Error
+	return &msg, err
+}
+
+func (r *ConversationRepo) FindMessageByClientEventID(senderID uuid.UUID, clientEventID string) (*model.Message, error) {
+	var msg model.Message
+	err := r.db.Where("sender_id = ? AND client_event_id = ?", senderID, clientEventID).First(&msg).Error
+	return &msg, err
+}
+
+func (r *ConversationRepo) UpdateMessage(m *model.Message) error {
+	return r.db.Save(m).Error
+}
+
+func (r *ConversationRepo) SoftDeleteMessage(messageID, actorID uuid.UUID, deletedAt time.Time) (*model.Message, error) {
+	updates := map[string]any{
+		"status":     "deleted",
+		"deleted_at": deletedAt,
+		"deleted_by": actorID,
+		"updated_at": deletedAt,
+	}
+	if err := r.db.Model(&model.Message{}).Where("id = ?", messageID).Updates(updates).Error; err != nil {
+		return nil, err
+	}
+	return r.GetMessageByID(messageID)
+}
+
 func (r *ConversationRepo) GetMessages(conversationID uuid.UUID, limit int, before *time.Time) ([]model.Message, error) {
 	var msgs []model.Message
 	q := r.db.Where("conversation_id = ?", conversationID)
