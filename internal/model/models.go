@@ -191,6 +191,17 @@ type Skill struct {
 	Visibility         string                      `gorm:"index;not null;default:private" json:"visibility"`
 	LatestVersionID    *uuid.UUID                  `gorm:"type:uuid" json:"latest_version_id"`
 	PublishedVersionID *uuid.UUID                  `gorm:"type:uuid" json:"published_version_id"`
+	DownloadCount      int64                       `gorm:"not null;default:0;index" json:"download_count"`
+	RatingCount        int64                       `gorm:"not null;default:0;index" json:"rating_count"`
+	RatingSum          int64                       `gorm:"not null;default:0" json:"rating_sum"`
+	RatingAverage      float64                     `gorm:"not null;default:0;index" json:"rating_average"`
+}
+
+type SkillRating struct {
+	Base
+	SkillID uuid.UUID `gorm:"type:uuid;index;not null;uniqueIndex:idx_skill_rating_user" json:"skill_id"`
+	UserID  uuid.UUID `gorm:"type:uuid;index;not null;uniqueIndex:idx_skill_rating_user" json:"user_id"`
+	Rating  int       `gorm:"not null" json:"rating"`
 }
 
 type SkillVersion struct {
@@ -693,5 +704,5 @@ type GovernanceScanResult struct {
 }
 
 func AllModels() []any {
-	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &ConversationReadState{}, &Message{}, &OfflineMessage{}, &MessageReaction{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &Skill{}, &SkillVersion{}, &SkillInstallation{}, &SkillPublisherRestriction{}, &UserAgentSetting{}, &UserServerConnection{}, &UserKnowledgeEntry{}, &ObjectRecord{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBModerationReport{}, &KBUsageRecord{}, &KBSearchDocument{}, &BackgroundJobRun{}, &KBEmbeddingJob{}, &KBSearchEmbedding{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &SAGEPlugin{}, &SAGEPluginVersion{}, &SAGEPluginReview{}, &SAGEPluginInstallation{}, &SAGEPluginPermissionGrant{}, &SAGEPluginInvocation{}, &SAGEPluginExecutionReport{}, &SAGEPluginUsageLedger{}, &KBBillingPlan{}, &KBInvoice{}, &KBInvoiceItem{}, &ContributorPayoutPeriod{}, &KBRefund{}, &KBBillingDispute{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}, &SensitiveOperationConfirmation{}, &AuditEvent{}, &CapabilityDefinition{}, &PolicyRule{}, &PolicyDecision{}, &ApprovalReceipt{}, &KillSwitch{}, &GovernanceScanResult{}}
+	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &ConversationReadState{}, &Message{}, &OfflineMessage{}, &MessageReaction{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &Skill{}, &SkillVersion{}, &SkillInstallation{}, &SkillPublisherRestriction{}, &SkillRating{}, &UserAgentSetting{}, &UserServerConnection{}, &UserKnowledgeEntry{}, &ObjectRecord{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBModerationReport{}, &KBUsageRecord{}, &KBSearchDocument{}, &BackgroundJobRun{}, &KBEmbeddingJob{}, &KBSearchEmbedding{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &SAGEPlugin{}, &SAGEPluginVersion{}, &SAGEPluginReview{}, &SAGEPluginInstallation{}, &SAGEPluginPermissionGrant{}, &SAGEPluginInvocation{}, &SAGEPluginExecutionReport{}, &SAGEPluginUsageLedger{}, &KBBillingPlan{}, &KBInvoice{}, &KBInvoiceItem{}, &ContributorPayoutPeriod{}, &KBRefund{}, &KBBillingDispute{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}, &SensitiveOperationConfirmation{}, &AuditEvent{}, &CapabilityDefinition{}, &PolicyRule{}, &PolicyDecision{}, &ApprovalReceipt{}, &KillSwitch{}, &GovernanceScanResult{}}
 }

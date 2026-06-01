@@ -86,6 +86,20 @@ type SkillCatalogPage struct {
 	Items         []SkillCatalogItem `json:"items"`
 	Limit, Offset int                `json:"limit"`
 	Total         int64              `json:"total"`
+	Sort          string             `json:"sort"`
+}
+
+type RateSkillInput struct {
+	Rating int `json:"rating"`
+}
+
+type SkillRatingAggregate struct {
+	SkillID       uuid.UUID `json:"skill_id"`
+	SkillKey      string    `json:"skill_key"`
+	RatingCount   int64     `json:"rating_count"`
+	RatingAverage float64   `json:"rating_average"`
+	DownloadCount int64     `json:"download_count"`
+	UserRating    *int      `json:"user_rating,omitempty"`
 }
 
 func (s *SkillHubService) CreateSkill(publisherID uuid.UUID, input CreateSkillInput) (*model.Skill, error) {
@@ -206,7 +220,12 @@ func (s *SkillHubService) GetValidation(publisherID, skillID, versionID uuid.UUI
 }
 
 func (s *SkillHubService) SearchCatalog(q, category string, limit, offset int) (*SkillCatalogPage, error) {
-	items, err := s.repo.SearchPublishedSkills(q, category, limit, offset)
+	return s.SearchCatalogSorted(q, category, repository.SkillCatalogSortRecommended, limit, offset)
+}
+
+func (s *SkillHubService) SearchCatalogSorted(q, category, sort string, limit, offset int) (*SkillCatalogPage, error) {
+	sort = normalizeSkillCatalogSort(sort)
+	items, err := s.repo.SearchPublishedSkillsSorted(q, category, sort, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +247,7 @@ func (s *SkillHubService) SearchCatalog(q, category string, limit, offset int) (
 		}
 		out = append(out, *enriched)
 	}
-	return &SkillCatalogPage{Items: out, Limit: limit, Offset: offset, Total: total}, nil
+	return &SkillCatalogPage{Items: out, Limit: limit, Offset: offset, Total: total, Sort: sort}, nil
 }
 
 func (s *SkillHubService) GetCatalogSkill(skillKey string) (*SkillCatalogItem, error) {
@@ -242,6 +261,43 @@ func (s *SkillHubService) GetCatalogSkill(skillKey string) (*SkillCatalogItem, e
 	return s.enrichCatalogSkill(skill)
 }
 
+func (s *SkillHubService) RateSkill(userID uuid.UUID, skillKey string, input RateSkillInput) (*SkillRatingAggregate, error) {
+	if input.Rating < 1 || input.Rating > 5 {
+		return nil, fmt.Errorf("%w: rating must be between 1 and 5", ErrSkillInvalid)
+	}
+	skill, err := s.repo.GetPublishedSkillByKey(skillKey)
+	if err != nil {
+		return nil, ErrSkillNotFound
+	}
+	err = s.repo.Transaction(func(tx *repository.SkillHubRepo) error {
+		if err := tx.UpsertRating(&model.SkillRating{SkillID: skill.ID, UserID: userID, Rating: input.Rating}); err != nil {
+			return err
+		}
+		return tx.RecalculateSkillRatingAggregate(skill.ID)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.ratingAggregate(userID, skill.ID)
+}
+
+func (s *SkillHubService) DeleteRating(userID uuid.UUID, skillKey string) (*SkillRatingAggregate, error) {
+	skill, err := s.repo.GetPublishedSkillByKey(skillKey)
+	if err != nil {
+		return nil, ErrSkillNotFound
+	}
+	err = s.repo.Transaction(func(tx *repository.SkillHubRepo) error {
+		if err := tx.DeleteRating(skill.ID, userID); err != nil {
+			return err
+		}
+		return tx.RecalculateSkillRatingAggregate(skill.ID)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.ratingAggregate(userID, skill.ID)
+}
+
 func (s *SkillHubService) InstallSkill(userID uuid.UUID, deviceID, skillKey string, input InstallSkillInput) (*model.SkillInstallation, error) {
 	skill, err := s.repo.GetPublishedSkillByKey(skillKey)
 	if err != nil {
@@ -251,6 +307,7 @@ func (s *SkillHubService) InstallSkill(userID uuid.UUID, deviceID, skillKey stri
 		return nil, fmt.Errorf("%w: published version required", ErrSkillInvalid)
 	}
 	if existing, err := s.repo.GetInstallationByUserSkill(userID, skill.ID); err == nil {
+		wasUninstalled := existing.Status == repository.SkillInstallationStatusUninstalled
 		existing.VersionID = *skill.PublishedVersionID
 		if strings.TrimSpace(input.TrackMode) != "" {
 			existing.TrackMode = normalizeSkillTrackMode(input.TrackMode)
@@ -262,6 +319,9 @@ func (s *SkillHubService) InstallSkill(userID uuid.UUID, deviceID, skillKey stri
 		existing.DisabledAt = nil
 		if err := s.repo.UpdateInstallation(existing); err != nil {
 			return nil, err
+		}
+		if wasUninstalled {
+			_ = s.repo.IncrementDownloadCount(skill.ID)
 		}
 		s.recordInstallationSync(userID, deviceID, existing, skill, SyncOperationInstalled)
 		return existing, nil
@@ -275,6 +335,7 @@ func (s *SkillHubService) InstallSkill(userID uuid.UUID, deviceID, skillKey stri
 	if err := s.repo.CreateInstallation(installation); err != nil {
 		return nil, err
 	}
+	_ = s.repo.IncrementDownloadCount(skill.ID)
 	s.recordInstallationSync(userID, deviceID, installation, skill, SyncOperationInstalled)
 	s.recordAudit(&userID, deviceID, AuditActionSkillInstalled, "skill_installation", installation.ID.String(), AuditOutcomeSuccess, map[string]any{"skill_key": skill.SkillKey})
 	return installation, nil
@@ -459,6 +520,32 @@ func (s *SkillHubService) recordAudit(actorID *uuid.UUID, actorDeviceID, action,
 		return
 	}
 	_, _ = s.auditSvc.Record(RecordAuditEventInput{ActorUserID: actorID, ActorDeviceID: actorDeviceID, Action: action, ResourceType: resourceType, ResourceID: resourceID, Outcome: outcome, Metadata: metadata})
+}
+
+func (s *SkillHubService) ratingAggregate(userID, skillID uuid.UUID) (*SkillRatingAggregate, error) {
+	skill, err := s.repo.GetSkill(skillID)
+	if err != nil {
+		return nil, ErrSkillNotFound
+	}
+	agg := &SkillRatingAggregate{SkillID: skill.ID, SkillKey: skill.SkillKey, RatingCount: skill.RatingCount, RatingAverage: skill.RatingAverage, DownloadCount: skill.DownloadCount}
+	if rating, err := s.repo.GetRating(skill.ID, userID); err == nil {
+		r := rating.Rating
+		agg.UserRating = &r
+	}
+	return agg, nil
+}
+
+func normalizeSkillCatalogSort(sort string) string {
+	switch strings.TrimSpace(sort) {
+	case repository.SkillCatalogSortDownloads:
+		return repository.SkillCatalogSortDownloads
+	case repository.SkillCatalogSortRating:
+		return repository.SkillCatalogSortRating
+	case repository.SkillCatalogSortRecent:
+		return repository.SkillCatalogSortRecent
+	default:
+		return repository.SkillCatalogSortRecommended
+	}
 }
 
 func normalizeSkillTrackMode(track string) string {

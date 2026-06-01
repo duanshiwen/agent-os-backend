@@ -241,6 +241,8 @@ func Setup(
 			protected.POST("/skills/:skill_id/versions", skillHubH.SubmitVersion)
 			protected.GET("/skills/:skill_id/versions/:version_id/validation", skillHubH.GetValidation)
 			protected.POST("/skills/catalog/:skill_key/install", skillHubH.InstallSkill)
+			protected.PUT("/skills/catalog/:skill_key/rating", skillHubH.RateSkill)
+			protected.DELETE("/skills/catalog/:skill_key/rating", skillHubH.DeleteRating)
 			protected.GET("/skills/installations", skillHubH.ListInstallations)
 			protected.PUT("/skills/installations/:installation_id/config", skillHubH.UpdateInstallation)
 			protected.POST("/skills/installations/:installation_id/enable", skillHubH.EnableInstallation)
