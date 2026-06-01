@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -136,7 +137,7 @@ func (s *KBSearchService) EmbeddingStatus(ctx context.Context, snapshotID uuid.U
 	return status, nil
 }
 
-func (s *KBSearchService) IndexSnapshot(ctx context.Context, collection *model.KBCollection, snapshot *model.KBSnapshot, entries []model.KBSnapshotEntry) error {
+func (s *KBSearchService) IndexSnapshot(ctx context.Context, collection *model.KBCollection, snapshot *model.KBSnapshot, entries []model.KBSnapshotEntry, contentByEntryID map[string]string) error {
 	_ = ctx
 	if collection == nil || snapshot == nil {
 		return fmt.Errorf("%w: collection and snapshot are required", ErrKBInvalid)
@@ -153,7 +154,7 @@ func (s *KBSearchService) IndexSnapshot(ctx context.Context, collection *model.K
 			Summary:         entry.Summary,
 			Tags:            entry.Tags,
 			Metadata:        entry.Metadata,
-			ContentText:     strings.Join([]string{entry.Title, entry.Summary, entry.EntryID}, "\n"),
+			ContentText:     buildKBSearchContentText(entry, contentByEntryID[entry.EntryID]),
 			ContentHash:     snapshotEntryContentHash(snapshot, entry),
 			Tokens:          entry.Tokens,
 			Status:          "active",
@@ -314,6 +315,9 @@ func (s *KBSearchService) searchHybrid(ctx context.Context, input KBSearchInput)
 	lexical.SemanticAvailable = semantic.SemanticAvailable
 	lexical.SemanticUnavailableReason = semantic.SemanticUnavailableReason
 	lexical.EmbeddingCoverage = semantic.EmbeddingCoverage
+	sort.SliceStable(lexical.Items, func(i, j int) bool {
+		return lexical.Items[i].Score > lexical.Items[j].Score
+	})
 	lexical.Total = int64(len(lexical.Items))
 	return lexical, nil
 }
@@ -345,6 +349,14 @@ func normalizeOffset(offset int) int {
 		return 0
 	}
 	return offset
+}
+
+func buildKBSearchContentText(entry model.KBSnapshotEntry, body string) string {
+	parts := []string{entry.Title, entry.Summary, entry.EntryID}
+	if strings.TrimSpace(body) != "" {
+		parts = append(parts, body)
+	}
+	return strings.Join(parts, "\n")
 }
 
 func snapshotEntryContentHash(snapshot *model.KBSnapshot, entry model.KBSnapshotEntry) string {

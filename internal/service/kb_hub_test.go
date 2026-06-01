@@ -262,6 +262,74 @@ func TestKBHubServiceFullM3MarketplacePricingAndSearch(t *testing.T) {
 	}
 }
 
+func TestKBHubServiceIndexesSnapshotBodyContent(t *testing.T) {
+	svc, knowledgeRepo, _, ownerID, _ := newKBHubServiceTestEnv(t)
+	if err := knowledgeRepo.Create(&model.UserKnowledgeEntry{
+		UserID:          ownerID,
+		EntryID:         "notes/body-only",
+		Title:           "Ordinary Note",
+		ContentMarkdown: "# Ordinary Note\n\nThe hidden retrieval phrase is quokka-vector-signal and appears only in the markdown body.",
+		Summary:         "A generic note without the special phrase",
+		Status:          repository.KnowledgeEntryStatusActive,
+		Version:         1,
+		ContentHash:     strings.Repeat("f", 64),
+	}); err != nil {
+		t.Fatalf("create knowledge entry: %v", err)
+	}
+	collection, err := svc.CreateCollection(ownerID, CreateKBCollectionInput{Name: "Body KB"})
+	if err != nil {
+		t.Fatalf("create collection: %v", err)
+	}
+	detail, err := svc.PublishSnapshot(context.Background(), ownerID, collection.ID, PublishKBSnapshotInput{})
+	if err != nil {
+		t.Fatalf("publish snapshot: %v", err)
+	}
+	search, err := svc.searchSvc.Search(context.Background(), KBSearchInput{Q: "quokka-vector-signal", Mode: "lexical", SnapshotID: &detail.Snapshot.ID, Limit: 10})
+	if err != nil {
+		t.Fatalf("body lexical search: %v", err)
+	}
+	if search.Total != 1 || len(search.Items) != 1 || search.Items[0].EntryID != "notes/body-only" {
+		t.Fatalf("expected body-only term to be indexed, got %+v", search)
+	}
+}
+
+func TestKBSearchHybridSortsByCombinedScore(t *testing.T) {
+	_, _, _, _, db := newKBHubServiceTestEnv(t)
+	collectionID := uuid.New()
+	snapshotID := uuid.New()
+	now := strings.Repeat("1", 64)
+	docs := []model.KBSearchDocument{
+		{CollectionID: collectionID, SnapshotID: snapshotID, SnapshotEntryID: uuid.New(), EntryID: "weak-lexical", Title: "needle", Summary: "weak", ContentText: "needle", ContentHash: now, Status: "active"},
+		{CollectionID: collectionID, SnapshotID: snapshotID, SnapshotEntryID: uuid.New(), EntryID: "strong-semantic", Title: "semantic", Summary: "semantic", ContentText: "semantic", ContentHash: strings.Repeat("2", 64), Status: "active"},
+	}
+	if err := db.Create(&docs).Error; err != nil {
+		t.Fatalf("create docs: %v", err)
+	}
+	provider := NewDeterministicEmbeddingProvider("BAAI/bge-m3", 16)
+	searchSvc := NewKBSearchService(repository.NewKBSearchRepo(db), repository.NewKBHubRepo(db), nil)
+	embeddingRepo := repository.NewKBEmbeddingRepo(db)
+	searchSvc.SetEmbedding(embeddingRepo, provider)
+	queryVec, err := provider.EmbedTexts(context.Background(), []string{"needle"})
+	if err != nil {
+		t.Fatalf("query embedding: %v", err)
+	}
+	if err := embeddingRepo.CompleteJob(model.KBEmbeddingJob{SearchDocumentID: docs[1].ID, CollectionID: collectionID, SnapshotID: snapshotID, SnapshotEntryID: docs[1].SnapshotEntryID, Provider: provider.Name(), Model: provider.Model(), Dimensions: 16, ContentHash: docs[1].ContentHash}, queryVec[0].Vector); err != nil {
+		t.Fatalf("complete semantic embedding: %v", err)
+	}
+	result, err := searchSvc.Search(context.Background(), KBSearchInput{Q: "needle", Mode: "hybrid", SnapshotID: &snapshotID, Limit: 10})
+	if err != nil {
+		t.Fatalf("hybrid search: %v", err)
+	}
+	if len(result.Items) < 2 {
+		t.Fatalf("expected merged lexical and semantic candidates, got %+v", result)
+	}
+	for i := 1; i < len(result.Items); i++ {
+		if result.Items[i-1].Score < result.Items[i].Score {
+			t.Fatalf("hybrid results not sorted by score: %+v", result.Items)
+		}
+	}
+}
+
 func newKBHubServiceTestEnv(t *testing.T) (*KBHubService, *repository.KnowledgeEntriesRepo, *recordingObjectStorageBackend, uuid.UUID, *gorm.DB) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+strings.ReplaceAll(t.Name(), "/", "_")+"?mode=memory&cache=shared"), &gorm.Config{})

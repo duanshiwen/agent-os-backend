@@ -473,10 +473,12 @@ func (s *KBHubService) PublishSnapshot(ctx context.Context, ownerID, collectionI
 	snapshotID := uuid.New()
 	manifestEntries := make([]kbManifestEntry, 0, len(entries))
 	snapshotEntries := make([]model.KBSnapshotEntry, 0, len(entries))
+	contentByEntryID := make(map[string]string, len(entries))
 	totalTokens := 0
 	contentSize := int64(0)
 
 	for _, entry := range entries {
+		contentByEntryID[entry.EntryID] = entry.ContentMarkdown
 		content := []byte(entry.ContentMarkdown)
 		contentObj, err := s.objectSvc.StoreObject(ctx, ownerID, StoreObjectInput{
 			Scope:       fmt.Sprintf("kb/snapshots/%s/v%d/entries", collectionID.String(), version),
@@ -563,7 +565,7 @@ func (s *KBHubService) PublishSnapshot(ctx context.Context, ownerID, collectionI
 		return nil, err
 	}
 	if s.searchSvc != nil {
-		if err := s.searchSvc.IndexSnapshot(ctx, collection, snapshot, createdEntries); err != nil {
+		if err := s.searchSvc.IndexSnapshot(ctx, collection, snapshot, createdEntries, contentByEntryID); err != nil {
 			return nil, err
 		}
 	}
