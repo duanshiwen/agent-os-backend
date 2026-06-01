@@ -95,6 +95,53 @@ func (h *ConversationHandler) GetMessages(c *gin.Context) {
 	response.OK(c, msgs)
 }
 
+// PUT /api/v1/conversations/:id/messages/:message_id
+func (h *ConversationHandler) UpdateMessage(c *gin.Context) {
+	userID := middleware.MustGetUserID(c)
+	convID, ok := parseUUIDParam(c, "id")
+	if !ok {
+		return
+	}
+	msgID, ok := parseUUIDParam(c, "message_id")
+	if !ok {
+		return
+	}
+	var req service.UpdateMessageRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	msg, err := h.msgSvc.UpdateMessage(userID, convID, msgID, req)
+	if err != nil {
+		response.Forbidden(c, err.Error())
+		return
+	}
+	response.OK(c, msg)
+}
+
+// DELETE /api/v1/conversations/:id/messages/:message_id
+func (h *ConversationHandler) DeleteMessage(c *gin.Context) {
+	userID := middleware.MustGetUserID(c)
+	convID, ok := parseUUIDParam(c, "id")
+	if !ok {
+		return
+	}
+	msgID, ok := parseUUIDParam(c, "message_id")
+	if !ok {
+		return
+	}
+	var req struct {
+		ClientEventID string `json:"client_event_id"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	msg, err := h.msgSvc.DeleteMessage(userID, convID, msgID, req.ClientEventID)
+	if err != nil {
+		response.Forbidden(c, err.Error())
+		return
+	}
+	response.OK(c, msg)
+}
+
 // POST /api/v1/conversations/:id/participants
 func (h *ConversationHandler) AddParticipant(c *gin.Context) {
 	userID := middleware.MustGetUserID(c)

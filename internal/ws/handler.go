@@ -9,6 +9,7 @@ import (
 	"github.com/agent-os/backend/internal/repository"
 	"github.com/agent-os/backend/internal/service"
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 )
 
 // Dispatcher routes incoming WS messages to the appropriate service methods.
@@ -45,10 +46,34 @@ func (d *Dispatcher) HandleMessage(client *Client, msgType string, payload json.
 }
 
 func (d *Dispatcher) handleSendMessage(client *Client, payload json.RawMessage) {
-	var req service.SendMessageRequest
-	if err := json.Unmarshal(payload, &req); err != nil {
+	var wsReq MsgSendMessage
+	if err := json.Unmarshal(payload, &wsReq); err != nil {
 		d.sendError(client, 400, "invalid message payload")
 		return
+	}
+	var metadata datatypes.JSONMap
+	if len(wsReq.Metadata) > 0 {
+		if err := json.Unmarshal(wsReq.Metadata, &metadata); err != nil {
+			d.sendError(client, 400, "invalid metadata payload")
+			return
+		}
+	}
+	var visibility datatypes.JSONMap
+	if len(wsReq.Visibility) > 0 {
+		if err := json.Unmarshal(wsReq.Visibility, &visibility); err != nil {
+			d.sendError(client, 400, "invalid visibility payload")
+			return
+		}
+	}
+	req := service.SendMessageRequest{
+		ConversationID: wsReq.ConversationID,
+		Type:           wsReq.Type,
+		Content:        wsReq.Content,
+		Metadata:       metadata,
+		ReplyTo:        wsReq.ReplyTo,
+		ThreadID:       wsReq.ThreadID,
+		Visibility:     visibility,
+		ClientEventID:  wsReq.ClientEventID,
 	}
 
 	delivery, err := d.msgService.SendMessage(client.UserID, &req)
@@ -79,8 +104,9 @@ func (d *Dispatcher) handleSendMessage(client *Client, payload json.RawMessage) 
 	_ = d.msgService.SaveOfflineMessages(delivery.Message, delivery.Participants, onlineDeviceIDs)
 
 	ack := MsgDeliveryAck{
-		MessageID: delivery.Message.ID,
-		Status:    "sent",
+		MessageID:     delivery.Message.ID,
+		Status:        "sent",
+		ClientEventID: req.ClientEventID,
 	}
 	client.SendMessage(marshalEnvelope("message.ack", ack))
 }

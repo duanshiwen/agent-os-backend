@@ -95,6 +95,8 @@ go run ./cmd/server
 | GET | `/api/v1/conversations` | 获取会话列表 |
 | GET | `/api/v1/conversations/:id` | 获取会话详情 |
 | GET | `/api/v1/conversations/:id/messages` | 获取消息历史 |
+| PUT | `/api/v1/conversations/:id/messages/:message_id` | 编辑本人发送的消息，产生 `message.updated` 同步事件 |
+| DELETE | `/api/v1/conversations/:id/messages/:message_id` | 软删除本人发送的消息，产生 `message.deleted` 同步事件 |
 | POST | `/api/v1/conversations/:id/participants` | 添加参与者 |
 | DELETE | `/api/v1/conversations/:id/participants/me` | 退出会话 |
 
@@ -440,9 +442,9 @@ ws://localhost:8080/api/v1/ws?token=<jwt>
 ```
 
 **客户端消息类型：**
-- `message.send` — 发送消息
+- `message.send` — 发送消息；payload 支持 `conversation_id`、`type`、`content`、`metadata`、`reply_to`、`thread_id`、`visibility`、`client_event_id`
 - `offline.fetch` — 获取离线消息
-- `message.ack` — 确认离线消息已送达
+- `message.ack` — 确认离线消息已送达（当前确认的是 `offline_messages.id`）
 - `ping` — 心跳
 
 **服务端消息类型：**

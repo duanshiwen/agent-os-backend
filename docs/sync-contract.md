@@ -186,9 +186,9 @@ Clients load conversation list and message history through existing REST APIs:
 
 ### Incremental changes
 
-New messages are represented as `message.created` sync events.
+Messages are represented as `message.created`, `message.updated`, and `message.deleted` sync events.
 
-Minimum payload:
+Minimum `message.created` / `message.updated` payload:
 
 ```json
 {
@@ -199,9 +199,31 @@ Minimum payload:
   "type": "text",
   "content": "...",
   "metadata": {},
-  "created_at": "..."
+  "reply_to": "optional message uuid",
+  "thread_id": "optional thread id",
+  "visibility": {"scope": "conversation"},
+  "status": "active",
+  "created_at": "...",
+  "edited_at": "... or null",
+  "deleted_at": null
 }
 ```
+
+Minimum `message.deleted` payload:
+
+```json
+{
+  "object_id": "message uuid",
+  "message_id": "message uuid",
+  "conversation_id": "conversation uuid",
+  "sender_id": "user uuid",
+  "status": "deleted",
+  "deleted_at": "...",
+  "deleted_by": "user uuid"
+}
+```
+
+Message send accepts optional `client_event_id` for retry idempotency and optional `reply_to`, `thread_id`, and `visibility` fields aligned with the SDK `conversation-core` message shape. Edits and deletes are currently sender-only and use soft-delete/tombstone semantics.
 
 ### Real-time path
 

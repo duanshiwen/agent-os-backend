@@ -198,14 +198,16 @@ record source sequence after durable write
 Supported events:
 
 - `message.created`
-- `message.updated` reserved for future edits
-- `message.deleted` reserved for future deletion/tombstone
+- `message.updated`
+- `message.deleted`
+
+Payload includes message identity and projection fields: `message_id`, `conversation_id`, `sender_id`, `type`, `content`, `metadata`, `reply_to`, `thread_id`, `visibility`, `status`, `created_at`, `edited_at`, `deleted_at`, and `deleted_by` when applicable.
 
 Apply rule:
 
 ```text
 created/updated: upsert message by message_id / object_id
-deleted: delete or tombstone local message by object_id
+deleted: tombstone local message by object_id, preserving message identity and sequence history
 ignore duplicate message_id / sequence
 ```
 

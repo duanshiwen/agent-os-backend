@@ -31,6 +31,16 @@ type SendMessageRequest struct {
 	Type           string            `json:"type"` // text, image, voice, file, video, link_card, kb_card
 	Content        string            `json:"content" binding:"required"`
 	Metadata       datatypes.JSONMap `json:"metadata"`
+	ReplyTo        *uuid.UUID        `json:"reply_to"`
+	ThreadID       string            `json:"thread_id"`
+	Visibility     datatypes.JSONMap `json:"visibility"`
+	ClientEventID  string            `json:"client_event_id"`
+}
+
+type UpdateMessageRequest struct {
+	Content       string            `json:"content" binding:"required"`
+	Metadata      datatypes.JSONMap `json:"metadata"`
+	ClientEventID string            `json:"client_event_id"`
 }
 
 type MessageDelivery struct {
@@ -40,16 +50,49 @@ type MessageDelivery struct {
 
 // SendMessage validates, stores, and prepares a message for delivery.
 func (s *MessageService) SendMessage(senderID uuid.UUID, req *SendMessageRequest) (*MessageDelivery, error) {
-	// Verify sender is a participant
 	isParticipant, err := s.convRepo.IsParticipant(req.ConversationID, senderID)
 	if err != nil || !isParticipant {
 		return nil, fmt.Errorf("access denied: not a participant")
 	}
 
-	// Default message type
+	if req.ClientEventID != "" {
+		if existing, err := s.convRepo.FindMessageByClientEventID(senderID, req.ClientEventID); err == nil {
+			participants, pErr := s.convRepo.GetParticipants(existing.ConversationID)
+			if pErr != nil {
+				return nil, fmt.Errorf("get participants: %w", pErr)
+			}
+			return &MessageDelivery{Message: existing, Participants: participants}, nil
+		}
+	}
+
 	msgType := req.Type
 	if msgType == "" {
 		msgType = "text"
+	}
+	metadata := req.Metadata
+	if metadata == nil {
+		metadata = datatypes.JSONMap{}
+	}
+	visibility := req.Visibility
+	if visibility == nil {
+		visibility = datatypes.JSONMap{"scope": "conversation"}
+	}
+	threadID := req.ThreadID
+	if req.ReplyTo != nil {
+		replyTo, err := s.convRepo.GetMessageByID(*req.ReplyTo)
+		if err != nil {
+			return nil, fmt.Errorf("reply_to message not found")
+		}
+		if replyTo.ConversationID != req.ConversationID {
+			return nil, fmt.Errorf("reply_to message is not in the same conversation")
+		}
+		if threadID == "" {
+			if replyTo.ThreadID != "" {
+				threadID = replyTo.ThreadID
+			} else {
+				threadID = replyTo.ID.String()
+			}
+		}
 	}
 
 	msg := &model.Message{
@@ -57,45 +100,132 @@ func (s *MessageService) SendMessage(senderID uuid.UUID, req *SendMessageRequest
 		SenderID:       senderID,
 		Type:           msgType,
 		Content:        req.Content,
-		Metadata:       req.Metadata,
+		Metadata:       metadata,
+		ReplyTo:        req.ReplyTo,
+		ThreadID:       threadID,
+		Visibility:     visibility,
+		ClientEventID:  req.ClientEventID,
+		Status:         "active",
 	}
 	if err := s.convRepo.CreateMessage(msg); err != nil {
 		return nil, fmt.Errorf("create message: %w", err)
 	}
 
-	// Get all participants for delivery and cross-device sync
 	participants, err := s.convRepo.GetParticipants(req.ConversationID)
 	if err != nil {
 		return nil, fmt.Errorf("get participants: %w", err)
 	}
+	s.recordMessageSyncEvents(participants, msg, SyncActionCreated, req.ClientEventID)
 
-	// Record sync events for every participant so both recipient devices and the sender's
-	// other devices can converge through the sync cursor. Offline message delivery remains
-	// recipient-only and is handled separately by SaveOfflineMessages.
-	if s.syncSvc != nil {
-		metadata := msg.Metadata
-		if metadata == nil {
-			metadata = datatypes.JSONMap{}
-		}
-		for _, p := range participants {
-			syncPayload := datatypes.JSONMap{
-				"object_id":       msg.ID.String(),
-				"conversation_id": req.ConversationID.String(),
-				"message_id":      msg.ID.String(),
-				"sender_id":       senderID.String(),
-				"type":            msgType,
-				"content":         msg.Content,
-				"metadata":        metadata,
-				"created_at":      msg.CreatedAt,
-			}
-			_, _ = s.syncSvc.RecordEvent(p.UserID, "", SyncEventMessage, SyncActionCreated, syncPayload)
-		}
+	return &MessageDelivery{Message: msg, Participants: participants}, nil
+}
+
+func (s *MessageService) UpdateMessage(actorID, conversationID, messageID uuid.UUID, req UpdateMessageRequest) (*model.Message, error) {
+	msg, err := s.convRepo.GetMessageByID(messageID)
+	if err != nil {
+		return nil, fmt.Errorf("message not found")
 	}
+	if msg.ConversationID != conversationID {
+		return nil, fmt.Errorf("message is not in the conversation")
+	}
+	if msg.SenderID != actorID {
+		return nil, fmt.Errorf("access denied: only sender can edit message")
+	}
+	if msg.Status == "deleted" {
+		return nil, fmt.Errorf("message is deleted")
+	}
+	if req.Metadata == nil {
+		req.Metadata = datatypes.JSONMap{}
+	}
+	now := time.Now()
+	msg.Content = req.Content
+	msg.Metadata = req.Metadata
+	msg.EditedAt = &now
+	if err := s.convRepo.UpdateMessage(msg); err != nil {
+		return nil, fmt.Errorf("update message: %w", err)
+	}
+	participants, err := s.convRepo.GetParticipants(conversationID)
+	if err != nil {
+		return nil, fmt.Errorf("get participants: %w", err)
+	}
+	s.recordMessageSyncEvents(participants, msg, SyncActionUpdated, req.ClientEventID)
+	return msg, nil
+}
 
-	return &MessageDelivery{
-		Message:      msg,
-		Participants: participants,
-	}, nil
+func (s *MessageService) DeleteMessage(actorID, conversationID, messageID uuid.UUID, clientEventID string) (*model.Message, error) {
+	msg, err := s.convRepo.GetMessageByID(messageID)
+	if err != nil {
+		return nil, fmt.Errorf("message not found")
+	}
+	if msg.ConversationID != conversationID {
+		return nil, fmt.Errorf("message is not in the conversation")
+	}
+	if msg.SenderID != actorID {
+		return nil, fmt.Errorf("access denied: only sender can delete message")
+	}
+	if msg.Status == "deleted" {
+		return msg, nil
+	}
+	deleted, err := s.convRepo.SoftDeleteMessage(messageID, actorID, time.Now())
+	if err != nil {
+		return nil, fmt.Errorf("delete message: %w", err)
+	}
+	participants, err := s.convRepo.GetParticipants(conversationID)
+	if err != nil {
+		return nil, fmt.Errorf("get participants: %w", err)
+	}
+	s.recordMessageSyncEvents(participants, deleted, SyncActionDeleted, clientEventID)
+	return deleted, nil
+}
+
+func (s *MessageService) recordMessageSyncEvents(participants []model.ConversationParticipant, msg *model.Message, operation, clientEventID string) {
+	if s.syncSvc == nil {
+		return
+	}
+	payload := messageSyncPayload(msg)
+	for _, p := range participants {
+		_, _ = s.syncSvc.RecordEnvelope(SyncEnvelope{
+			UserID:        p.UserID,
+			ObjectType:    SyncEventMessage,
+			ObjectID:      msg.ID.String(),
+			Operation:     operation,
+			ClientEventID: clientEventID,
+			Payload:       payload,
+		})
+	}
+}
+
+func messageSyncPayload(msg *model.Message) datatypes.JSONMap {
+	metadata := msg.Metadata
+	if metadata == nil {
+		metadata = datatypes.JSONMap{}
+	}
+	visibility := msg.Visibility
+	if visibility == nil {
+		visibility = datatypes.JSONMap{"scope": "conversation"}
+	}
+	payload := datatypes.JSONMap{
+		"object_id":       msg.ID.String(),
+		"conversation_id": msg.ConversationID.String(),
+		"message_id":      msg.ID.String(),
+		"sender_id":       msg.SenderID.String(),
+		"type":            msg.Type,
+		"content":         msg.Content,
+		"metadata":        metadata,
+		"thread_id":       msg.ThreadID,
+		"visibility":      visibility,
+		"status":          msg.Status,
+		"created_at":      msg.CreatedAt,
+		"edited_at":       msg.EditedAt,
+		"deleted_at":      msg.DeletedAt,
+	}
+	if msg.ReplyTo != nil {
+		payload["reply_to"] = msg.ReplyTo.String()
+	}
+	if msg.DeletedBy != nil {
+		payload["deleted_by"] = msg.DeletedBy.String()
+	}
+	return payload
 }
 
 // SaveOfflineMessages creates offline message records for offline devices.

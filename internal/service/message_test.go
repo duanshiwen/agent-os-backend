@@ -45,8 +45,11 @@ func TestMessageServiceSendMessageStoresMessageAndDefaultsType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("send message: %v", err)
 	}
-	if delivery.Message.ID == uuid.Nil || delivery.Message.Type != "text" || delivery.Message.Content != "hello" {
+	if delivery.Message.ID == uuid.Nil || delivery.Message.Type != "text" || delivery.Message.Content != "hello" || delivery.Message.Status != "active" {
 		t.Fatalf("unexpected message: %+v", delivery.Message)
+	}
+	if delivery.Message.Visibility["scope"] != "conversation" {
+		t.Fatalf("expected default conversation visibility, got %+v", delivery.Message.Visibility)
 	}
 	if len(delivery.Participants) != 2 {
 		t.Fatalf("expected 2 participants, got %d", len(delivery.Participants))
@@ -58,6 +61,152 @@ func TestMessageServiceSendMessageStoresMessageAndDefaultsType(t *testing.T) {
 	}
 	if len(msgs) != 1 || msgs[0].ID != delivery.Message.ID {
 		t.Fatalf("expected stored message, got %+v", msgs)
+	}
+}
+
+func TestMessageServiceSendMessageStoresReplyThreadVisibilityAndClientEventID(t *testing.T) {
+	svc, convRepo, _ := newMessageTestService(t)
+	convID := uuid.New()
+	senderID := uuid.New()
+	otherID := uuid.New()
+	seedMessageConversation(t, convRepo, convID, senderID, otherID)
+
+	root, err := svc.SendMessage(senderID, &SendMessageRequest{ConversationID: convID, Content: "root"})
+	if err != nil {
+		t.Fatalf("send root: %v", err)
+	}
+	visibility := datatypes.JSONMap{"scope": "private_to_user", "user_id": otherID.String()}
+	reply, err := svc.SendMessage(senderID, &SendMessageRequest{
+		ConversationID: convID,
+		Content:        "reply",
+		ReplyTo:        &root.Message.ID,
+		Visibility:     visibility,
+		ClientEventID:  "send-reply-1",
+	})
+	if err != nil {
+		t.Fatalf("send reply: %v", err)
+	}
+	if reply.Message.ReplyTo == nil || *reply.Message.ReplyTo != root.Message.ID {
+		t.Fatalf("expected reply_to %s, got %+v", root.Message.ID, reply.Message.ReplyTo)
+	}
+	if reply.Message.ThreadID != root.Message.ID.String() {
+		t.Fatalf("expected thread_id to default to root message id, got %q", reply.Message.ThreadID)
+	}
+	if reply.Message.Visibility["scope"] != "private_to_user" || reply.Message.ClientEventID != "send-reply-1" {
+		t.Fatalf("unexpected reply contract fields: %+v", reply.Message)
+	}
+
+	replayed, err := svc.SendMessage(senderID, &SendMessageRequest{ConversationID: convID, Content: "reply duplicate", ClientEventID: "send-reply-1"})
+	if err != nil {
+		t.Fatalf("idempotent replay: %v", err)
+	}
+	if replayed.Message.ID != reply.Message.ID || replayed.Message.Content != "reply" {
+		t.Fatalf("expected replay to return original message, got %+v", replayed.Message)
+	}
+
+	msgs, err := convRepo.GetMessages(convID, 10, nil)
+	if err != nil {
+		t.Fatalf("get messages: %v", err)
+	}
+	if len(msgs) != 2 {
+		t.Fatalf("expected root + one reply after idempotent replay, got %+v", msgs)
+	}
+}
+
+func TestMessageServiceSendMessageRejectsReplyToInAnotherConversation(t *testing.T) {
+	svc, convRepo, _ := newMessageTestService(t)
+	senderID := uuid.New()
+	otherID := uuid.New()
+	convA := uuid.New()
+	convB := uuid.New()
+	seedMessageConversation(t, convRepo, convA, senderID, otherID)
+	seedMessageConversation(t, convRepo, convB, senderID, otherID)
+
+	foreign, err := svc.SendMessage(senderID, &SendMessageRequest{ConversationID: convB, Content: "foreign"})
+	if err != nil {
+		t.Fatalf("send foreign: %v", err)
+	}
+	_, err = svc.SendMessage(senderID, &SendMessageRequest{ConversationID: convA, Content: "bad reply", ReplyTo: &foreign.Message.ID})
+	if err == nil || err.Error() != "reply_to message is not in the same conversation" {
+		t.Fatalf("expected reply_to rejection, got %v", err)
+	}
+}
+
+func TestMessageServiceUpdateMessageEmitsSyncEvent(t *testing.T) {
+	svc, convRepo, _, syncSvc := newMessageSyncTestService(t)
+	convID := uuid.New()
+	senderID := uuid.New()
+	recipientID := uuid.New()
+	seedMessageConversation(t, convRepo, convID, senderID, recipientID)
+
+	delivery, err := svc.SendMessage(senderID, &SendMessageRequest{ConversationID: convID, Content: "before"})
+	if err != nil {
+		t.Fatalf("send message: %v", err)
+	}
+	updated, err := svc.UpdateMessage(senderID, convID, delivery.Message.ID, UpdateMessageRequest{Content: "after", Metadata: datatypes.JSONMap{"edited": true}, ClientEventID: "edit-1"})
+	if err != nil {
+		t.Fatalf("update message: %v", err)
+	}
+	if updated.Content != "after" || updated.EditedAt == nil {
+		t.Fatalf("expected edited message, got %+v", updated)
+	}
+
+	events, err := syncSvc.GetEventsAfter(recipientID, 1, 10)
+	if err != nil {
+		t.Fatalf("get events: %v", err)
+	}
+	if len(events) != 1 || events[0].EventType != "message.updated" || events[0].Payload["content"] != "after" || events[0].Payload["edited_at"] == nil {
+		t.Fatalf("expected message.updated payload, got %+v", events)
+	}
+}
+
+func TestMessageServiceUpdateMessageRejectsNonSender(t *testing.T) {
+	svc, convRepo, _ := newMessageTestService(t)
+	convID := uuid.New()
+	senderID := uuid.New()
+	recipientID := uuid.New()
+	seedMessageConversation(t, convRepo, convID, senderID, recipientID)
+
+	delivery, err := svc.SendMessage(senderID, &SendMessageRequest{ConversationID: convID, Content: "before"})
+	if err != nil {
+		t.Fatalf("send message: %v", err)
+	}
+	_, err = svc.UpdateMessage(recipientID, convID, delivery.Message.ID, UpdateMessageRequest{Content: "after"})
+	if err == nil || err.Error() != "access denied: only sender can edit message" {
+		t.Fatalf("expected non-sender rejection, got %v", err)
+	}
+}
+
+func TestMessageServiceDeleteMessageSoftDeletesAndEmitsSyncEvent(t *testing.T) {
+	svc, convRepo, _, syncSvc := newMessageSyncTestService(t)
+	convID := uuid.New()
+	senderID := uuid.New()
+	recipientID := uuid.New()
+	seedMessageConversation(t, convRepo, convID, senderID, recipientID)
+
+	delivery, err := svc.SendMessage(senderID, &SendMessageRequest{ConversationID: convID, Content: "delete me"})
+	if err != nil {
+		t.Fatalf("send message: %v", err)
+	}
+	deleted, err := svc.DeleteMessage(senderID, convID, delivery.Message.ID, "delete-1")
+	if err != nil {
+		t.Fatalf("delete message: %v", err)
+	}
+	if deleted.Status != "deleted" || deleted.DeletedAt == nil || deleted.DeletedBy == nil || *deleted.DeletedBy != senderID {
+		t.Fatalf("expected soft-deleted message, got %+v", deleted)
+	}
+
+	events, err := syncSvc.GetEventsAfter(recipientID, 1, 10)
+	if err != nil {
+		t.Fatalf("get events: %v", err)
+	}
+	if len(events) != 1 || events[0].EventType != "message.deleted" || events[0].Payload["status"] != "deleted" || events[0].Payload["deleted_at"] == nil {
+		t.Fatalf("expected message.deleted payload, got %+v", events)
+	}
+
+	_, err = svc.UpdateMessage(senderID, convID, delivery.Message.ID, UpdateMessageRequest{Content: "revive"})
+	if err == nil || err.Error() != "message is deleted" {
+		t.Fatalf("expected deleted message edit rejection, got %v", err)
 	}
 }
 
