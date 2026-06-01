@@ -37,6 +37,11 @@ const (
 
 	SkillPublisherRestrictionActive = "active"
 	SkillPublisherRestrictionLifted = "lifted"
+
+	SkillCatalogSortRecommended = "recommended"
+	SkillCatalogSortDownloads   = "downloads"
+	SkillCatalogSortRating      = "rating"
+	SkillCatalogSortRecent      = "recent"
 )
 
 type SkillHubRepo struct{ db *gorm.DB }
@@ -99,6 +104,10 @@ func (r *SkillHubRepo) GetVersionBySkillAndVersion(skillID uuid.UUID, version st
 }
 
 func (r *SkillHubRepo) SearchPublishedSkills(q, category string, limit, offset int) ([]model.Skill, error) {
+	return r.SearchPublishedSkillsSorted(q, category, SkillCatalogSortRecommended, limit, offset)
+}
+
+func (r *SkillHubRepo) SearchPublishedSkillsSorted(q, category, sort string, limit, offset int) ([]model.Skill, error) {
 	var skills []model.Skill
 	db := r.db.Model(&model.Skill{}).Where("status = ? AND visibility = ?", SkillStatusPublished, SkillVisibilityPublic)
 	if strings.TrimSpace(category) != "" {
@@ -111,7 +120,7 @@ func (r *SkillHubRepo) SearchPublishedSkills(q, category string, limit, offset i
 	if offset < 0 {
 		offset = 0
 	}
-	err := db.Order("updated_at DESC").Limit(normalizeLimit(limit)).Offset(offset).Find(&skills).Error
+	err := db.Order(skillCatalogOrder(sort)).Limit(normalizeLimit(limit)).Offset(offset).Find(&skills).Error
 	return skills, err
 }
 
@@ -150,4 +159,60 @@ func (r *SkillHubRepo) GetActiveRestriction(publisherID uuid.UUID) (*model.Skill
 	var restriction model.SkillPublisherRestriction
 	err := r.db.First(&restriction, "publisher_id = ? AND status = ?", publisherID, SkillPublisherRestrictionActive).Error
 	return &restriction, err
+}
+
+func (r *SkillHubRepo) IncrementDownloadCount(skillID uuid.UUID) error {
+	return r.db.Model(&model.Skill{}).Where("id = ?", skillID).UpdateColumn("download_count", gorm.Expr("download_count + ?", 1)).Error
+}
+
+func (r *SkillHubRepo) GetRating(skillID, userID uuid.UUID) (*model.SkillRating, error) {
+	var rating model.SkillRating
+	err := r.db.First(&rating, "skill_id = ? AND user_id = ?", skillID, userID).Error
+	return &rating, err
+}
+
+func (r *SkillHubRepo) UpsertRating(rating *model.SkillRating) error {
+	var existing model.SkillRating
+	err := r.db.First(&existing, "skill_id = ? AND user_id = ?", rating.SkillID, rating.UserID).Error
+	if err == nil {
+		existing.Rating = rating.Rating
+		return r.db.Save(&existing).Error
+	}
+	if err != nil && err != gorm.ErrRecordNotFound {
+		return err
+	}
+	return r.db.Create(rating).Error
+}
+
+func (r *SkillHubRepo) DeleteRating(skillID, userID uuid.UUID) error {
+	return r.db.Where("skill_id = ? AND user_id = ?", skillID, userID).Delete(&model.SkillRating{}).Error
+}
+
+func (r *SkillHubRepo) RecalculateSkillRatingAggregate(skillID uuid.UUID) error {
+	var row struct {
+		Count int64
+		Sum   int64
+	}
+	if err := r.db.Model(&model.SkillRating{}).Select("COUNT(*) AS count, COALESCE(SUM(rating), 0) AS sum").Where("skill_id = ?", skillID).Scan(&row).Error; err != nil {
+		return err
+	}
+	avg := 0.0
+	if row.Count > 0 {
+		avg = float64(row.Sum) / float64(row.Count)
+	}
+	return r.db.Model(&model.Skill{}).Where("id = ?", skillID).Updates(map[string]any{"rating_count": row.Count, "rating_sum": row.Sum, "rating_average": avg}).Error
+}
+
+func skillCatalogOrder(sort string) string {
+	switch strings.TrimSpace(sort) {
+	case SkillCatalogSortDownloads:
+		return "download_count DESC, rating_average DESC, rating_count DESC, updated_at DESC"
+	case SkillCatalogSortRating:
+		return "rating_average DESC, rating_count DESC, download_count DESC, updated_at DESC"
+	case SkillCatalogSortRecent:
+		return "updated_at DESC"
+	default:
+		// SQL-friendly MVP recommendation score: smoothed rating, popularity, then recency.
+		return "((rating_sum + 15.0) / (rating_count + 5.0)) DESC, download_count DESC, updated_at DESC"
+	}
 }

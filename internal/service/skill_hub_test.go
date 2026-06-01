@@ -95,6 +95,117 @@ func TestSkillHubTakedownHidesCatalogButKeepsInstallation(t *testing.T) {
 	}
 }
 
+func TestSkillHubRatingsUpdateAggregates(t *testing.T) {
+	svc, _, publisher, user := newSkillHubTestService(t)
+	other := uuid.New()
+	skill := publishTestSkill(t, svc, publisher.ID, "market.rating", "Market Rating")
+
+	agg, err := svc.RateSkill(user.ID, "market.rating", RateSkillInput{Rating: 5})
+	if err != nil {
+		t.Fatalf("rate skill: %v", err)
+	}
+	if agg.RatingCount != 1 || agg.RatingAverage != 5 || agg.UserRating == nil || *agg.UserRating != 5 {
+		t.Fatalf("unexpected first aggregate: %+v", agg)
+	}
+	if _, err := svc.RateSkill(other, "market.rating", RateSkillInput{Rating: 3}); err != nil {
+		t.Fatalf("other rate: %v", err)
+	}
+	agg, err = svc.RateSkill(user.ID, "market.rating", RateSkillInput{Rating: 4})
+	if err != nil {
+		t.Fatalf("update rating: %v", err)
+	}
+	if agg.SkillID != skill.ID || agg.RatingCount != 2 || agg.RatingAverage != 3.5 || agg.UserRating == nil || *agg.UserRating != 4 {
+		t.Fatalf("unexpected updated aggregate: %+v", agg)
+	}
+	agg, err = svc.DeleteRating(user.ID, "market.rating")
+	if err != nil {
+		t.Fatalf("delete rating: %v", err)
+	}
+	if agg.RatingCount != 1 || agg.RatingAverage != 3 || agg.UserRating != nil {
+		t.Fatalf("unexpected aggregate after delete: %+v", agg)
+	}
+	if _, err := svc.RateSkill(user.ID, "market.rating", RateSkillInput{Rating: 6}); err == nil {
+		t.Fatalf("expected invalid rating error")
+	}
+}
+
+func TestSkillHubInstallDownloadCountOnlyOnNewOrReactivatedInstall(t *testing.T) {
+	svc, _, publisher, user := newSkillHubTestService(t)
+	publishTestSkill(t, svc, publisher.ID, "market.download", "Market Download")
+	if _, err := svc.InstallSkill(user.ID, "device-a", "market.download", InstallSkillInput{}); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	item, err := svc.GetCatalogSkill("market.download")
+	if err != nil {
+		t.Fatalf("catalog: %v", err)
+	}
+	if item.DownloadCount != 1 {
+		t.Fatalf("expected first install download count 1, got %d", item.DownloadCount)
+	}
+	if _, err := svc.InstallSkill(user.ID, "device-a", "market.download", InstallSkillInput{}); err != nil {
+		t.Fatalf("reinstall active: %v", err)
+	}
+	item, _ = svc.GetCatalogSkill("market.download")
+	if item.DownloadCount != 1 {
+		t.Fatalf("active reinstall should not increment, got %d", item.DownloadCount)
+	}
+	items, _ := svc.ListInstallations(user.ID)
+	if _, err := svc.SetInstallationStatus(user.ID, "device-a", items[0].ID, repository.SkillInstallationStatusDisabled); err != nil {
+		t.Fatalf("disable: %v", err)
+	}
+	if _, err := svc.SetInstallationStatus(user.ID, "device-a", items[0].ID, repository.SkillInstallationStatusActive); err != nil {
+		t.Fatalf("enable: %v", err)
+	}
+	item, _ = svc.GetCatalogSkill("market.download")
+	if item.DownloadCount != 1 {
+		t.Fatalf("enable should not increment, got %d", item.DownloadCount)
+	}
+	if _, err := svc.SetInstallationStatus(user.ID, "device-a", items[0].ID, repository.SkillInstallationStatusUninstalled); err != nil {
+		t.Fatalf("uninstall: %v", err)
+	}
+	if _, err := svc.InstallSkill(user.ID, "device-a", "market.download", InstallSkillInput{}); err != nil {
+		t.Fatalf("reactivate install: %v", err)
+	}
+	item, _ = svc.GetCatalogSkill("market.download")
+	if item.DownloadCount != 2 {
+		t.Fatalf("reactivated install should increment, got %d", item.DownloadCount)
+	}
+}
+
+func TestSkillHubCatalogRecommendationSort(t *testing.T) {
+	svc, _, publisher, user := newSkillHubTestService(t)
+	publishTestSkill(t, svc, publisher.ID, "market.alpha", "Alpha")
+	publishTestSkill(t, svc, publisher.ID, "market.beta", "Beta")
+	publishTestSkill(t, svc, publisher.ID, "market.gamma", "Gamma")
+
+	for i := 0; i < 3; i++ {
+		if _, err := svc.InstallSkill(uuid.New(), "device-a", "market.beta", InstallSkillInput{}); err != nil {
+			t.Fatalf("install beta: %v", err)
+		}
+	}
+	if _, err := svc.RateSkill(user.ID, "market.gamma", RateSkillInput{Rating: 5}); err != nil {
+		t.Fatalf("rate gamma: %v", err)
+	}
+	if _, err := svc.RateSkill(uuid.New(), "market.alpha", RateSkillInput{Rating: 2}); err != nil {
+		t.Fatalf("rate alpha: %v", err)
+	}
+
+	page, err := svc.SearchCatalogSorted("market", "", repository.SkillCatalogSortRecommended, 10, 0)
+	if err != nil {
+		t.Fatalf("recommended catalog: %v", err)
+	}
+	if len(page.Items) != 3 || page.Sort != repository.SkillCatalogSortRecommended || page.Items[0].SkillKey != "market.gamma" {
+		t.Fatalf("expected gamma first by recommendation, got %+v", page)
+	}
+	page, err = svc.SearchCatalogSorted("market", "", repository.SkillCatalogSortDownloads, 10, 0)
+	if err != nil {
+		t.Fatalf("downloads catalog: %v", err)
+	}
+	if page.Items[0].SkillKey != "market.beta" || page.Items[0].DownloadCount != 3 {
+		t.Fatalf("expected beta first by downloads, got %+v", page.Items)
+	}
+}
+
 func TestSkillHubPublisherRestrictionBlocksAndLiftAllows(t *testing.T) {
 	svc, _, publisher, _ := newSkillHubTestService(t)
 	admin := uuid.New()
@@ -118,7 +229,7 @@ func newSkillHubTestService(t *testing.T) (*SkillHubService, *repository.SyncRep
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.Skill{}, &model.SkillVersion{}, &model.SkillInstallation{}, &model.SkillPublisherRestriction{}, &model.SyncEvent{}, &model.SyncCursor{}, &model.SyncSequence{}, &model.AuditEvent{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Skill{}, &model.SkillVersion{}, &model.SkillInstallation{}, &model.SkillPublisherRestriction{}, &model.SkillRating{}, &model.SyncEvent{}, &model.SyncCursor{}, &model.SyncSequence{}, &model.AuditEvent{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	publisher := &model.User{PubKeyEd25519: "publisher-" + uuid.NewString(), Status: "active"}
@@ -134,6 +245,18 @@ func newSkillHubTestService(t *testing.T) (*SkillHubService, *repository.SyncRep
 	svc.SetSyncService(NewSyncService(syncRepo, nil))
 	svc.SetAuditService(NewAuditService(repository.NewAuditRepo(db)))
 	return svc, syncRepo, publisher, user
+}
+
+func publishTestSkill(t *testing.T, svc *SkillHubService, publisherID uuid.UUID, skillKey, name string) *model.Skill {
+	t.Helper()
+	skill, err := svc.CreateSkill(publisherID, CreateSkillInput{SkillKey: skillKey, Name: name})
+	if err != nil {
+		t.Fatalf("create %s: %v", skillKey, err)
+	}
+	if _, validation, err := svc.SubmitVersion(publisherID, skill.ID, SubmitSkillVersionInput{Manifest: validSkillManifest(skillKey, "1.0.0")}); err != nil || !validation.Valid {
+		t.Fatalf("publish %s: validation=%+v err=%v", skillKey, validation, err)
+	}
+	return skill
 }
 
 func validSkillManifest(skillKey, version string) map[string]any {

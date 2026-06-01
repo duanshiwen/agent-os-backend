@@ -46,11 +46,11 @@ Current backend implementation includes:
 - KB Hub collection/snapshot publishing, immutable snapshot metadata, manifest/content object storage, public discovery, install/subscription, installed access, fulltext fetch, usage records, billing ledger foundation, contributor earnings foundation, lexical search, and async semantic search pipeline.
 - PostgreSQL + pgvector semantic storage, durable embedding queue, deterministic embedding provider, local HTTP embedding worker contract, and Go embedding job worker.
 - SAGE Plugin Open Platform control plane, plugin lifecycle sync, object-backed icon/package bindings, Stage 5A runtime contract gates, and governance client error contract gates.
-- Skill Hub MVP with registry, immutable manifest versions, basic manifest/package validation, public catalog, user install library, installation sync events, admin takedown, and publisher restriction.
+- Skill Hub with registry, immutable manifest versions, basic manifest/package validation, public catalog, user install library, installation sync events, admin takedown, publisher restriction, ratings, download counts, and deterministic recommendation ordering.
 
 Current known major gaps:
 
-- Skill Hub MVP is implemented; remaining gaps are ratings/download metrics, monetization, richer quality scanning, advanced package inspection, and real client runtime consumption.
+- Skill Hub registry/catalog/install marketplace signals are implemented; remaining gaps are monetization, richer quality scanning, advanced package inspection, comments/reviews beyond numeric ratings, and real client runtime consumption.
 - AgentOS Client integration is not complete; Stage 5A backend/SDK contract gates are ready, but product client runtime still needs to consume them end-to-end.
 - SAGE Plugin Open Platform backend control plane is implemented; remaining SAGE gaps are real client runtime integration, richer governance scanning, production policy operations, and ecosystem/plugin-server quality.
 - Federation / multi-server networking is intentionally out of scope; existing server-list sync remains a local user configuration feature only.
@@ -310,7 +310,7 @@ The immediate next implementation target is **Skill Hub hardening + client integ
 Recommended order:
 
 1. Reality Lock 2.1: keep README, roadmap, capability matrix, and handoff docs aligned with `main`;
-2. Skill Hub hardening: richer manifest/package scanning, client install/runtime consumption, quality signals, and optional ecosystem metrics beyond the current registry/catalog/install/admin-governance MVP;
+2. Skill Hub hardening: richer manifest/package scanning, client install/runtime consumption, optional comments/reviews, monetization, and marketplace operations beyond the current registry/catalog/install/admin-governance plus ratings/download/recommendation signal layer;
 3. AgentOS Client integration against the Stage 5A sync bridge, SAGE runtime contract, and governance error contract;
 4. KB chunk-level search quality and Governance 4E production policy operations as follow-up slices;
 5. Commercialization/ops: real payments, renewal collection, metrics, structured logs, dashboards, and runbooks.

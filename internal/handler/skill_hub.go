@@ -69,7 +69,7 @@ func (h *SkillHubHandler) GetValidation(c *gin.Context) {
 }
 
 func (h *SkillHubHandler) SearchCatalog(c *gin.Context) {
-	page, err := h.svc.SearchCatalog(c.Query("q"), c.Query("category"), parseIntQuery(c, "limit", 0), parseIntQuery(c, "offset", 0))
+	page, err := h.svc.SearchCatalogSorted(c.Query("q"), c.Query("category"), c.Query("sort"), parseIntQuery(c, "limit", 0), parseIntQuery(c, "offset", 0))
 	if err != nil {
 		h.handleError(c, err)
 		return
@@ -84,6 +84,30 @@ func (h *SkillHubHandler) GetCatalogSkill(c *gin.Context) {
 		return
 	}
 	response.OK(c, item)
+}
+
+func (h *SkillHubHandler) RateSkill(c *gin.Context) {
+	userID := middleware.MustGetUserID(c)
+	var req service.RateSkillInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	agg, err := h.svc.RateSkill(userID, c.Param("skill_key"), req)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	response.OK(c, agg)
+}
+
+func (h *SkillHubHandler) DeleteRating(c *gin.Context) {
+	agg, err := h.svc.DeleteRating(middleware.MustGetUserID(c), c.Param("skill_key"))
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	response.OK(c, agg)
 }
 
 func (h *SkillHubHandler) InstallSkill(c *gin.Context) {

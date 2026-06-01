@@ -108,16 +108,18 @@ go run ./cmd/server
 
 #### Skill Hub
 
-Skill Hub MVP 是开放技能分享目录。Backend 负责 Skill metadata、manifest 版本快照、基础校验、目录、安装库、对象资源绑定和最低限度治理；不执行 Skill 代码，不做商业化、评分、下载统计或复杂人工审核。
+Skill Hub 是开放技能分享目录。Backend 负责 Skill metadata、manifest 版本快照、基础校验、目录、安装库、对象资源绑定、评分/下载量/推荐排序等轻量 marketplace signals，以及最低限度治理；不执行 Skill 代码，不做商业化或复杂人工审核。
 
 | 方法 | 路径 | 描述 |
 |------|------|------|
-| GET | `/api/v1/skills/catalog` | 公开 Skill 目录搜索，支持 `q`、`category`、`limit`、`offset` |
+| GET | `/api/v1/skills/catalog` | 公开 Skill 目录搜索，支持 `q`、`category`、`sort=recommended/downloads/rating/recent`、`limit`、`offset` |
 | GET | `/api/v1/skills/catalog/:skill_key` | 获取公开 Skill 详情 |
 | POST | `/api/v1/skills` | 创建 Skill draft |
 | POST | `/api/v1/skills/:skill_id/versions` | 提交 Skill manifest 版本；校验通过后 MVP 直接公开发布 |
 | GET | `/api/v1/skills/:skill_id/versions/:version_id/validation` | 获取版本校验结果 |
-| POST | `/api/v1/skills/catalog/:skill_key/install` | 安装 Skill，产生 `skill.installed` 同步事件 |
+| POST | `/api/v1/skills/catalog/:skill_key/install` | 安装 Skill，产生 `skill.installed` 同步事件；新安装或卸载后重新安装会增加 `download_count` |
+| PUT | `/api/v1/skills/catalog/:skill_key/rating` | 对 Skill 评分，body: `{ "rating": 1..5 }`；一名用户对一个 Skill 只有一个当前评分 |
+| DELETE | `/api/v1/skills/catalog/:skill_key/rating` | 删除当前用户对 Skill 的评分 |
 | GET | `/api/v1/skills/installations` | 获取当前用户 Skill Library |
 | PUT | `/api/v1/skills/installations/:installation_id/config` | 更新安装配置 / track mode / pin version，产生 `skill.updated` 同步事件 |
 | POST | `/api/v1/skills/installations/:installation_id/enable` | 启用已安装 Skill，产生 `skill.enabled` 同步事件 |
