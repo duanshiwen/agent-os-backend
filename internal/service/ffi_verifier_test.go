@@ -165,20 +165,38 @@ func TestFFIClientReadySyncBridgeIntegration(t *testing.T) {
 	defer verifier.freeString(out)
 
 	projection := decodeClientReadyBridgeProjection(t, cStringToGo(out))
-	if projection.Cursor.LastAppliedSequence != 19 {
-		t.Fatalf("expected cursor sequence 19, got %+v", projection.Cursor)
+	if projection.Cursor.LastAppliedSequence != 26 {
+		t.Fatalf("expected cursor sequence 26, got %+v", projection.Cursor)
 	}
 	if profile, ok := projection.Profiles["user-1"]; !ok || profile["display_name"] != "Stage 5A User" {
 		t.Fatalf("expected user profile projection, got %+v", projection.Profiles)
 	}
+	if conversation, ok := projection.Conversations["conversation-1"]; !ok || conversation["name"] != "Stage 5A Conversation" {
+		t.Fatalf("expected conversation projection, got %+v", projection.Conversations)
+	}
+	if participant, ok := projection.Participants["conversation-1:user-1"]; !ok || participant["status"] != "active" {
+		t.Fatalf("expected participant projection, got %+v", projection.Participants)
+	}
+	if read, ok := projection.ConversationReads["conversation-1:user-1"]; !ok || read["last_read_message_id"] != "message-1" {
+		t.Fatalf("expected conversation read projection, got %+v", projection.ConversationReads)
+	}
 	if message, ok := projection.Messages["message-1"]; !ok || message["conversation_id"] != "conversation-1" {
 		t.Fatalf("expected message projection, got %+v", projection.Messages)
+	}
+	if _, ok := projection.MessageReactions["message-1:user-1:👍"]; ok {
+		t.Fatalf("expected removed message reaction to be absent, got %+v", projection.MessageReactions)
 	}
 	if skill, ok := projection.Skills["superpowers"]; !ok || skill["enabled"] != true {
 		t.Fatalf("expected enabled superpowers skill projection, got %+v", projection.Skills)
 	}
 	if skill, ok := projection.Skills["legacy-skill"]; !ok || skill["enabled"] != false {
 		t.Fatalf("expected disabled legacy skill projection, got %+v", projection.Skills)
+	}
+	if skill, ok := projection.Skills["installation-1"]; !ok || skill["skill_key"] != "research.brief" {
+		t.Fatalf("expected installed Skill Hub projection, got %+v", projection.Skills)
+	}
+	if _, ok := projection.Skills["installation-removed"]; ok {
+		t.Fatalf("expected uninstalled Skill Hub projection to be absent, got %+v", projection.Skills)
 	}
 	if agent, ok := projection.Agents["assistant-main"]; !ok || agent["display_name"] != "Assistant" {
 		t.Fatalf("expected agent projection, got %+v", projection.Agents)
@@ -255,7 +273,11 @@ type clientReadyBridgeProjection struct {
 	} `json:"cursor"`
 	Knowledge         knowledgeBridgeProjection `json:"knowledge"`
 	Profiles          map[string]map[string]any `json:"profiles"`
+	Conversations     map[string]map[string]any `json:"conversations"`
+	Participants      map[string]map[string]any `json:"participants"`
+	ConversationReads map[string]map[string]any `json:"conversation_reads"`
 	Messages          map[string]map[string]any `json:"messages"`
+	MessageReactions  map[string]map[string]any `json:"message_reactions"`
 	Skills            map[string]map[string]any `json:"skills"`
 	Agents            map[string]map[string]any `json:"agents"`
 	Servers           map[string]map[string]any `json:"servers"`

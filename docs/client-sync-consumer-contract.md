@@ -26,6 +26,7 @@ Stage 5A adds a general SDK / FFI reducer path for client-ready pull envelopes, 
 
 In scope for Stage 5A client consumption:
 
+- sync capabilities discovery;
 - sync event envelope decoding;
 - profile sync;
 - message sync;
@@ -76,7 +77,27 @@ WebSocket notifications are hints. Pull remains the source of truth because it r
 | `plugin` | `GET /api/v1/sage/installations`, `GET /api/v1/sage/installations/:installation_id/policy-bundle` | SAGE installation and policy state. |
 | `knowledge` | `GET /api/v1/knowledge/entries?include_deleted=true` | Include tombstones during reconciliation. |
 
-## 5. Incremental Event API
+## 5. Capabilities API
+
+Endpoint:
+
+```http
+GET /api/v1/sync/capabilities
+Authorization: Bearer <token>
+```
+
+Clients should call this before first sync pull and after app/backend upgrades. It returns the current sync schema range, pull/ack limits, SDK bridge metadata, supported object families/operations, and retention flags.
+
+Important fields:
+
+- `schema_version`, `min_supported_schema_version`, `max_supported_schema_version`
+- `pull.endpoint`, `pull.default_limit`, `pull.max_limit`, `pull.ack_endpoint`
+- `bridge.projection = ClientReadySyncProjection`
+- `bridge.ffi_symbol = agentos_apply_sync_pull_response_json`
+- `object_families`: supported operations per sync object family
+- `retention.repair_supported` and `retention.compaction_supported` currently `false`
+
+## 6. Incremental Event API
 
 Endpoint:
 
@@ -110,7 +131,7 @@ Client rules:
 5. Persist local cursor only after events are durably applied.
 6. Ack only the latest durably applied sequence.
 
-## 6. Ack API
+## 7. Ack API
 
 Endpoint:
 
@@ -129,7 +150,7 @@ Ack discipline:
 - Re-acking the same or lower sequence is safe; backend cursor advancement is monotonic.
 - If local apply fails, do not ack. Retry pull/apply later.
 
-## 7. WebSocket Notification Semantics
+## 8. WebSocket Notification Semantics
 
 Server may notify non-source devices with:
 
@@ -158,7 +179,7 @@ Client rules:
 3. Do not apply WebSocket payload directly unless the SDK explicitly shares the same ordered application path.
 4. Source device may not receive its own sync notification. It should use the mutation response to update local state and cursor policy appropriate to the host.
 
-## 8. Event Envelope Required Fields
+## 9. Event Envelope Required Fields
 
 Clients should decode and validate at least:
 
@@ -179,7 +200,7 @@ Clients should decode and validate at least:
 
 If `schema_version` is unsupported, clients should stop applying that event stream and surface a compatibility error rather than silently corrupting local state.
 
-## 9. Event Apply Rules by Object
+## 10. Event Apply Rules by Object
 
 ### 9.1 Profile
 
@@ -368,7 +389,7 @@ store status=deleted, version, content_hash, deleted_at.
 active views hide tombstones unless include_deleted/reconciliation mode is enabled.
 ```
 
-## 10. SDK / FFI Bridge Contract
+## 11. SDK / FFI Bridge Contract
 
 Stage 5A client-ready reducer lives in the Rust SDK:
 
@@ -396,7 +417,11 @@ The projection contains:
 - `cursor.last_applied_sequence`
 - `knowledge`
 - `profiles`
+- `conversations`
+- `participants`
+- `conversation_reads`
 - `messages`
+- `message_reactions`
 - `skills`
 - `agents`
 - `servers`
@@ -424,7 +449,7 @@ Smoke:
 
 This smoke is part of `./scripts/release-gate-local.sh`.
 
-## 11. Client-Originated Writes
+## 12. Client-Originated Writes
 
 Mutating requests should include `client_event_id` whenever possible.
 
@@ -447,7 +472,7 @@ Client rules:
 4. If backend returns idempotent replay, treat it as success.
 5. If backend returns idempotency conflict, stop retrying and surface a client bug or local queue corruption error.
 
-## 12. Optimistic Concurrency for Knowledge
+## 13. Optimistic Concurrency for Knowledge
 
 Knowledge update/delete requests may include `base_version`.
 
@@ -478,7 +503,7 @@ graph TD
 
 Stage 5A does not require automatic semantic merge. A host may choose last-writer review, manual diff, or local draft preservation.
 
-## 13. Offline Catch-up
+## 14. Offline Catch-up
 
 When a device reconnects:
 
@@ -497,7 +522,7 @@ If the device has queued local writes, prefer this order:
 4. submit writes with `base_version` and `client_event_id`;
 5. handle conflicts explicitly.
 
-## 14. Local Reducer Requirements
+## 15. Local Reducer Requirements
 
 A compliant client reducer must be:
 

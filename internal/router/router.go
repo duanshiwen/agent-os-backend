@@ -216,6 +216,7 @@ func Setup(
 			protected.DELETE("/conversations/:id/participants/:user_id", convH.RemoveParticipant)
 			protected.DELETE("/conversations/:id/participants/me", convH.Leave)
 
+			protected.GET("/sync/capabilities", syncH.GetCapabilities)
 			protected.GET("/sync/events", syncH.GetEvents)
 			protected.POST("/sync/ack", syncH.AckEvents)
 

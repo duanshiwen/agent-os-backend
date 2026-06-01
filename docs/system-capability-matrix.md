@@ -48,7 +48,7 @@ Obsolete Phase/M2/M3 progress-history docs were retired; this matrix is the curr
 | WebSocket | Runtime hub and dispatcher | ✅ | `internal/ws`; `message.send` supports reply/thread/visibility/client_event_id; `typing.start/stop`; `offline.fetch`, `message.ack`, `sync.event`, `ping` | broader presence scoping can be refined later |
 | Sync | Event stream | ✅ | `sync_events`; `SyncService` | retention/compaction |
 | Sync | Per-user monotonic sequence | ✅ | `sync_sequences` | migration/recovery tooling |
-| Sync | Pull and ack APIs | ✅ | `/sync/events`, `/sync/ack`; tests | sync snapshot/repair API |
+| Sync | Pull, ack, and capabilities APIs | ✅ | `/sync/events`, `/sync/ack`, `/sync/capabilities`; tests | sync snapshot/repair API |
 | Sync | Idempotency | ✅ | `client_event_id` partial uniqueness | cross-object conflict UX |
 | Sync | Profile sync | ✅ | `profile.updated` | client fixtures for all platforms |
 | Sync | Conversation and participant sync | ✅ | `conversation.created`, `conversation.updated`, `conversation.read`, `participant.added`, `participant.updated`, `participant.removed` with self-contained payloads | richer client reconstruction fixtures |
@@ -61,7 +61,7 @@ Obsolete Phase/M2/M3 progress-history docs were retired; this matrix is the curr
 | Sync | Server list and plugin sync | ✅ | `/servers` routes and `plugin.installed/uninstalled/enabled/disabled/permission_granted/permission_revoked` events | not federation |
 | Sync | Personal knowledge sync | ✅ | entry CRUD, tombstone, version conflict, content hash | restore operation and full client merge engine |
 | Sync | Plugin sync taxonomy | ✅ | SAGE install/uninstall/enable/disable and permission grant/revoke emit `plugin.*` sync events; Stage 5A fixture and tests cover them | schema version negotiation and full client merge UX |
-| Sync | Schema version negotiation | ⬜ | schema_version stored | `/sync/capabilities`, compatibility strategy |
+| Sync | Schema version capability discovery | 🟡 | `schema_version` stored; `/sync/capabilities` returns schema range, object family operations, bridge metadata, retention flags | full compatibility strategy for future breaking schema versions |
 | Object storage | Object record metadata | ✅ | `object_records` migration/model | lifecycle cleanup job |
 | Object storage | Upload intent / complete / download / delete APIs | ✅ | `ObjectService`; authenticated routes | malware/content scanning and quota policy |
 | Object storage | MinIO backend | ✅ | `MinIOStorageService`; compose MinIO | production lifecycle policy and bucket validation gate |

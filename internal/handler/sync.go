@@ -26,6 +26,11 @@ func NewSyncHandler(svc *service.SyncService) *SyncHandler {
 	return &SyncHandler{svc: svc}
 }
 
+// GET /api/v1/sync/capabilities — describe sync schema and client consumption capabilities.
+func (h *SyncHandler) GetCapabilities(c *gin.Context) {
+	response.OK(c, h.svc.GetCapabilities())
+}
+
 func normalizeSyncLimit(limit int) int {
 	if limit <= 0 || limit > 500 {
 		return 100

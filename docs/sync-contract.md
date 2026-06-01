@@ -125,7 +125,23 @@ M2 response envelope:
 
 `limit` defaults to `100` when `<= 0` or `> 500`.
 
-## 6. Ack API
+## 6. Capabilities API
+
+Endpoint:
+
+```http
+GET /api/v1/sync/capabilities
+```
+
+The capabilities response lets clients negotiate the current sync contract before applying event streams. It includes:
+
+- `schema_version`, `min_supported_schema_version`, `max_supported_schema_version`;
+- pull and ack endpoint metadata, including default/max pull limits;
+- SDK bridge metadata for `ClientReadySyncProjection` and `agentos_apply_sync_pull_response_json`;
+- supported object families and operations;
+- retention flags. `repair_supported` and `compaction_supported` are currently `false`; full snapshot/repair remains future work.
+
+## 7. Ack API
 
 Endpoint:
 
@@ -142,7 +158,7 @@ Ack semantics:
 - Ack is monotonic. A lower `last_sequence` than the current cursor is a no-op and still succeeds.
 - Clients should ack only after they have durably applied events.
 
-## 7. WebSocket Notification
+## 8. WebSocket Notification
 
 When a sync event is recorded, the server notifies the user's other connected devices with:
 
@@ -166,7 +182,7 @@ When a sync event is recorded, the server notifies the user's other connected de
 
 The source device is excluded from this notification path.
 
-## 8. Client Event Idempotency
+## 9. Client Event Idempotency
 
 `client_event_id` is optional but recommended for client-originated writes.
 
@@ -180,7 +196,7 @@ For the same user:
 
 The database enforces uniqueness for non-empty `(user_id, client_event_id)` through a partial unique index.
 
-## 9. Conversation Sync
+## 10. Conversation Sync
 
 M2 uses a baseline + incremental model.
 
@@ -323,7 +339,7 @@ Connected devices may receive immediate WebSocket message delivery and/or `sync.
 
 After reconnect, clients call `/sync/events?after_sequence=<last_seen>` or cursor-based `/sync/events`.
 
-## 10. Profile Sync
+## 11. Profile Sync
 
 `profile.updated` is the first non-message sync event.
 
@@ -341,7 +357,7 @@ Minimum payload:
 
 This event is emitted by `PUT /api/v1/users/me`.
 
-## 11. Skill Sync
+## 12. Skill Sync
 
 Skill sync now has two compatible layers:
 
@@ -413,7 +429,7 @@ Minimum legacy payload:
 
 The source device is recorded in `source_device_id`; other devices can pull the event through `/sync/events` and receive real-time `sync.event` notification when connected.
 
-## 12. Agent Settings Sync
+## 13. Agent Settings Sync
 
 Agent settings use a baseline + incremental model.
 
@@ -448,7 +464,7 @@ Minimum payload:
 
 The source device is recorded in `source_device_id`; other devices can pull the event through `/sync/events` and receive real-time `sync.event` notification when connected.
 
-## 13. Server List Sync
+## 14. Server List Sync
 
 Server list settings use a baseline + incremental model.
 
@@ -503,7 +519,7 @@ The source device is recorded in `source_device_id`; other devices can pull the 
 
 This sync object only covers a user's local server list configuration. It does not implement Federation, server-to-server trust, remote authentication, or cross-server data sync.
 
-## 14. Error Semantics
+## 15. Error Semantics
 
 | Condition | HTTP status / behavior |
 |---|---:|
@@ -516,14 +532,14 @@ This sync object only covers a user's local server list configuration. It does n
 | authenticated but not allowed | 403 |
 | database / internal failure | 500 |
 
-## 15. Compatibility Rules
+## 16. Compatibility Rules
 
 - `schema_version` must increase for breaking payload changes.
 - Existing fields should remain additive whenever possible.
 - New object types and operations must be added to the central sync contract and covered by tests.
 - Clients should ignore unknown payload fields.
 - Clients should not assume global sequence ordering across users; sequences are per-user.
-## 14. Knowledge Entry Sync
+## 17. Knowledge Entry Sync
 
 M2.2 adds personal knowledge entry sync. This is not KB Hub publishing, marketplace search, subscription state, billing, or semantic indexing. It only defines how one user's own knowledge entries converge across that user's devices.
 
