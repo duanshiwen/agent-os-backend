@@ -2,7 +2,7 @@
 
 Updated: 2026-06-01
 Branch: `stage5a-client-ready-platform-slice`
-Status: in progress — sync bridge evidence path implemented
+Status: in progress — Release Gate 1.0 evidence path implemented
 
 ## 1. Purpose
 
@@ -16,10 +16,16 @@ Fresh local verification on 2026-06-01:
 
 ```text
 Backend: go test ./...
-Result: 183 passed in 11 packages
+Result: 189 passed in 11 packages
 
-Rust SDK: cargo test --workspace --all-targets --locked
-Result: 1560 passed, 2 ignored, 110 suites
+Backend release gate: ./scripts/release-gate-local.sh
+Result: Release gate local checks passed.
+
+Stage 5A evidence: ./scripts/stage5a-release-evidence.sh
+Result: writes tmp/stage5a-release-evidence.md after passing core Stage 5A gates.
+
+Rust SDK targeted bridge/FFI check: cargo test -p agentos-client-bridge -p agentos-ffi --locked
+Latest known result: 18 passed, 6 suites
 ```
 
 Backend branch at Stage 5A start:
@@ -167,16 +173,18 @@ Acceptance checks:
 
 Goal: make local release evidence repeatable before broader client integration.
 
-Deliverables:
+Implemented foundation:
 
-- keep `scripts/release-gate-local.sh` as the primary local gate;
-- keep the Stage 5A sync bridge smoke in the fast release path;
-- document optional live gates clearly: migration apply, object storage, SAGE runtime, governance enforcement, local_http semantic search;
-- produce release evidence with commit hashes and test results.
+- `scripts/release-gate-local.sh` remains the primary default local gate.
+- The default release gate now includes Go tests, syntax checks, FFI artifact checks, Stage 5A sync bridge smoke, SAGE client runtime contract gate, and governance client error contract gate.
+- `scripts/stage5a-release-evidence.sh` runs the core Stage 5A gate set and writes a markdown evidence report with branch, commit, command, result, and per-gate log paths.
+- `docs/stage5a-client-integration-handoff.md` summarizes stable client-facing contracts and the recommended client integration order.
+- Optional live gates remain explicit: migration apply, object storage, SAGE runtime, governance enforcement, local_http semantic search.
 
 Acceptance checks:
 
 ```bash
+./scripts/stage5a-release-evidence.sh
 ./scripts/release-gate-local.sh
 RUN_MIGRATION_GATE=1 RUN_LIVE_SMOKES=1 RUN_LOCAL_HTTP_SEMANTIC=1 ./scripts/release-gate-local.sh
 ```
@@ -213,9 +221,11 @@ graph TD
     A[Reality Lock 2.0] --> B[SDK Client Sync Bridge Expansion]
     B --> C[FFI Artifact Gate]
     C --> D[SAGE Client Runtime Contract Gate]
-    D --> G[Release Gate 1.0]
-    G --> E[KB Chunk Search Quality]
-    G --> F[Governance 4E]
+    D --> H[Governance Client Error Contract Gate]
+    H --> G[Release Gate 1.0]
+    G --> I[Client Integration Handoff]
+    I --> E[KB Chunk Search Quality]
+    I --> F[Governance 4E]
 ```
 
 ## 6. Stage 5A Exit Criteria

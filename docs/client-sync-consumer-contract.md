@@ -1,5 +1,7 @@
 # AgentOS Client Sync Consumer Contract
 
+Stage 5A handoff: [stage5a-client-integration-handoff.md](./stage5a-client-integration-handoff.md)
+
 Updated: 2026-06-01  
 Status: Stage 5A client-ready contract baseline
 

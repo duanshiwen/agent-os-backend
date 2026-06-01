@@ -3,6 +3,8 @@
 Updated: 2026-06-01  
 Status: Stage 5A client runtime contract baseline
 
+Stage 5A handoff: [stage5a-client-integration-handoff.md](./stage5a-client-integration-handoff.md)
+
 This contract is between AgentOS Client and third-party SAGE Plugin Servers. AgentOS Backend is the control plane: it stores plugin manifests, permissions, policy bundles, invocation records, execution reports, audit evidence, usage ledger records, and governance decisions. The backend does **not** execute third-party SAGE Flow definitions.
 
 ## 1. Control-Plane Boundaries

@@ -3,6 +3,8 @@
 Updated: 2026-06-01  
 Status: Stage 5A client-facing contract baseline
 
+Stage 5A handoff: [stage5a-client-integration-handoff.md](./stage5a-client-integration-handoff.md)
+
 This document defines the stable HTTP error shape that AgentOS Client can rely on when backend governance is in enforce mode. It applies to governance-protected operations such as SAGE permission grants, SAGE invocations, and object operations.
 
 ## 1. Error Envelope
