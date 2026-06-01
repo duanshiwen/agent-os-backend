@@ -29,3 +29,22 @@ func TestValidateSyncEventAllowsMessageCreated(t *testing.T) {
 		t.Fatalf("expected message.created to be allowed: %v", err)
 	}
 }
+
+func TestValidateSyncEventAllowsContactLifecycle(t *testing.T) {
+	for _, operation := range []string{SyncOperationCreated, SyncOperationUpdated, SyncOperationDeleted} {
+		if err := ValidateSyncEvent(SyncObjectContact, operation); err != nil {
+			t.Fatalf("expected contact.%s to be allowed: %v", operation, err)
+		}
+	}
+	eventType, err := BuildSyncEventType(SyncObjectContact, SyncOperationCreated)
+	if err != nil {
+		t.Fatalf("build contact event type: %v", err)
+	}
+	if eventType != "contact.created" {
+		t.Fatalf("expected contact.created, got %q", eventType)
+	}
+	families := SyncSupportedObjectFamilies()
+	if got := families[SyncObjectContact]; len(got) != 3 || got[0] != SyncOperationCreated || got[1] != SyncOperationUpdated || got[2] != SyncOperationDeleted {
+		t.Fatalf("unexpected contact capabilities: %+v", got)
+	}
+}

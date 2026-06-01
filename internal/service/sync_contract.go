@@ -14,6 +14,7 @@ const (
 	SyncObjectMessageReaction  = "message_reaction"
 	SyncObjectConversationRead = "conversation_read"
 	SyncObjectKnowledge        = "knowledge"
+	SyncObjectContact          = "contact"
 	SyncObjectSkill            = "skill"
 	SyncObjectAgent            = "agent"
 	SyncObjectServer           = "server"
@@ -47,6 +48,7 @@ const (
 	SyncEventMessageReaction  = SyncObjectMessageReaction
 	SyncEventConversationRead = SyncObjectConversationRead
 	SyncEventKnowledge        = SyncObjectKnowledge
+	SyncEventContact          = SyncObjectContact
 	SyncEventSkill            = SyncObjectSkill
 	SyncEventAgent            = SyncObjectAgent
 	SyncEventServer           = SyncObjectServer
@@ -100,6 +102,11 @@ var supportedSyncOperations = map[string]map[string]bool{
 		SyncOperationUpdated: true,
 	},
 	SyncObjectKnowledge: {
+		SyncOperationCreated: true,
+		SyncOperationUpdated: true,
+		SyncOperationDeleted: true,
+	},
+	SyncObjectContact: {
 		SyncOperationCreated: true,
 		SyncOperationUpdated: true,
 		SyncOperationDeleted: true,
@@ -160,6 +167,7 @@ func SyncSupportedObjectFamilies() map[string][]string {
 		SyncObjectParticipant:  {SyncOperationAdded, SyncOperationUpdated, SyncOperationRemoved},
 		SyncObjectMessage:      {SyncOperationCreated, SyncOperationUpdated, SyncOperationDeleted, SyncOperationReactionAdded, SyncOperationReactionRemoved},
 		SyncObjectKnowledge:    {SyncOperationCreated, SyncOperationUpdated, SyncOperationDeleted},
+		SyncObjectContact:      {SyncOperationCreated, SyncOperationUpdated, SyncOperationDeleted},
 		SyncObjectSkill:        {SyncOperationInstalled, SyncOperationUninstalled, SyncOperationEnabled, SyncOperationDisabled, SyncOperationUpdated},
 		SyncObjectAgent:        {SyncOperationUpdated},
 		SyncObjectServer:       {SyncOperationAdded, SyncOperationUpdated, SyncOperationRemoved},

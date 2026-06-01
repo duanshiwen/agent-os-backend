@@ -58,6 +58,8 @@ func Setup(
 	serverConnectionsSvc := service.NewServerConnectionsService(serverConnectionsRepo, syncSvc)
 	knowledgeEntriesRepo := repository.NewKnowledgeEntriesRepo(db)
 	knowledgeEntriesSvc := service.NewKnowledgeEntriesService(knowledgeEntriesRepo, syncSvc)
+	contactsRepo := repository.NewContactsRepo(db)
+	contactsSvc := service.NewContactsService(contactsRepo, syncSvc)
 	objectRecordsRepo := repository.NewObjectRecordsRepo(db)
 	objectStorageCfg := cfg.ObjectStorage
 	if objectStorageCfg.Endpoint == "" {
@@ -116,6 +118,7 @@ func Setup(
 	agentSettingsH := handler.NewAgentSettingsHandler(agentSettingsSvc)
 	serverConnectionsH := handler.NewServerConnectionsHandler(serverConnectionsSvc)
 	knowledgeEntriesH := handler.NewKnowledgeEntriesHandler(knowledgeEntriesSvc)
+	contactsH := handler.NewContactsHandler(contactsSvc)
 	objectH := handler.NewObjectHandler(objectSvc)
 	kbHubH := handler.NewKBHubHandler(kbHubSvc)
 	sagePluginH := handler.NewSAGEPluginHandler(sagePluginSvc)
@@ -268,6 +271,12 @@ func Setup(
 			protected.GET("/knowledge/entries/*entry_id", knowledgeEntriesH.Get)
 			protected.PUT("/knowledge/entries/*entry_id", knowledgeEntriesH.Update)
 			protected.DELETE("/knowledge/entries/*entry_id", knowledgeEntriesH.Delete)
+
+			protected.GET("/contacts", contactsH.List)
+			protected.POST("/contacts", contactsH.Create)
+			protected.GET("/contacts/:contact_id", contactsH.Get)
+			protected.PUT("/contacts/:contact_id", contactsH.Update)
+			protected.DELETE("/contacts/:contact_id", contactsH.Delete)
 
 			protected.POST("/objects/upload-intents", objectH.CreateUploadIntent)
 			protected.POST("/objects/uploads/:id/complete", objectH.CompleteUpload)

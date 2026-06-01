@@ -263,6 +263,26 @@ type UserServerConnection struct {
 	UpdatedByDeviceID string            `gorm:"index" json:"updated_by_device_id"`
 }
 
+type Contact struct {
+	Base
+	UserID            uuid.UUID                   `gorm:"type:uuid;index;not null;uniqueIndex:idx_contact_user_contact" json:"user_id"`
+	ContactID         string                      `gorm:"size:128;not null;uniqueIndex:idx_contact_user_contact" json:"contact_id"`
+	LinkedUserID      *uuid.UUID                  `gorm:"type:uuid;index" json:"linked_user_id"`
+	AgentOSPubKey     string                      `gorm:"column:agentos_pubkey;size:128;index" json:"agentos_pubkey"`
+	DisplayName       string                      `gorm:"not null" json:"display_name"`
+	Alias             string                      `json:"alias"`
+	AvatarURL         string                      `json:"avatar_url"`
+	Phones            datatypes.JSONSlice[string] `gorm:"type:jsonb" json:"phones"`
+	Emails            datatypes.JSONSlice[string] `gorm:"type:jsonb" json:"emails"`
+	Labels            datatypes.JSONSlice[string] `gorm:"type:jsonb" json:"labels"`
+	Notes             string                      `gorm:"type:text" json:"notes"`
+	Metadata          datatypes.JSONMap           `gorm:"type:jsonb" json:"metadata"`
+	Status            string                      `gorm:"default:active;index" json:"status"`
+	Version           uint64                      `gorm:"not null;default:1" json:"version"`
+	DeletedAt         *time.Time                  `json:"deleted_at"`
+	UpdatedByDeviceID string                      `gorm:"index" json:"updated_by_device_id"`
+}
+
 type UserKnowledgeEntry struct {
 	Base
 	UserID            uuid.UUID                   `gorm:"type:uuid;index;not null;uniqueIndex:idx_user_knowledge_entry" json:"user_id"`

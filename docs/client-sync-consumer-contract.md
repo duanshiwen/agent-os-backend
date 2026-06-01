@@ -35,6 +35,7 @@ In scope for Stage 5A client consumption:
 - server list sync;
 - SAGE plugin lifecycle and permission sync;
 - personal knowledge entry sync;
+- contact sync;
 - cursor persistence and ack discipline;
 - idempotent retry handling;
 - optimistic concurrency conflict handling;
@@ -76,6 +77,7 @@ WebSocket notifications are hints. Pull remains the source of truth because it r
 | `server` | `GET /api/v1/servers` | User server connection list. Local configuration only; not Federation. |
 | `plugin` | `GET /api/v1/sage/installations`, `GET /api/v1/sage/installations/:installation_id/policy-bundle` | SAGE installation and policy state. |
 | `knowledge` | `GET /api/v1/knowledge/entries?include_deleted=true` | Include tombstones during reconciliation. |
+| `contact` | `GET /api/v1/contacts?include_deleted=true` | User-scoped contact book. Include tombstones during reconciliation. |
 
 ## 5. Capabilities API
 
@@ -130,6 +132,51 @@ Client rules:
 4. If `has_more` is true, continue pulling from `next_after_sequence`.
 5. Persist local cursor only after events are durably applied.
 6. Ack only the latest durably applied sequence.
+
+### Contact Events
+
+Contact management uses the same full-snapshot event style as other user-scoped personal objects.
+
+Supported operations:
+
+- `contact.created`
+- `contact.updated`
+- `contact.deleted`
+
+Minimum payload:
+
+```json
+{
+  "contact_id": "contact-alice",
+  "object_id": "contact-alice",
+  "user_id": "user-1",
+  "linked_user_id": null,
+  "agentos_pubkey": "",
+  "display_name": "Alice",
+  "alias": "",
+  "avatar_url": "",
+  "phones": [],
+  "emails": ["alice@example.com"],
+  "labels": ["friend"],
+  "notes": "user-authored note",
+  "metadata": {},
+  "status": "active",
+  "version": 1,
+  "updated_by_device_id": "device-a",
+  "updated_at": "2026-06-02T00:00:00Z",
+  "deleted_at": null
+}
+```
+
+Client apply rule:
+
+```text
+created/updated -> upsert local contact by contact_id / object_id
+deleted -> remove from active projection or retain tombstone if local store needs reconciliation history
+record source sequence after durable write
+```
+
+Contacts are intentionally practical address-book records. AI-inferred person profile or relationship observations remain outside this MVP contact sync contract.
 
 ## 7. Ack API
 

@@ -42,6 +42,7 @@ Current backend implementation includes:
 - Sync event stream, cursors, per-user sequence allocation, idempotency keys, and pull/ack API.
 - Sync object coverage for profile, message, skill, agent, server list, and personal knowledge entries.
 - Personal knowledge entry tombstone, version, content hash, idempotency, and optimistic conflict semantics.
+- User-scoped contact book CRUD with tombstones, optimistic version conflict handling, idempotent `client_event_id`, `contact.created/updated/deleted` sync events, and SDK bridge projection support.
 - MinIO-backed object storage foundation with `object_records` and upload/complete/download/delete lifecycle.
 - KB Hub collection/snapshot publishing, immutable snapshot metadata, manifest/content object storage, public discovery, install/subscription, installed access, fulltext fetch, usage records, billing ledger foundation, contributor earnings foundation, lexical search, and async semantic search pipeline.
 - PostgreSQL + pgvector semantic storage, durable embedding queue, deterministic embedding provider, local HTTP embedding worker contract, and Go embedding job worker.

@@ -151,6 +151,30 @@ func TestServerConnectionsAddEmitsPullableSyncEvent(t *testing.T) {
 	}
 }
 
+func TestContactsMutationsEmitPullableSyncEvents(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	env := newPhase1RouterSmokeEnv(t)
+
+	aliceA := env.verifyNewUser(t, "contact-device-a", "contact-pubkey")
+	start := env.startPairing(t, aliceA.AccessToken)
+	env.claimPairing(t, start.QRPayload, "contact-device-b", "contact-device-b-pubkey")
+	aliceB := env.verifyExistingUser(t, "contact-device-b", "contact-pubkey")
+
+	var contact model.Contact
+	env.doJSON(t, http.MethodPost, "/api/v1/contacts", aliceA.AccessToken, map[string]any{"contact_id": "alice", "display_name": "Alice", "emails": []string{"alice@example.com"}, "client_event_id": "contact-router-create-1"}, http.StatusCreated, &contact)
+	if contact.ContactID != "alice" || contact.DisplayName != "Alice" || contact.UpdatedByDeviceID != "contact-device-a" {
+		t.Fatalf("unexpected contact response: %+v", contact)
+	}
+
+	events := env.getSyncEvents(t, aliceB.AccessToken, 100)
+	if len(events) != 1 || events[0].EventType != "contact.created" || events[0].ObjectType != service.SyncObjectContact || events[0].ObjectID != "alice" || events[0].Operation != service.SyncOperationCreated || events[0].SourceDeviceID != "contact-device-a" || events[0].ClientEventID != "contact-router-create-1" {
+		t.Fatalf("expected device B to pull contact.created event, got %+v", events)
+	}
+	if events[0].Payload["display_name"] != "Alice" || events[0].Payload["contact_id"] != "alice" {
+		t.Fatalf("unexpected contact sync payload: %+v", events[0].Payload)
+	}
+}
+
 func TestKnowledgeEntriesMutationsEmitPullableSyncEvents(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	env := newPhase1RouterSmokeEnv(t)
@@ -453,7 +477,7 @@ func newPhase1RouterSmokeEnv(t *testing.T) *phase1RouterSmokeEnv {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.Device{}, &model.AuthChallenge{}, &model.AdmissionRequest{}, &model.ServerAdmission{}, &model.DevicePairingSession{}, &model.Conversation{}, &model.ConversationParticipant{}, &model.Message{}, &model.OfflineMessage{}, &model.SyncEvent{}, &model.SyncCursor{}, &model.SyncSequence{}, &model.UserSkillSetting{}, &model.UserAgentSetting{}, &model.UserServerConnection{}, &model.UserKnowledgeEntry{}, &model.SensitiveOperationConfirmation{}, &model.AuditEvent{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Device{}, &model.AuthChallenge{}, &model.AdmissionRequest{}, &model.ServerAdmission{}, &model.DevicePairingSession{}, &model.Conversation{}, &model.ConversationParticipant{}, &model.Message{}, &model.OfflineMessage{}, &model.SyncEvent{}, &model.SyncCursor{}, &model.SyncSequence{}, &model.UserSkillSetting{}, &model.UserAgentSetting{}, &model.UserServerConnection{}, &model.UserKnowledgeEntry{}, &model.Contact{}, &model.SensitiveOperationConfirmation{}, &model.AuditEvent{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 

@@ -60,6 +60,7 @@ Obsolete Phase/M2/M3 progress-history docs were retired; this matrix is the curr
 | Skill Hub | Ratings / downloads / recommendation ordering | ✅ | one rating per user per skill, aggregate rating fields, install-backed `download_count`, catalog `sort=recommended/downloads/rating/recent` | comments/reviews, anti-abuse ranking, personalization, and telemetry-based recommendations remain future work |
 | Sync | Server list and plugin sync | ✅ | `/servers` routes and `plugin.installed/uninstalled/enabled/disabled/permission_granted/permission_revoked` events | not federation |
 | Sync | Personal knowledge sync | ✅ | entry CRUD, tombstone, version conflict, content hash | restore operation and full client merge engine |
+| Sync | Contact sync | ✅ | user-scoped contact CRUD, tombstone, version conflict, idempotent `client_event_id`, `contact.created/updated/deleted`, SDK bridge contact projection | friend requests, imports, dedupe/merge, blocking, and people-intelligence observations remain future work |
 | Sync | Plugin sync taxonomy | ✅ | SAGE install/uninstall/enable/disable and permission grant/revoke emit `plugin.*` sync events; Stage 5A fixture and tests cover them | schema version negotiation and full client merge UX |
 | Sync | Schema version capability discovery | 🟡 | `schema_version` stored; `/sync/capabilities` returns schema range, object family operations, bridge metadata, retention flags | full compatibility strategy for future breaking schema versions |
 | Object storage | Object record metadata | ✅ | `object_records` migration/model | lifecycle cleanup job |
@@ -139,6 +140,7 @@ Authenticated:
 - sync events and ack;
 - skill/agent/server settings;
 - personal knowledge entries;
+- contacts;
 - object storage lifecycle;
 - billing account/transactions;
 - KB collection owner, publishing, pricing, stats, earnings;
