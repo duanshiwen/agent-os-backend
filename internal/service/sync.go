@@ -26,6 +26,31 @@ func NewSyncService(syncRepo *repository.SyncRepo, hub HubNotifier) *SyncService
 	return &SyncService{syncRepo: syncRepo, hub: hub}
 }
 
+func (s *SyncService) GetCapabilities() SyncCapabilities {
+	return SyncCapabilities{
+		SchemaVersion:             SyncSchemaVersion,
+		MinSupportedSchemaVersion: SyncSchemaVersion,
+		MaxSupportedSchemaVersion: SyncSchemaVersion,
+		Pull: SyncPullCapabilities{
+			Endpoint:     "/api/v1/sync/events",
+			DefaultLimit: 100,
+			MaxLimit:     500,
+			AckEndpoint:  "/api/v1/sync/ack",
+		},
+		Bridge: SyncBridgeCapabilities{
+			Projection: "ClientReadySyncProjection",
+			FFISymbol:  "agentos_apply_sync_pull_response_json",
+			FFIVersion: "0.1.0",
+		},
+		ObjectFamilies: SyncSupportedObjectFamilies(),
+		Retention: SyncRetentionCapabilities{
+			FineGrainedEventsDays: 30,
+			CompactionSupported:   false,
+			RepairSupported:       false,
+		},
+	}
+}
+
 type SyncEventMsg struct {
 	EventType      string `json:"event_type"`
 	SchemaVersion  int    `json:"schema_version"`
@@ -47,6 +72,35 @@ type SyncEnvelope struct {
 	Operation      string
 	ClientEventID  string
 	Payload        datatypes.JSONMap
+}
+
+type SyncPullCapabilities struct {
+	Endpoint     string `json:"endpoint"`
+	DefaultLimit int    `json:"default_limit"`
+	MaxLimit     int    `json:"max_limit"`
+	AckEndpoint  string `json:"ack_endpoint"`
+}
+
+type SyncBridgeCapabilities struct {
+	Projection string `json:"projection"`
+	FFISymbol  string `json:"ffi_symbol"`
+	FFIVersion string `json:"ffi_version"`
+}
+
+type SyncRetentionCapabilities struct {
+	FineGrainedEventsDays int  `json:"fine_grained_events_days"`
+	CompactionSupported   bool `json:"compaction_supported"`
+	RepairSupported       bool `json:"repair_supported"`
+}
+
+type SyncCapabilities struct {
+	SchemaVersion             int                         `json:"schema_version"`
+	MinSupportedSchemaVersion int                         `json:"min_supported_schema_version"`
+	MaxSupportedSchemaVersion int                         `json:"max_supported_schema_version"`
+	Pull                      SyncPullCapabilities        `json:"pull"`
+	Bridge                    SyncBridgeCapabilities      `json:"bridge"`
+	ObjectFamilies            map[string][]string         `json:"object_families"`
+	Retention                 SyncRetentionCapabilities   `json:"retention"`
 }
 
 func (s *SyncService) RecordEvent(userID uuid.UUID, deviceID, eventType string, action string, payload datatypes.JSONMap) (*model.SyncEvent, error) {

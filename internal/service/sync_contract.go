@@ -152,3 +152,22 @@ func ValidateSyncEvent(objectType, operation string) error {
 	}
 	return nil
 }
+
+func SyncSupportedObjectFamilies() map[string][]string {
+	ordered := map[string][]string{
+		SyncObjectProfile:      {SyncOperationUpdated},
+		SyncObjectConversation: {SyncOperationCreated, SyncOperationUpdated, SyncOperationRead},
+		SyncObjectParticipant:  {SyncOperationAdded, SyncOperationUpdated, SyncOperationRemoved},
+		SyncObjectMessage:      {SyncOperationCreated, SyncOperationUpdated, SyncOperationDeleted, SyncOperationReactionAdded, SyncOperationReactionRemoved},
+		SyncObjectKnowledge:    {SyncOperationCreated, SyncOperationUpdated, SyncOperationDeleted},
+		SyncObjectSkill:        {SyncOperationInstalled, SyncOperationUninstalled, SyncOperationEnabled, SyncOperationDisabled, SyncOperationUpdated},
+		SyncObjectAgent:        {SyncOperationUpdated},
+		SyncObjectServer:       {SyncOperationAdded, SyncOperationUpdated, SyncOperationRemoved},
+		SyncObjectPlugin:       {SyncOperationInstalled, SyncOperationUninstalled, SyncOperationEnabled, SyncOperationDisabled, SyncOperationPermissionGranted, SyncOperationPermissionRevoked, SyncOperationAdded, SyncOperationUpdated, SyncOperationRemoved},
+	}
+	families := make(map[string][]string, len(ordered))
+	for objectType, operations := range ordered {
+		families[objectType] = append([]string(nil), operations...)
+	}
+	return families
+}

@@ -318,6 +318,53 @@ func TestSyncEventsResponseIncludesStableEnvelopeFields(t *testing.T) {
 	}
 }
 
+func TestSyncCapabilitiesEndpointReturnsContractMetadata(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	env := newPhase1RouterSmokeEnv(t)
+
+	alice := env.verifyNewUser(t, "capabilities-device-1", "capabilities-pubkey")
+	var capabilities struct {
+		SchemaVersion             int                 `json:"schema_version"`
+		MinSupportedSchemaVersion int                 `json:"min_supported_schema_version"`
+		MaxSupportedSchemaVersion int                 `json:"max_supported_schema_version"`
+		Pull                      map[string]any      `json:"pull"`
+		Bridge                    map[string]any      `json:"bridge"`
+		ObjectFamilies            map[string][]string `json:"object_families"`
+		Retention                 map[string]any      `json:"retention"`
+	}
+	env.doJSON(t, http.MethodGet, "/api/v1/sync/capabilities", alice.AccessToken, nil, http.StatusOK, &capabilities)
+
+	if capabilities.SchemaVersion != service.SyncSchemaVersion || capabilities.MinSupportedSchemaVersion != 1 || capabilities.MaxSupportedSchemaVersion != 1 {
+		t.Fatalf("unexpected schema versions: %+v", capabilities)
+	}
+	if capabilities.Pull["endpoint"] != "/api/v1/sync/events" || capabilities.Pull["ack_endpoint"] != "/api/v1/sync/ack" || capabilities.Pull["max_limit"] != float64(500) {
+		t.Fatalf("unexpected pull capabilities: %+v", capabilities.Pull)
+	}
+	if capabilities.Bridge["projection"] != "ClientReadySyncProjection" || capabilities.Bridge["ffi_symbol"] != "agentos_apply_sync_pull_response_json" {
+		t.Fatalf("unexpected bridge capabilities: %+v", capabilities.Bridge)
+	}
+	assertContainsAll(t, capabilities.ObjectFamilies[service.SyncObjectConversation], []string{"created", "updated", "read"})
+	assertContainsAll(t, capabilities.ObjectFamilies[service.SyncObjectParticipant], []string{"added", "updated", "removed"})
+	assertContainsAll(t, capabilities.ObjectFamilies[service.SyncObjectMessage], []string{"created", "updated", "deleted", "reaction_added", "reaction_removed"})
+	assertContainsAll(t, capabilities.ObjectFamilies[service.SyncObjectSkill], []string{"installed", "uninstalled", "enabled", "disabled", "updated"})
+	if capabilities.Retention["repair_supported"] != false || capabilities.Retention["compaction_supported"] != false {
+		t.Fatalf("expected repair/compaction unsupported foundation response, got %+v", capabilities.Retention)
+	}
+}
+
+func assertContainsAll(t *testing.T, got []string, want []string) {
+	t.Helper()
+	seen := map[string]bool{}
+	for _, item := range got {
+		seen[item] = true
+	}
+	for _, item := range want {
+		if !seen[item] {
+			t.Fatalf("expected %v to contain %q", got, item)
+		}
+	}
+}
+
 func TestSyncEventsRejectsInvalidAfterSequenceQuery(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	env := newPhase1RouterSmokeEnv(t)
