@@ -125,16 +125,18 @@ Acceptance checks:
 
 Goal: prove that the backend control plane emits enough contract data for AgentOS Client to execute SAGE Plugin runtime flows safely.
 
-Deliverables:
+Implemented foundation:
 
-- freeze policy bundle client-facing field names and semantics;
-- extend the mock plugin runtime smoke to include approval-required and denied governance scenarios;
-- verify plugin install/grant/revoke sync events in the same client contract path;
-- verify invocation/report idempotency and developer metrics consistency.
+- `docs/sage-plugin-runtime-contract.md` defines the Stage 5A client runtime contract for policy bundle, Plugin Server flow call, invocation, execution report, and governance errors.
+- `TestSAGEPluginServiceClientRuntimeContract` verifies policy bundle identity fields, granted/denied permission split, runtime guards, stable reporting endpoint, invocation/report idempotency, and developer metrics.
+- `TestSAGEPluginServiceGovernanceEnforceClientRuntimeOutcomes` verifies SAGE enforce-mode denied, approval-required, invalid-approval, and approval-token retry success outcomes.
+- `scripts/check-sage-client-runtime-contract.sh` provides a fast service-level gate.
+- `scripts/release-gate-local.sh` runs the SAGE contract gate in the default local release path; live smoke remains optional through `RUN_LIVE_SMOKES=1`.
 
 Acceptance checks:
 
 ```bash
+./scripts/check-sage-client-runtime-contract.sh
 ./scripts/smoke-sage-plugin-runtime.sh
 ./scripts/smoke-governance-enforce-readiness.sh
 ```

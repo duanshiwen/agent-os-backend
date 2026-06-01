@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -224,7 +225,7 @@ func TestSAGEPluginServiceEmitsPluginSyncEvents(t *testing.T) {
 	}
 }
 
-func TestSAGEPluginServicePolicyBundleAndReport(t *testing.T) {
+func TestSAGEPluginServiceClientRuntimeContract(t *testing.T) {
 	svc, _ := newSAGETestService(t)
 	developerID := uuid.New()
 	userID := uuid.New()
@@ -240,14 +241,28 @@ func TestSAGEPluginServicePolicyBundleAndReport(t *testing.T) {
 	if grant.PermissionKey != "plugin.api.call" {
 		t.Fatal("grant mismatch")
 	}
+
 	bundle, err := svc.PolicyBundle(userID, inst.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(bundle.GrantedPermissions) != 1 {
-		t.Fatalf("expected one grant, got %d", len(bundle.GrantedPermissions))
+	if bundle.PluginKey != plugin.PluginKey || bundle.Version == "" || bundle.PolicyBundleVersion == "" {
+		t.Fatalf("policy bundle missing stable identity fields: %#v", bundle)
 	}
-	inv, err := svc.CreateInvocation(userID, "device-a", CreateSAGEInvocationInput{PluginKey: plugin.PluginKey, ClientRequestID: "req-1", UserIntent: "find hotels"})
+	if len(bundle.GrantedPermissions) != 1 || bundle.GrantedPermissions[0]["key"] != "plugin.api.call" || bundle.GrantedPermissions[0]["risk"] != SAGERiskLow {
+		t.Fatalf("expected low-risk plugin api grant in policy bundle, got %#v", bundle.GrantedPermissions)
+	}
+	if len(bundle.DeniedPermissions) != 1 || bundle.DeniedPermissions[0] != "transaction.booking.create" {
+		t.Fatalf("expected manifest high-risk booking permission to remain denied, got %#v", bundle.DeniedPermissions)
+	}
+	if len(bundle.RuntimeGuards) != 1 || bundle.RuntimeGuards[0]["decision"] != "require_user_confirmation" {
+		t.Fatalf("expected runtime guard for high-risk denied permission, got %#v", bundle.RuntimeGuards)
+	}
+	if bundle.Reporting["required"] != true || bundle.Reporting["endpoint"] != "/api/v1/sage/invocations/{id}/reports" {
+		t.Fatalf("expected stable reporting contract, got %#v", bundle.Reporting)
+	}
+
+	inv, err := svc.CreateInvocation(userID, "device-a", CreateSAGEInvocationInput{PluginKey: plugin.PluginKey, InstallationID: &inst.ID, ClientRequestID: "req-1", UserIntent: "find hotels", FlowID: "flow-1", FlowHash: "flow-hash-1", RiskLevel: SAGERiskLow, PermissionsUsed: []string{"plugin.api.call"}, PolicyDecision: map[string]any{"decision": GovernanceDecisionAllow}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +273,11 @@ func TestSAGEPluginServicePolicyBundleAndReport(t *testing.T) {
 	if inv.ID != again.ID {
 		t.Fatal("expected idempotent invocation")
 	}
-	report, err := svc.SubmitReport(userID, inv.ID, SubmitSAGEExecutionReportInput{ClientReportID: "report-1", Status: "completed", TokensUsed: 10})
+	if inv.InstallationID == nil || *inv.InstallationID != inst.ID || inv.PolicyDecision["decision"] != GovernanceDecisionAllow {
+		t.Fatalf("invocation did not preserve client runtime context: %#v", inv)
+	}
+
+	report, err := svc.SubmitReport(userID, inv.ID, SubmitSAGEExecutionReportInput{ClientReportID: "report-1", Status: "completed", FlowID: "flow-1", StepsCompleted: []string{"search_hotels", "present_options"}, StepSummaries: map[string]any{"search_hotels": "mock candidates returned"}, TokensUsed: 10, Metering: map[string]any{"unit": "tokens"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,6 +288,9 @@ func TestSAGEPluginServicePolicyBundleAndReport(t *testing.T) {
 	if report.ID != reportAgain.ID {
 		t.Fatal("expected idempotent report")
 	}
+	if report.Status != repository.SAGEInvocationStatusCompleted || report.TokensUsed != 10 || len(report.StepsCompleted) != 2 {
+		t.Fatalf("execution report did not preserve client runtime summary: %#v", report)
+	}
 	metrics, err := svc.DeveloperMetrics(developerID, plugin.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -276,6 +298,66 @@ func TestSAGEPluginServicePolicyBundleAndReport(t *testing.T) {
 	if metrics.Invocations != 1 || metrics.Completed != 1 || metrics.TokensUsed != 10 {
 		t.Fatalf("unexpected metrics: %#v", metrics)
 	}
+}
+
+func TestSAGEPluginServiceGovernanceEnforceClientRuntimeOutcomes(t *testing.T) {
+	svc, db := newSAGETestService(t)
+	governance := NewGovernanceService(repository.NewGovernanceRepo(db))
+	svc.SetGovernanceEnforcer(NewGovernanceEnforcer(governance, GovernanceEnforcementConfig{SAGEMode: GovernanceEnforcementModeEnforce}))
+
+	developerID := uuid.New()
+	userID := uuid.New()
+	plugin, _ := createApprovedSAGEPlugin(t, svc, developerID)
+	inst, err := svc.InstallPlugin(userID, "device-a", plugin.PluginKey, InstallSAGEPluginInput{})
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	if _, err := governance.CreatePolicyRule(CreatePolicyRuleInput{Name: "Deny SAGE invocation", CapabilityKey: "plugin.api.call", SubjectType: GovernanceSubjectSAGEInvocation, Effect: GovernanceDecisionDeny, Priority: 1, Status: GovernanceStatusActive}); err != nil {
+		t.Fatalf("create deny rule: %v", err)
+	}
+	_, err = svc.CreateInvocation(userID, "device-a", CreateSAGEInvocationInput{PluginKey: plugin.PluginKey, ClientRequestID: "deny-req", RiskLevel: SAGERiskLow, PermissionsUsed: []string{"plugin.api.call"}})
+	assertSAGEGovernanceError(t, err, ErrGovernanceDenied, GovernanceDecisionDeny, GovernanceSubjectSAGEInvocation, plugin.ID.String(), "plugin.api.call")
+
+	if _, err := governance.CreatePolicyRule(CreatePolicyRuleInput{Name: "Require approval SAGE grant", CapabilityKey: "third_party.api.call", SubjectType: GovernanceSubjectSAGEPermissionGrant, Effect: GovernanceDecisionRequireUserApproval, Priority: 10, Status: GovernanceStatusActive}); err != nil {
+		t.Fatalf("create approval rule: %v", err)
+	}
+	_, err = svc.GrantPermission(userID, "device-a", inst.ID, GrantSAGEPermissionInput{PermissionKey: "third_party.api.call"})
+	enforcementErr := assertSAGEGovernanceError(t, err, ErrGovernanceApprovalRequired, GovernanceDecisionRequireUserApproval, GovernanceSubjectSAGEPermissionGrant, inst.ID.String(), "third_party.api.call")
+	if enforcementErr.Result == nil || enforcementErr.Result.ApprovalReceipt == nil || enforcementErr.Result.ApprovalToken == "" {
+		t.Fatalf("expected approval-required error to include receipt and token, got %#v", enforcementErr.Result)
+	}
+
+	_, err = svc.GrantPermission(userID, "device-a", inst.ID, GrantSAGEPermissionInput{PermissionKey: "third_party.api.call", ApprovalToken: "not-a-valid-token"})
+	assertSAGEGovernanceError(t, err, ErrGovernanceApprovalInvalid, "", GovernanceSubjectSAGEPermissionGrant, inst.ID.String(), "third_party.api.call")
+
+	grant, err := svc.GrantPermission(userID, "device-a", inst.ID, GrantSAGEPermissionInput{PermissionKey: "third_party.api.call", ApprovalToken: enforcementErr.Result.ApprovalToken})
+	if err != nil {
+		t.Fatalf("expected valid approval token to allow grant: %v", err)
+	}
+	if grant.PermissionKey != "third_party.api.call" || grant.Status != repository.SAGEGrantStatusActive {
+		t.Fatalf("unexpected approved grant: %#v", grant)
+	}
+}
+
+func assertSAGEGovernanceError(t *testing.T, err error, expectedCause error, expectedDecision, expectedSubjectType, expectedSubjectID, expectedCapability string) *GovernanceEnforcementError {
+	t.Helper()
+	if !errors.Is(err, expectedCause) {
+		t.Fatalf("expected %v, got %v", expectedCause, err)
+	}
+	var enforcementErr *GovernanceEnforcementError
+	if !errors.As(err, &enforcementErr) {
+		t.Fatalf("expected GovernanceEnforcementError, got %T %v", err, err)
+	}
+	if enforcementErr.Input.SubjectType != expectedSubjectType || enforcementErr.Input.SubjectID != expectedSubjectID || enforcementErr.Input.CapabilityKey != expectedCapability {
+		t.Fatalf("unexpected governance input details: %#v", enforcementErr.Input)
+	}
+	if expectedDecision != "" {
+		if enforcementErr.Result == nil || enforcementErr.Result.Decision == nil || enforcementErr.Result.Decision.Decision != expectedDecision {
+			t.Fatalf("unexpected governance decision: %#v", enforcementErr.Result)
+		}
+	}
+	return enforcementErr
 }
 
 func TestSAGEPluginServiceGovernanceObserveRecordsGrantAndInvocationDecisions(t *testing.T) {
