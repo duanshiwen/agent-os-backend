@@ -97,7 +97,31 @@ go test ./...
 ./scripts/smoke-stage5a-sync-bridge.sh
 ```
 
-### 4.3 SAGE Client Runtime Contract Gate
+### 4.3 FFI Artifact Gate
+
+Goal: prevent bundled Rust FFI runtime drift from silently breaking Go/backend and native client contract tests.
+
+Implemented foundation:
+
+- `scripts/check-ffi-artifacts.sh` validates bundled Darwin ARM64 and Linux ARM64 artifact presence and architecture.
+- The artifact gate requires the exported symbol set:
+  - `agentos_ffi_version`
+  - `agentos_ffi_free_string`
+  - `agentos_identity_verify_ed25519_challenge`
+  - `agentos_apply_knowledge_sync_events_json`
+  - `agentos_apply_knowledge_sync_pull_response_json`
+  - `agentos_apply_sync_pull_response_json`
+- `TestFFIArtifactContractIntegration` loads the current-platform bundled artifact and verifies FFI version `0.1.0` plus bridge symbol registration.
+- `scripts/release-gate-local.sh` runs the artifact gate before sync bridge smoke tests.
+
+Acceptance checks:
+
+```bash
+./scripts/check-ffi-artifacts.sh
+./scripts/release-gate-local.sh
+```
+
+### 4.4 SAGE Client Runtime Contract Gate
 
 Goal: prove that the backend control plane emits enough contract data for AgentOS Client to execute SAGE Plugin runtime flows safely.
 
@@ -115,7 +139,7 @@ Acceptance checks:
 ./scripts/smoke-governance-enforce-readiness.sh
 ```
 
-### 4.4 Release Gate 1.0
+### 4.5 Release Gate 1.0
 
 Goal: make local release evidence repeatable before broader client integration.
 
@@ -133,7 +157,7 @@ Acceptance checks:
 RUN_MIGRATION_GATE=1 RUN_LIVE_SMOKES=1 RUN_LOCAL_HTTP_SEMANTIC=1 ./scripts/release-gate-local.sh
 ```
 
-### 4.5 Search Quality Follow-up
+### 4.6 Search Quality Follow-up
 
 Goal: improve KB retrieval quality after client-ready contracts are stable.
 
@@ -146,7 +170,7 @@ Deferred but next after Stage 5A contract gate:
 
 This is a quality slice, not a provider-architecture rewrite. BGE-M3 + pgvector + durable queue remain the baseline.
 
-### 4.6 Governance 4E Follow-up
+### 4.7 Governance 4E Follow-up
 
 Goal: move governance from enforce-ready foundation to production policy operations.
 
@@ -163,10 +187,11 @@ Deferred but important:
 ```mermaid
 graph TD
     A[Reality Lock 2.0] --> B[SDK Client Sync Bridge Expansion]
-    B --> C[SAGE Client Runtime Contract Gate]
-    C --> D[Release Gate 1.0]
-    D --> E[KB Chunk Search Quality]
-    D --> F[Governance 4E]
+    B --> C[FFI Artifact Gate]
+    C --> D[SAGE Client Runtime Contract Gate]
+    D --> G[Release Gate 1.0]
+    G --> E[KB Chunk Search Quality]
+    G --> F[Governance 4E]
 ```
 
 ## 6. Stage 5A Exit Criteria
@@ -175,7 +200,8 @@ Stage 5A is complete when:
 
 1. roadmap/status docs reflect real backend and SDK progress;
 2. backend sync events have SDK-compatible reducer coverage beyond knowledge-only sync;
-3. SAGE policy bundle / invocation / report contract is verified by smoke evidence;
-4. governance approval-required / denied / invalid-approval responses are stable and documented for client consumption;
-5. release gate includes the client-ready evidence path;
-6. `go test ./...` and SDK workspace tests pass with fresh output.
+3. bundled FFI artifacts have required architecture, version, and exported symbol evidence;
+4. SAGE policy bundle / invocation / report contract is verified by smoke evidence;
+5. governance approval-required / denied / invalid-approval responses are stable and documented for client consumption;
+6. release gate includes the client-ready evidence path;
+7. `go test ./...` and SDK workspace tests pass with fresh output.

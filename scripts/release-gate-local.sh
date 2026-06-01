@@ -32,6 +32,9 @@ done
 echo "==> Python syntax checks"
 python3 -m py_compile examples/sage-plugins/hotel-booking/mock_server.py
 
+echo "==> FFI bundled artifact checks"
+./scripts/check-ffi-artifacts.sh
+
 echo "==> Stage 5A client-ready sync bridge smoke"
 ./scripts/smoke-stage5a-sync-bridge.sh
 

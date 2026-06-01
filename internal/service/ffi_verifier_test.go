@@ -13,6 +13,35 @@ import (
 	"github.com/ebitengine/purego"
 )
 
+func TestFFIArtifactContractIntegration(t *testing.T) {
+	verifier, err := NewFFIVerifier("")
+	if err != nil {
+		t.Fatalf("new ffi verifier: %v", err)
+	}
+	defer verifier.Close()
+
+	if verifier.LibraryPath() == "" {
+		t.Fatal("expected verifier to resolve bundled library path")
+	}
+	if _, err := os.Stat(verifier.LibraryPath()); err != nil {
+		t.Fatalf("expected bundled FFI library to exist at %s: %v", verifier.LibraryPath(), err)
+	}
+	if verifier.Version() != "0.1.0" {
+		t.Fatalf("expected bundled FFI version 0.1.0, got %q", verifier.Version())
+	}
+
+	var applyKnowledgeEvents func(projectionJSON string, eventsJSON string, errorOut **byte) *byte
+	var applyKnowledgePullResponse func(projectionJSON string, pullResponseJSON string, errorOut **byte) *byte
+	var applyClientReadyPullResponse func(projectionJSON string, pullResponseJSON string, errorOut **byte) *byte
+	purego.RegisterLibFunc(&applyKnowledgeEvents, verifier.handle, "agentos_apply_knowledge_sync_events_json")
+	purego.RegisterLibFunc(&applyKnowledgePullResponse, verifier.handle, "agentos_apply_knowledge_sync_pull_response_json")
+	purego.RegisterLibFunc(&applyClientReadyPullResponse, verifier.handle, "agentos_apply_sync_pull_response_json")
+
+	if applyKnowledgeEvents == nil || applyKnowledgePullResponse == nil || applyClientReadyPullResponse == nil {
+		t.Fatal("expected required FFI bridge symbols to be registered")
+	}
+}
+
 func TestFFIVerifierIntegration(t *testing.T) {
 	verifier, err := NewFFIVerifier("")
 	if err != nil {
