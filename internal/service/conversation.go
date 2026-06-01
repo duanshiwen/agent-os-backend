@@ -33,6 +33,21 @@ type CreateConversationRequest struct {
 	GeoRadius      *float64    `json:"geo_radius"`
 }
 
+type UpdateConversationRequest struct {
+	Name      *string  `json:"name"`
+	GeoLat    *float64 `json:"geo_lat"`
+	GeoLng    *float64 `json:"geo_lng"`
+	GeoRadius *float64 `json:"geo_radius"`
+}
+
+type UpdateParticipantRequest struct {
+	Role *string `json:"role"`
+}
+
+type MarkConversationReadRequest struct {
+	LastReadMessageID uuid.UUID `json:"last_read_message_id" binding:"required"`
+}
+
 func (s *ConversationService) CreateConversation(creatorID uuid.UUID, req *CreateConversationRequest) (*model.Conversation, error) {
 	switch req.Type {
 	case "private":
@@ -148,6 +163,39 @@ func (s *ConversationService) GetConversation(convID, userID uuid.UUID) (*model.
 	return s.convRepo.GetByID(convID)
 }
 
+func (s *ConversationService) UpdateConversation(actorID, convID uuid.UUID, req UpdateConversationRequest) (*model.Conversation, error) {
+	actorParticipant, err := s.requireAdminOrOwner(convID, actorID)
+	if err != nil {
+		return nil, err
+	}
+	_ = actorParticipant
+	conv, err := s.convRepo.GetByID(convID)
+	if err != nil {
+		return nil, fmt.Errorf("conversation not found")
+	}
+	if req.Name != nil {
+		conv.Name = *req.Name
+	}
+	if req.GeoLat != nil {
+		conv.GeoLat = req.GeoLat
+	}
+	if req.GeoLng != nil {
+		conv.GeoLng = req.GeoLng
+	}
+	if req.GeoRadius != nil {
+		conv.GeoRadius = req.GeoRadius
+	}
+	if err := s.convRepo.UpdateConversation(conv); err != nil {
+		return nil, fmt.Errorf("update conversation: %w", err)
+	}
+	participants, err := s.convRepo.GetParticipants(convID)
+	if err != nil {
+		return nil, fmt.Errorf("get participants: %w", err)
+	}
+	s.recordConversationSyncEvents(participants, conv, SyncActionUpdated)
+	return conv, nil
+}
+
 func (s *ConversationService) AddParticipant(convID, actorID, targetID uuid.UUID) error {
 	// Only conversation admins/owners can add participants.
 	actorParticipant, err := s.convRepo.GetParticipant(convID, actorID)
@@ -173,18 +221,117 @@ func (s *ConversationService) AddParticipant(convID, actorID, targetID uuid.UUID
 }
 
 func (s *ConversationService) LeaveConversation(convID, userID uuid.UUID) error {
-	removedParticipant, err := s.convRepo.GetParticipant(convID, userID)
+	return s.removeParticipant(convID, userID, userID)
+}
+
+func (s *ConversationService) RemoveParticipant(convID, actorID, targetID uuid.UUID) error {
+	if actorID != targetID {
+		if _, err := s.requireAdminOrOwner(convID, actorID); err != nil {
+			return err
+		}
+	}
+	return s.removeParticipant(convID, actorID, targetID)
+}
+
+func (s *ConversationService) UpdateParticipant(convID, actorID, targetID uuid.UUID, req UpdateParticipantRequest) (*model.ConversationParticipant, error) {
+	if _, err := s.requireAdminOrOwner(convID, actorID); err != nil {
+		return nil, err
+	}
+	participant, err := s.convRepo.GetParticipant(convID, targetID)
+	if err != nil {
+		return nil, err
+	}
+	if req.Role != nil {
+		if *req.Role != "owner" && *req.Role != "admin" && *req.Role != "member" {
+			return nil, fmt.Errorf("unsupported participant role: %s", *req.Role)
+		}
+		if participant.Role == "owner" && *req.Role != "owner" {
+			if err := s.ensureNotLastOwner(convID, targetID); err != nil {
+				return nil, err
+			}
+		}
+		participant.Role = *req.Role
+	}
+	if err := s.convRepo.UpdateParticipant(participant); err != nil {
+		return nil, fmt.Errorf("update participant: %w", err)
+	}
+	participants, err := s.convRepo.GetParticipants(convID)
+	if err != nil {
+		return nil, fmt.Errorf("get participants: %w", err)
+	}
+	s.recordParticipantSyncEvents(participants, participant, SyncActionUpdated, actorID)
+	return participant, nil
+}
+
+func (s *ConversationService) MarkConversationRead(actorID, convID uuid.UUID, req MarkConversationReadRequest) (*model.ConversationReadState, error) {
+	isParticipant, err := s.convRepo.IsParticipant(convID, actorID)
+	if err != nil || !isParticipant {
+		return nil, fmt.Errorf("access denied: not a participant")
+	}
+	msg, err := s.convRepo.GetMessageByID(req.LastReadMessageID)
+	if err != nil {
+		return nil, fmt.Errorf("message not found")
+	}
+	if msg.ConversationID != convID {
+		return nil, fmt.Errorf("message is not in the conversation")
+	}
+	now := time.Now()
+	state := &model.ConversationReadState{
+		ConversationID:    convID,
+		UserID:            actorID,
+		LastReadMessageID: &req.LastReadMessageID,
+		LastReadAt:        now,
+	}
+	if err := s.convRepo.UpsertReadState(state); err != nil {
+		return nil, fmt.Errorf("upsert read state: %w", err)
+	}
+	s.recordConversationReadSyncEvent(state)
+	return state, nil
+}
+
+func (s *ConversationService) removeParticipant(convID, actorID, targetID uuid.UUID) error {
+	removedParticipant, err := s.convRepo.GetParticipant(convID, targetID)
 	if err != nil {
 		return err
+	}
+	if removedParticipant.Role == "owner" {
+		if err := s.ensureNotLastOwner(convID, targetID); err != nil {
+			return err
+		}
 	}
 	participantsBefore, err := s.convRepo.GetParticipants(convID)
 	if err != nil {
 		return fmt.Errorf("get participants: %w", err)
 	}
-	if err := s.convRepo.RemoveParticipant(convID, userID); err != nil {
+	if err := s.convRepo.RemoveParticipant(convID, targetID); err != nil {
 		return err
 	}
-	s.recordParticipantSyncEvents(participantsBefore, removedParticipant, SyncActionRemoved, userID)
+	s.recordParticipantSyncEvents(participantsBefore, removedParticipant, SyncActionRemoved, actorID)
+	return nil
+}
+
+func (s *ConversationService) requireAdminOrOwner(convID, actorID uuid.UUID) (*model.ConversationParticipant, error) {
+	actorParticipant, err := s.convRepo.GetParticipant(convID, actorID)
+	if err != nil || actorParticipant == nil || (actorParticipant.Role != "admin" && actorParticipant.Role != "owner") {
+		return nil, fmt.Errorf("access denied")
+	}
+	return actorParticipant, nil
+}
+
+func (s *ConversationService) ensureNotLastOwner(convID, targetID uuid.UUID) error {
+	ownerCount, err := s.convRepo.CountParticipantsByRole(convID, "owner")
+	if err != nil {
+		return err
+	}
+	if ownerCount <= 1 {
+		target, err := s.convRepo.GetParticipant(convID, targetID)
+		if err != nil {
+			return err
+		}
+		if target.Role == "owner" {
+			return fmt.Errorf("cannot remove or demote last owner")
+		}
+	}
 	return nil
 }
 
@@ -265,9 +412,31 @@ func participantSyncPayload(participant *model.ConversationParticipant, operatio
 	if operation == SyncActionAdded {
 		payload["added_by"] = actorID.String()
 	}
+	if operation == SyncActionUpdated {
+		payload["updated_by"] = actorID.String()
+	}
 	if operation == SyncActionRemoved {
 		payload["status"] = "removed"
 		payload["removed_by"] = actorID.String()
 	}
 	return payload
+}
+
+func (s *ConversationService) recordConversationReadSyncEvent(state *model.ConversationReadState) {
+	if s.syncSvc == nil {
+		return
+	}
+	_, _ = s.syncSvc.RecordEnvelope(SyncEnvelope{
+		UserID:     state.UserID,
+		ObjectType: SyncObjectConversation,
+		ObjectID:   state.ConversationID.String() + ":" + state.UserID.String(),
+		Operation:  SyncActionRead,
+		Payload: datatypes.JSONMap{
+			"object_id":            state.ConversationID.String() + ":" + state.UserID.String(),
+			"conversation_id":      state.ConversationID.String(),
+			"user_id":              state.UserID.String(),
+			"last_read_message_id": state.LastReadMessageID.String(),
+			"last_read_at":         state.LastReadAt,
+		},
+	})
 }

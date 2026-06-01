@@ -51,6 +51,13 @@ type MsgPresenceUpdate struct {
 	Status   string    `json:"status"` // online, offline
 }
 
+type MsgTypingSignal struct {
+	ConversationID uuid.UUID `json:"conversation_id"`
+	UserID         uuid.UUID `json:"user_id,omitempty"`
+	DeviceID       string    `json:"device_id,omitempty"`
+	Timestamp      int64     `json:"ts,omitempty"`
+}
+
 // === Inbound messages (client → server) ===
 
 type MsgSendMessage struct {

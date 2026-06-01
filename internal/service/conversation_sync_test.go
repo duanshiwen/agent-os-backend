@@ -126,7 +126,7 @@ func newConversationSyncTestService(t *testing.T) (*ConversationService, *reposi
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.Conversation{}, &model.ConversationParticipant{}, &model.SyncEvent{}, &model.SyncCursor{}, &model.SyncSequence{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Conversation{}, &model.ConversationParticipant{}, &model.ConversationReadState{}, &model.Message{}, &model.SyncEvent{}, &model.SyncCursor{}, &model.SyncSequence{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	convRepo := repository.NewConversationRepo(db)

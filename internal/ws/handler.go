@@ -38,6 +38,8 @@ func (d *Dispatcher) HandleMessage(client *Client, msgType string, payload json.
 		d.handleAckOffline(client, payload)
 	case "offline.fetch":
 		d.handleFetchOffline(client)
+	case "typing.start", "typing.stop":
+		d.handleTyping(client, msgType, payload)
 	case "ping":
 		d.handlePing(client, payload)
 	default:
@@ -172,6 +174,39 @@ func (d *Dispatcher) handleAckOffline(client *Client, payload json.RawMessage) {
 
 	if len(ack.MessageIDs) > 0 {
 		_ = d.msgService.AckOfflineMessages(ack.MessageIDs)
+	}
+}
+
+func (d *Dispatcher) handleTyping(client *Client, msgType string, payload json.RawMessage) {
+	var req MsgTypingSignal
+	if err := json.Unmarshal(payload, &req); err != nil || req.ConversationID == uuid.Nil {
+		d.sendError(client, 400, "invalid typing payload")
+		return
+	}
+	participants, err := d.convService.GetParticipants(req.ConversationID)
+	if err != nil {
+		d.sendError(client, 404, "conversation not found")
+		return
+	}
+	isParticipant := false
+	for _, p := range participants {
+		if p.UserID == client.UserID {
+			isParticipant = true
+			break
+		}
+	}
+	if !isParticipant {
+		d.sendError(client, 403, "access denied: not a participant")
+		return
+	}
+	signal := MsgTypingSignal{ConversationID: req.ConversationID, UserID: client.UserID, DeviceID: client.DeviceID, Timestamp: time.Now().UnixMilli()}
+	data := marshalEnvelope(msgType, signal)
+	for _, p := range participants {
+		if p.UserID == client.UserID {
+			d.hub.SendToUserExceptDevice(p.UserID, client.DeviceID, data)
+			continue
+		}
+		d.hub.SendToUser(p.UserID, data)
 	}
 }
 

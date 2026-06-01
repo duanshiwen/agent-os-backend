@@ -8,15 +8,17 @@ import (
 const SyncSchemaVersion = 1
 
 const (
-	SyncObjectMessage      = "message"
-	SyncObjectConversation = "conversation"
-	SyncObjectParticipant  = "participant"
-	SyncObjectKnowledge    = "knowledge"
-	SyncObjectSkill        = "skill"
-	SyncObjectAgent        = "agent"
-	SyncObjectServer       = "server"
-	SyncObjectPlugin       = "plugin"
-	SyncObjectProfile      = "profile"
+	SyncObjectMessage          = "message"
+	SyncObjectConversation     = "conversation"
+	SyncObjectParticipant      = "participant"
+	SyncObjectMessageReaction  = "message_reaction"
+	SyncObjectConversationRead = "conversation_read"
+	SyncObjectKnowledge        = "knowledge"
+	SyncObjectSkill            = "skill"
+	SyncObjectAgent            = "agent"
+	SyncObjectServer           = "server"
+	SyncObjectPlugin           = "plugin"
+	SyncObjectProfile          = "profile"
 )
 
 const (
@@ -31,20 +33,25 @@ const (
 	SyncOperationUninstalled       = "uninstalled"
 	SyncOperationPermissionGranted = "permission_granted"
 	SyncOperationPermissionRevoked = "permission_revoked"
+	SyncOperationRead              = "read"
+	SyncOperationReactionAdded     = "reaction_added"
+	SyncOperationReactionRemoved   = "reaction_removed"
 )
 
 // Compatibility aliases kept while the rest of the backend still uses the
 // original event/action names.
 const (
-	SyncEventMessage      = SyncObjectMessage
-	SyncEventConversation = SyncObjectConversation
-	SyncEventParticipant  = SyncObjectParticipant
-	SyncEventKnowledge    = SyncObjectKnowledge
-	SyncEventSkill        = SyncObjectSkill
-	SyncEventAgent        = SyncObjectAgent
-	SyncEventServer       = SyncObjectServer
-	SyncEventPlugin       = SyncObjectPlugin
-	SyncEventProfile      = SyncObjectProfile
+	SyncEventMessage          = SyncObjectMessage
+	SyncEventConversation     = SyncObjectConversation
+	SyncEventParticipant      = SyncObjectParticipant
+	SyncEventMessageReaction  = SyncObjectMessageReaction
+	SyncEventConversationRead = SyncObjectConversationRead
+	SyncEventKnowledge        = SyncObjectKnowledge
+	SyncEventSkill            = SyncObjectSkill
+	SyncEventAgent            = SyncObjectAgent
+	SyncEventServer           = SyncObjectServer
+	SyncEventPlugin           = SyncObjectPlugin
+	SyncEventProfile          = SyncObjectProfile
 
 	SyncActionCreated           = SyncOperationCreated
 	SyncActionUpdated           = SyncOperationUpdated
@@ -57,6 +64,9 @@ const (
 	SyncActionUninstalled       = SyncOperationUninstalled
 	SyncActionPermissionGranted = SyncOperationPermissionGranted
 	SyncActionPermissionRevoked = SyncOperationPermissionRevoked
+	SyncActionRead              = SyncOperationRead
+	SyncActionReactionAdded     = SyncOperationReactionAdded
+	SyncActionReactionRemoved   = SyncOperationReactionRemoved
 )
 
 var (
@@ -66,17 +76,28 @@ var (
 
 var supportedSyncOperations = map[string]map[string]bool{
 	SyncObjectMessage: {
-		SyncOperationCreated: true,
-		SyncOperationUpdated: true,
-		SyncOperationDeleted: true,
+		SyncOperationCreated:         true,
+		SyncOperationUpdated:         true,
+		SyncOperationDeleted:         true,
+		SyncOperationReactionAdded:   true,
+		SyncOperationReactionRemoved: true,
 	},
 	SyncObjectConversation: {
 		SyncOperationCreated: true,
 		SyncOperationUpdated: true,
+		SyncOperationRead:    true,
 	},
 	SyncObjectParticipant: {
 		SyncOperationAdded:   true,
+		SyncOperationUpdated: true,
 		SyncOperationRemoved: true,
+	},
+	SyncObjectMessageReaction: {
+		SyncOperationAdded:   true,
+		SyncOperationRemoved: true,
+	},
+	SyncObjectConversationRead: {
+		SyncOperationUpdated: true,
 	},
 	SyncObjectKnowledge: {
 		SyncOperationCreated: true,
