@@ -176,6 +176,62 @@ type UserSkillSetting struct {
 	UpdatedByDeviceID string            `gorm:"index" json:"updated_by_device_id"`
 }
 
+type Skill struct {
+	Base
+	SkillKey           string                      `gorm:"uniqueIndex;not null" json:"skill_key"`
+	PublisherID        uuid.UUID                   `gorm:"type:uuid;index;not null" json:"publisher_id"`
+	Name               string                      `gorm:"not null" json:"name"`
+	Summary            string                      `json:"summary"`
+	Description        string                      `gorm:"type:text" json:"description"`
+	Category           string                      `gorm:"index" json:"category"`
+	Tags               datatypes.JSONSlice[string] `gorm:"type:jsonb" json:"tags"`
+	IconObjectID       *uuid.UUID                  `gorm:"type:uuid" json:"icon_object_id"`
+	HomepageURL        string                      `json:"homepage_url"`
+	Status             string                      `gorm:"index;not null;default:draft" json:"status"`
+	Visibility         string                      `gorm:"index;not null;default:private" json:"visibility"`
+	LatestVersionID    *uuid.UUID                  `gorm:"type:uuid" json:"latest_version_id"`
+	PublishedVersionID *uuid.UUID                  `gorm:"type:uuid" json:"published_version_id"`
+}
+
+type SkillVersion struct {
+	Base
+	SkillID              uuid.UUID                   `gorm:"type:uuid;index;not null;uniqueIndex:idx_skill_version" json:"skill_id"`
+	Version              string                      `gorm:"not null;uniqueIndex:idx_skill_version" json:"version"`
+	ManifestHash         string                      `gorm:"index;not null" json:"manifest_hash"`
+	ManifestSnapshot     datatypes.JSONMap           `gorm:"type:jsonb;not null" json:"manifest_snapshot"`
+	PackageObjectID      *uuid.UUID                  `gorm:"type:uuid" json:"package_object_id"`
+	InstructionsObjectID *uuid.UUID                  `gorm:"type:uuid" json:"instructions_object_id"`
+	ExamplesObjectIDs    datatypes.JSONSlice[string] `gorm:"type:jsonb;not null" json:"examples_object_ids"`
+	ValidationStatus     string                      `gorm:"index;not null;default:pending" json:"validation_status"`
+	ValidationErrors     datatypes.JSONSlice[string] `gorm:"type:jsonb;not null" json:"validation_errors"`
+	ValidationWarnings   datatypes.JSONSlice[string] `gorm:"type:jsonb;not null" json:"validation_warnings"`
+	Status               string                      `gorm:"index;not null;default:draft" json:"status"`
+	PublishedAt          *time.Time                  `json:"published_at"`
+}
+
+type SkillInstallation struct {
+	Base
+	UserID        uuid.UUID         `gorm:"type:uuid;index;not null;uniqueIndex:idx_skill_install_user_skill" json:"user_id"`
+	SkillID       uuid.UUID         `gorm:"type:uuid;index;not null;uniqueIndex:idx_skill_install_user_skill" json:"skill_id"`
+	VersionID     uuid.UUID         `gorm:"type:uuid;index;not null" json:"version_id"`
+	Status        string            `gorm:"index;not null;default:active" json:"status"`
+	InstallSource string            `gorm:"not null;default:catalog" json:"install_source"`
+	TrackMode     string            `gorm:"not null;default:latest" json:"track_mode"`
+	Config        datatypes.JSONMap `gorm:"type:jsonb;not null" json:"config"`
+	InstalledAt   time.Time         `gorm:"index;not null" json:"installed_at"`
+	DisabledAt    *time.Time        `json:"disabled_at"`
+}
+
+type SkillPublisherRestriction struct {
+	Base
+	PublisherID uuid.UUID  `gorm:"type:uuid;index;not null" json:"publisher_id"`
+	Status      string     `gorm:"index;not null;default:active" json:"status"`
+	Reason      string     `gorm:"type:text" json:"reason"`
+	CreatedBy   uuid.UUID  `gorm:"type:uuid;index;not null" json:"created_by"`
+	LiftedBy    *uuid.UUID `gorm:"type:uuid;index" json:"lifted_by"`
+	LiftedAt    *time.Time `json:"lifted_at"`
+}
+
 type UserAgentSetting struct {
 	Base
 	UserID            uuid.UUID         `gorm:"type:uuid;index;not null;uniqueIndex:idx_user_agent_setting" json:"user_id"`
@@ -637,5 +693,5 @@ type GovernanceScanResult struct {
 }
 
 func AllModels() []any {
-	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &ConversationReadState{}, &Message{}, &OfflineMessage{}, &MessageReaction{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &UserAgentSetting{}, &UserServerConnection{}, &UserKnowledgeEntry{}, &ObjectRecord{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBModerationReport{}, &KBUsageRecord{}, &KBSearchDocument{}, &BackgroundJobRun{}, &KBEmbeddingJob{}, &KBSearchEmbedding{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &SAGEPlugin{}, &SAGEPluginVersion{}, &SAGEPluginReview{}, &SAGEPluginInstallation{}, &SAGEPluginPermissionGrant{}, &SAGEPluginInvocation{}, &SAGEPluginExecutionReport{}, &SAGEPluginUsageLedger{}, &KBBillingPlan{}, &KBInvoice{}, &KBInvoiceItem{}, &ContributorPayoutPeriod{}, &KBRefund{}, &KBBillingDispute{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}, &SensitiveOperationConfirmation{}, &AuditEvent{}, &CapabilityDefinition{}, &PolicyRule{}, &PolicyDecision{}, &ApprovalReceipt{}, &KillSwitch{}, &GovernanceScanResult{}}
+	return []any{&User{}, &Device{}, &DevicePairingSession{}, &AuthChallenge{}, &AdmissionRequest{}, &ServerAdmission{}, &Conversation{}, &ConversationParticipant{}, &ConversationReadState{}, &Message{}, &OfflineMessage{}, &MessageReaction{}, &SyncEvent{}, &SyncCursor{}, &SyncSequence{}, &UserSkillSetting{}, &Skill{}, &SkillVersion{}, &SkillInstallation{}, &SkillPublisherRestriction{}, &UserAgentSetting{}, &UserServerConnection{}, &UserKnowledgeEntry{}, &ObjectRecord{}, &KBCollection{}, &KBSnapshot{}, &KBSnapshotEntry{}, &KBSubscription{}, &KBModerationReport{}, &KBUsageRecord{}, &KBSearchDocument{}, &BackgroundJobRun{}, &KBEmbeddingJob{}, &KBSearchEmbedding{}, &Plugin{}, &PluginVersion{}, &PluginUsageRecord{}, &SAGEPlugin{}, &SAGEPluginVersion{}, &SAGEPluginReview{}, &SAGEPluginInstallation{}, &SAGEPluginPermissionGrant{}, &SAGEPluginInvocation{}, &SAGEPluginExecutionReport{}, &SAGEPluginUsageLedger{}, &KBBillingPlan{}, &KBInvoice{}, &KBInvoiceItem{}, &ContributorPayoutPeriod{}, &KBRefund{}, &KBBillingDispute{}, &BillingAccount{}, &BillingTransaction{}, &ContributorEarning{}, &SensitiveOperationConfirmation{}, &AuditEvent{}, &CapabilityDefinition{}, &PolicyRule{}, &PolicyDecision{}, &ApprovalReceipt{}, &KillSwitch{}, &GovernanceScanResult{}}
 }

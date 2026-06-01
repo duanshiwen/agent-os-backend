@@ -341,19 +341,54 @@ Minimum payload:
 
 This event is emitted by `PUT /api/v1/users/me`.
 
-## 11. Skill Settings Sync
+## 11. Skill Sync
 
-Skill settings use a baseline + incremental model.
+Skill sync now has two compatible layers:
 
-### Baseline
+1. **Skill Hub install library sync** for catalog-installed skills.
+2. **Legacy Skill settings sync** for pre-Hub clients and local-only skill configuration.
 
-Clients load the current user's skill settings through:
+### Skill Hub baseline
+
+Clients load the current user's Skill Library through:
+
+- `GET /api/v1/skills/installations`
+
+### Skill Hub incremental changes
+
+Skill Hub installation writes emit these events:
+
+| Endpoint | Event |
+|---|---|
+| `POST /api/v1/skills/catalog/:skill_key/install` | `skill.installed` |
+| `POST /api/v1/skills/installations/:installation_id/enable` | `skill.enabled` |
+| `POST /api/v1/skills/installations/:installation_id/disable` | `skill.disabled` |
+| `PUT /api/v1/skills/installations/:installation_id/config` | `skill.updated` |
+| `DELETE /api/v1/skills/installations/:installation_id` | `skill.uninstalled` |
+
+Minimum Skill Hub payload:
+
+```json
+{
+  "object_id": "installation uuid",
+  "installation_id": "installation uuid",
+  "skill_id": "skill uuid",
+  "skill_key": "research.brief-writer",
+  "version_id": "version uuid",
+  "track_mode": "latest",
+  "status": "active",
+  "config": {},
+  "updated_by_device_id": "device-a"
+}
+```
+
+### Legacy Skill settings baseline
+
+Clients load legacy skill settings through:
 
 - `GET /api/v1/skills/settings`
 
-### Incremental changes
-
-Skill setting writes emit these events:
+Legacy setting writes emit these events:
 
 | Endpoint | Event |
 |---|---|
@@ -361,9 +396,9 @@ Skill setting writes emit these events:
 | `POST /api/v1/skills/settings/:skill_id/disable` | `skill.disabled` |
 | `PUT /api/v1/skills/settings/:skill_id` | `skill.updated` |
 
-Mutating requests accept optional `client_event_id` for idempotency.
+Legacy mutating requests accept optional `client_event_id` for idempotency.
 
-Minimum payload:
+Minimum legacy payload:
 
 ```json
 {

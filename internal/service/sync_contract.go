@@ -105,9 +105,11 @@ var supportedSyncOperations = map[string]map[string]bool{
 		SyncOperationDeleted: true,
 	},
 	SyncObjectSkill: {
-		SyncOperationEnabled:  true,
-		SyncOperationDisabled: true,
-		SyncOperationUpdated:  true,
+		SyncOperationEnabled:     true,
+		SyncOperationDisabled:    true,
+		SyncOperationUpdated:     true,
+		SyncOperationInstalled:   true,
+		SyncOperationUninstalled: true,
 	},
 	SyncObjectAgent: {
 		SyncOperationUpdated: true,

@@ -53,10 +53,10 @@ Obsolete Phase/M2/M3 progress-history docs were retired; this matrix is the curr
 | Sync | Profile sync | ✅ | `profile.updated` | client fixtures for all platforms |
 | Sync | Conversation and participant sync | ✅ | `conversation.created`, `conversation.updated`, `conversation.read`, `participant.added`, `participant.updated`, `participant.removed` with self-contained payloads | richer client reconstruction fixtures |
 | Sync | Message sync | ✅ | `message.created`, `message.updated`, `message.deleted`, `message.reaction_added`, `message.reaction_removed` with self-contained payloads | richer conversation reconstruction fixtures |
-| Sync | Skill settings sync | ✅ | settings routes and `skill.updated/enabled/disabled` events | schema version evolution; this is not full Skill Hub |
+| Sync | Skill settings sync | ✅ | settings routes and `skill.updated/enabled/disabled` events remain for compatibility | schema version evolution |
 | Sync | Agent settings sync | ✅ | settings routes and events | schema version evolution |
-| Skill Hub | Registry / package versions / catalog | ⬜ | Not implemented in backend; no `skills`, `skill_versions`, `skill_installations`, or publisher restriction migrations yet | Implement after Reality Lock 2.1 using SDK `skill-core` concepts and MinIO object storage |
-| Skill Hub | User install library / admin takedown | ⬜ | Only Skill settings sync exists today | Add install/pin/latest/disable/uninstall, takedown, and publisher restriction APIs |
+| Skill Hub | Registry / package versions / catalog | ✅ | `skills`, `skill_versions`, `skill_installations`, `skill_publisher_restrictions`; public `/skills/catalog`; manifest validation | richer package scanning, quality signals, client runtime consumption |
+| Skill Hub | User install library / admin takedown | ✅ | install/pin/latest/update config/enable/disable/uninstall, takedown, publisher restriction APIs; emits `skill.installed/uninstalled/enabled/disabled/updated` | ratings/download metrics, monetization, complex moderation/review remain out of MVP |
 | Sync | Server list and plugin sync | ✅ | `/servers` routes and `plugin.installed/uninstalled/enabled/disabled/permission_granted/permission_revoked` events | not federation |
 | Sync | Personal knowledge sync | ✅ | entry CRUD, tombstone, version conflict, content hash | restore operation and full client merge engine |
 | Sync | Plugin sync taxonomy | ✅ | SAGE install/uninstall/enable/disable and permission grant/revoke emit `plugin.*` sync events; Stage 5A fixture and tests cover them | schema version negotiation and full client merge UX |

@@ -70,7 +70,7 @@ WebSocket notifications are hints. Pull remains the source of truth because it r
 |---|---|---|
 | `profile` | `GET /api/v1/users/me` | Current authenticated user profile. |
 | `conversation` / `participant` / `message` | `GET /api/v1/conversations`, `GET /api/v1/conversations/:id/messages` | Conversation list, membership, and history remain domain-loaded for baseline/repair. |
-| `skill` | `GET /api/v1/skills/settings` | User skill settings. |
+| `skill` | `GET /api/v1/skills/installations`, `GET /api/v1/skills/settings` | Skill Hub install library plus legacy user skill settings. |
 | `agent` | `GET /api/v1/agents/settings` | User agent settings. |
 | `server` | `GET /api/v1/servers` | User server connection list. Local configuration only; not Federation. |
 | `plugin` | `GET /api/v1/sage/installations`, `GET /api/v1/sage/installations/:installation_id/policy-bundle` | SAGE installation and policy state. |
@@ -236,10 +236,12 @@ deleted: tombstone local message by object_id, preserving message identity and s
 ignore duplicate message_id / sequence
 ```
 
-### 9.4 Skill Settings
+### 9.4 Skill Hub and Skill Settings
 
 Events:
 
+- `skill.installed`
+- `skill.uninstalled`
 - `skill.enabled`
 - `skill.disabled`
 - `skill.updated`
@@ -247,9 +249,16 @@ Events:
 Apply rule:
 
 ```text
-upsert skill setting by skill_id / object_id
-set enabled/config fields from payload
-for disabled events, set enabled=false
+if payload contains installation_id:
+  upsert Skill Hub installation by installation_id / object_id
+  set skill_id, skill_key, version_id, track_mode, status, config from payload
+  for uninstalled events, mark status=uninstalled
+  for disabled events, mark status=disabled
+  for enabled/installed events, mark status=active
+else:
+  legacy path: upsert skill setting by skill_id / object_id
+  set enabled/config fields from payload
+  for disabled events, set enabled=false
 ```
 
 ### 9.5 Agent Settings
@@ -509,7 +518,7 @@ Minimum SDK/client tests:
 4. apply `profile.updated`;
 5. apply `conversation.created`, `conversation.updated`, `conversation.read`, `participant.added`, `participant.updated`, and `participant.removed` idempotently;
 6. apply `message.created`, `message.updated`, `message.deleted`, `message.reaction_added`, and `message.reaction_removed` idempotently;
-7. apply `skill.enabled`, `skill.disabled`, `skill.updated`;
+7. apply `skill.installed`, `skill.uninstalled`, `skill.enabled`, `skill.disabled`, `skill.updated`;
 8. apply `agent.updated`;
 9. apply `server.added`, `server.updated`, `server.removed`;
 9. apply `plugin.installed`, `plugin.uninstalled`, `plugin.enabled`, `plugin.disabled`;

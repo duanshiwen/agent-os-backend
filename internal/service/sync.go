@@ -141,6 +141,9 @@ func (s *SyncService) AckEvents(userID uuid.UUID, deviceID string, lastSequence 
 }
 
 func (s *SyncService) notifyDevices(userID uuid.UUID, sourceDeviceID string, event *model.SyncEvent) {
+	if s.hub == nil {
+		return
+	}
 	msg := SyncEventMsg{
 		EventType:      event.EventType,
 		SchemaVersion:  event.SchemaVersion,
