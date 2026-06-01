@@ -32,6 +32,9 @@ done
 echo "==> Python syntax checks"
 python3 -m py_compile examples/sage-plugins/hotel-booking/mock_server.py
 
+echo "==> Stage 5A client-ready sync bridge smoke"
+./scripts/smoke-stage5a-sync-bridge.sh
+
 if [[ "$RUN_MIGRATION_GATE" == "1" ]]; then
   echo "==> PostgreSQL migration apply gate"
   ./scripts/check-migrations-local.sh

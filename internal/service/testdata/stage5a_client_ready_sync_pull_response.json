@@ -4,6 +4,51 @@
   "data": {
     "events": [
       {
+        "id": "evt-stage5a-profile-1",
+        "user_id": "user-1",
+        "device_id": "device-b",
+        "event_type": "profile.updated",
+        "schema_version": 1,
+        "object_type": "profile",
+        "object_id": "user-1",
+        "operation": "updated",
+        "source_device_id": "device-a",
+        "client_event_id": "profile-update-1",
+        "payload": {
+          "user_id": "user-1",
+          "object_id": "user-1",
+          "display_name": "Stage 5A User",
+          "avatar_url": "",
+          "updated_at": "2026-06-01T01:00:00Z"
+        },
+        "timestamp": "2026-06-01T01:00:00Z",
+        "sequence": 1
+      },
+      {
+        "id": "evt-stage5a-message-1",
+        "user_id": "user-1",
+        "device_id": "device-b",
+        "event_type": "message.created",
+        "schema_version": 1,
+        "object_type": "message",
+        "object_id": "message-1",
+        "operation": "created",
+        "source_device_id": "device-a",
+        "client_event_id": "message-create-1",
+        "payload": {
+          "message_id": "message-1",
+          "object_id": "message-1",
+          "conversation_id": "conversation-1",
+          "sender_id": "user-1",
+          "type": "text",
+          "content": "hello stage5a",
+          "metadata": {},
+          "created_at": "2026-06-01T01:01:00Z"
+        },
+        "timestamp": "2026-06-01T01:01:00Z",
+        "sequence": 2
+      },
+      {
         "id": "evt-stage5a-skill-1",
         "user_id": "user-1",
         "device_id": "device-b",
@@ -21,8 +66,111 @@
           "config": {},
           "updated_by_device_id": "device-a"
         },
-        "timestamp": "2026-06-01T01:00:00Z",
-        "sequence": 1
+        "timestamp": "2026-06-01T01:02:00Z",
+        "sequence": 3
+      },
+      {
+        "id": "evt-stage5a-skill-2",
+        "user_id": "user-1",
+        "device_id": "device-b",
+        "event_type": "skill.disabled",
+        "schema_version": 1,
+        "object_type": "skill",
+        "object_id": "legacy-skill",
+        "operation": "disabled",
+        "source_device_id": "device-a",
+        "client_event_id": "skill-disable-1",
+        "payload": {
+          "skill_id": "legacy-skill",
+          "object_id": "legacy-skill",
+          "enabled": false,
+          "config": {"reason": "client-ready-fixture"},
+          "updated_by_device_id": "device-a"
+        },
+        "timestamp": "2026-06-01T01:03:00Z",
+        "sequence": 4
+      },
+      {
+        "id": "evt-stage5a-agent-1",
+        "user_id": "user-1",
+        "device_id": "device-b",
+        "event_type": "agent.updated",
+        "schema_version": 1,
+        "object_type": "agent",
+        "object_id": "assistant-main",
+        "operation": "updated",
+        "source_device_id": "device-a",
+        "client_event_id": "agent-update-1",
+        "payload": {
+          "agent_id": "assistant-main",
+          "object_id": "assistant-main",
+          "display_name": "Assistant",
+          "config": {"model": "fast"},
+          "updated_at": "2026-06-01T01:04:00Z"
+        },
+        "timestamp": "2026-06-01T01:04:00Z",
+        "sequence": 5
+      },
+      {
+        "id": "evt-stage5a-server-1",
+        "user_id": "user-1",
+        "device_id": "device-b",
+        "event_type": "server.added",
+        "schema_version": 1,
+        "object_type": "server",
+        "object_id": "server-primary",
+        "operation": "added",
+        "source_device_id": "device-a",
+        "client_event_id": "server-add-1",
+        "payload": {
+          "server_id": "server-primary",
+          "object_id": "server-primary",
+          "name": "Primary",
+          "base_url": "https://agent.example",
+          "status": "active"
+        },
+        "timestamp": "2026-06-01T01:05:00Z",
+        "sequence": 6
+      },
+      {
+        "id": "evt-stage5a-server-2",
+        "user_id": "user-1",
+        "device_id": "device-b",
+        "event_type": "server.added",
+        "schema_version": 1,
+        "object_type": "server",
+        "object_id": "server-removed",
+        "operation": "added",
+        "source_device_id": "device-a",
+        "client_event_id": "server-add-2",
+        "payload": {
+          "server_id": "server-removed",
+          "object_id": "server-removed",
+          "name": "Removed",
+          "base_url": "https://removed.example",
+          "status": "active"
+        },
+        "timestamp": "2026-06-01T01:06:00Z",
+        "sequence": 7
+      },
+      {
+        "id": "evt-stage5a-server-3",
+        "user_id": "user-1",
+        "device_id": "device-b",
+        "event_type": "server.removed",
+        "schema_version": 1,
+        "object_type": "server",
+        "object_id": "server-removed",
+        "operation": "removed",
+        "source_device_id": "device-a",
+        "client_event_id": "server-remove-1",
+        "payload": {
+          "server_id": "server-removed",
+          "object_id": "server-removed",
+          "status": "removed"
+        },
+        "timestamp": "2026-06-01T01:07:00Z",
+        "sequence": 8
       },
       {
         "id": "evt-stage5a-plugin-1",
@@ -43,8 +191,8 @@
           "status": "active",
           "track_mode": "latest_approved"
         },
-        "timestamp": "2026-06-01T01:01:00Z",
-        "sequence": 2
+        "timestamp": "2026-06-01T01:08:00Z",
+        "sequence": 9
       },
       {
         "id": "evt-stage5a-plugin-grant-1",
@@ -65,8 +213,138 @@
           "risk_level": "low",
           "status": "active"
         },
-        "timestamp": "2026-06-01T01:02:00Z",
-        "sequence": 3
+        "timestamp": "2026-06-01T01:09:00Z",
+        "sequence": 10
+      },
+      {
+        "id": "evt-stage5a-plugin-revoke-1",
+        "user_id": "user-1",
+        "device_id": "device-b",
+        "event_type": "plugin.permission_revoked",
+        "schema_version": 1,
+        "object_type": "plugin",
+        "object_id": "installation-1",
+        "operation": "permission_revoked",
+        "source_device_id": "device-a",
+        "client_event_id": "plugin-revoke-1",
+        "payload": {
+          "installation_id": "installation-1",
+          "grant_id": "grant-1",
+          "permission_key": "plugin.api.call",
+          "plugin_id": "plugin-1",
+          "risk_level": "low",
+          "status": "revoked"
+        },
+        "timestamp": "2026-06-01T01:10:00Z",
+        "sequence": 11
+      },
+      {
+        "id": "evt-stage5a-plugin-grant-2",
+        "user_id": "user-1",
+        "device_id": "device-b",
+        "event_type": "plugin.permission_granted",
+        "schema_version": 1,
+        "object_type": "plugin",
+        "object_id": "installation-1",
+        "operation": "permission_granted",
+        "source_device_id": "device-a",
+        "client_event_id": "plugin-grant-2",
+        "payload": {
+          "installation_id": "installation-1",
+          "grant_id": "grant-2",
+          "permission_key": "plugin.user.confirm",
+          "plugin_id": "plugin-1",
+          "risk_level": "medium",
+          "status": "active"
+        },
+        "timestamp": "2026-06-01T01:11:00Z",
+        "sequence": 12
+      },
+      {
+        "id": "evt-stage5a-plugin-2",
+        "user_id": "user-1",
+        "device_id": "device-b",
+        "event_type": "plugin.disabled",
+        "schema_version": 1,
+        "object_type": "plugin",
+        "object_id": "installation-1",
+        "operation": "disabled",
+        "source_device_id": "device-a",
+        "client_event_id": "plugin-disable-1",
+        "payload": {
+          "installation_id": "installation-1",
+          "plugin_id": "plugin-1",
+          "plugin_key": "com.example.hotel",
+          "version_id": "version-1",
+          "status": "disabled",
+          "track_mode": "latest_approved"
+        },
+        "timestamp": "2026-06-01T01:12:00Z",
+        "sequence": 13
+      },
+      {
+        "id": "evt-stage5a-plugin-3",
+        "user_id": "user-1",
+        "device_id": "device-b",
+        "event_type": "plugin.enabled",
+        "schema_version": 1,
+        "object_type": "plugin",
+        "object_id": "installation-1",
+        "operation": "enabled",
+        "source_device_id": "device-a",
+        "client_event_id": "plugin-enable-1",
+        "payload": {
+          "installation_id": "installation-1",
+          "plugin_id": "plugin-1",
+          "plugin_key": "com.example.hotel",
+          "version_id": "version-1",
+          "status": "active",
+          "track_mode": "latest_approved"
+        },
+        "timestamp": "2026-06-01T01:13:00Z",
+        "sequence": 14
+      },
+      {
+        "id": "evt-stage5a-plugin-4",
+        "user_id": "user-1",
+        "device_id": "device-b",
+        "event_type": "plugin.installed",
+        "schema_version": 1,
+        "object_type": "plugin",
+        "object_id": "installation-removed",
+        "operation": "installed",
+        "source_device_id": "device-a",
+        "client_event_id": "plugin-install-removed-1",
+        "payload": {
+          "installation_id": "installation-removed",
+          "plugin_id": "plugin-removed",
+          "plugin_key": "com.example.removed",
+          "version_id": "version-removed",
+          "status": "active",
+          "track_mode": "latest_approved"
+        },
+        "timestamp": "2026-06-01T01:14:00Z",
+        "sequence": 15
+      },
+      {
+        "id": "evt-stage5a-plugin-5",
+        "user_id": "user-1",
+        "device_id": "device-b",
+        "event_type": "plugin.uninstalled",
+        "schema_version": 1,
+        "object_type": "plugin",
+        "object_id": "installation-removed",
+        "operation": "uninstalled",
+        "source_device_id": "device-a",
+        "client_event_id": "plugin-uninstall-removed-1",
+        "payload": {
+          "installation_id": "installation-removed",
+          "plugin_id": "plugin-removed",
+          "plugin_key": "com.example.removed",
+          "status": "uninstalled"
+        },
+        "timestamp": "2026-06-01T01:15:00Z",
+        "sequence": 16
       },
       {
         "id": "evt-stage5a-knowledge-1",
@@ -92,15 +370,74 @@
           "version": 1,
           "content_hash": "hash-stage5a-1",
           "updated_by_device_id": "device-a",
-          "updated_at": "2026-06-01T01:03:00Z"
+          "updated_at": "2026-06-01T01:16:00Z"
         },
-        "timestamp": "2026-06-01T01:03:00Z",
-        "sequence": 4
+        "timestamp": "2026-06-01T01:16:00Z",
+        "sequence": 17
+      },
+      {
+        "id": "evt-stage5a-knowledge-2",
+        "user_id": "user-1",
+        "device_id": "device-b",
+        "event_type": "knowledge.updated",
+        "schema_version": 1,
+        "object_type": "knowledge",
+        "object_id": "notes/stage5a",
+        "operation": "updated",
+        "source_device_id": "device-a",
+        "client_event_id": "knowledge-update-1",
+        "payload": {
+          "entry_id": "notes/stage5a",
+          "object_id": "notes/stage5a",
+          "title": "Stage 5A Updated",
+          "content_markdown": "# Stage 5A Updated",
+          "summary": "summary updated",
+          "tags": ["agentos", "client-ready"],
+          "metadata": {},
+          "source_uri": "",
+          "status": "active",
+          "version": 2,
+          "content_hash": "hash-stage5a-2",
+          "updated_by_device_id": "device-a",
+          "updated_at": "2026-06-01T01:17:00Z"
+        },
+        "timestamp": "2026-06-01T01:17:00Z",
+        "sequence": 18
+      },
+      {
+        "id": "evt-stage5a-knowledge-3",
+        "user_id": "user-1",
+        "device_id": "device-b",
+        "event_type": "knowledge.deleted",
+        "schema_version": 1,
+        "object_type": "knowledge",
+        "object_id": "notes/stage5a",
+        "operation": "deleted",
+        "source_device_id": "device-a",
+        "client_event_id": "knowledge-delete-1",
+        "payload": {
+          "entry_id": "notes/stage5a",
+          "object_id": "notes/stage5a",
+          "title": "Stage 5A Updated",
+          "content_markdown": "# Stage 5A Updated",
+          "summary": "summary updated",
+          "tags": ["agentos", "client-ready"],
+          "metadata": {},
+          "source_uri": "",
+          "status": "deleted",
+          "version": 3,
+          "content_hash": "hash-stage5a-3",
+          "updated_by_device_id": "device-a",
+          "updated_at": "2026-06-01T01:18:00Z",
+          "deleted_at": "2026-06-01T01:18:00Z"
+        },
+        "timestamp": "2026-06-01T01:18:00Z",
+        "sequence": 19
       }
     ],
-    "next_after_sequence": 4,
+    "next_after_sequence": 19,
     "has_more": false,
-    "server_time": 1780275780000,
+    "server_time": 1780276680000,
     "schema_version": 1
   }
 }

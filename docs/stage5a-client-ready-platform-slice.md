@@ -2,7 +2,7 @@
 
 Updated: 2026-06-01
 Branch: `stage5a-client-ready-platform-slice`
-Status: planning baseline
+Status: in progress — sync bridge evidence path implemented
 
 ## 1. Purpose
 
@@ -81,26 +81,20 @@ cargo test --workspace --all-targets --locked
 
 Goal: make backend sync events consumable by AgentOS Client through SDK-compatible typed projections.
 
-Current FFI exports cover identity verification and knowledge sync reduction. Stage 5A should add a broader sync bridge for backend pull envelopes.
+Implemented foundation:
 
-Candidate SDK work:
-
-- extend `agentos-client-bridge` with a general sync pull response parser;
-- add typed projection reducers for plugin lifecycle, skill settings, agent settings, server list, and existing knowledge events;
-- keep reducer behavior deterministic and JSON-safe;
-- expose a narrow FFI function such as `agentos_apply_sync_pull_response_json` only after Rust-side contract tests exist.
-
-Backend evidence work:
-
-- add backend sync fixtures covering `plugin.*`, `skill.*`, `agent.*`, `server.*`, and `knowledge.*` events;
-- add a smoke or integration script that pulls backend events and validates the SDK bridge reducer output through the bundled FFI library.
+- `agentos-client-bridge` exposes a general sync pull response parser and `ClientReadySyncProjection`.
+- `agentos-ffi` exports `agentos_apply_sync_pull_response_json` for native clients.
+- Backend fixture `internal/service/testdata/stage5a_client_ready_sync_pull_response.json` covers profile, message, skill, agent, server, plugin lifecycle/permissions, and knowledge create/update/delete events.
+- Backend integration test `TestFFIClientReadySyncBridgeIntegration` validates the bundled FFI reducer output.
+- Smoke script `scripts/smoke-stage5a-sync-bridge.sh` is included in `scripts/release-gate-local.sh`.
 
 Acceptance checks:
 
 ```bash
-cargo test -p agentos-client-bridge
-cargo test -p agentos-ffi
+cargo test -p agentos-client-bridge -p agentos-ffi --locked
 go test ./...
+./scripts/smoke-stage5a-sync-bridge.sh
 ```
 
 ### 4.3 SAGE Client Runtime Contract Gate
@@ -128,7 +122,7 @@ Goal: make local release evidence repeatable before broader client integration.
 Deliverables:
 
 - keep `scripts/release-gate-local.sh` as the primary local gate;
-- add SDK bridge smoke once the general sync bridge exists;
+- keep the Stage 5A sync bridge smoke in the fast release path;
 - document optional live gates clearly: migration apply, object storage, SAGE runtime, governance enforcement, local_http semantic search;
 - produce release evidence with commit hashes and test results.
 

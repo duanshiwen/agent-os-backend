@@ -136,22 +136,50 @@ func TestFFIClientReadySyncBridgeIntegration(t *testing.T) {
 	defer verifier.freeString(out)
 
 	projection := decodeClientReadyBridgeProjection(t, cStringToGo(out))
-	if projection.Cursor.LastAppliedSequence != 4 {
-		t.Fatalf("expected cursor sequence 4, got %+v", projection.Cursor)
+	if projection.Cursor.LastAppliedSequence != 19 {
+		t.Fatalf("expected cursor sequence 19, got %+v", projection.Cursor)
 	}
-	if _, ok := projection.Skills["superpowers"]; !ok {
-		t.Fatalf("expected superpowers skill projection, got %+v", projection.Skills)
+	if profile, ok := projection.Profiles["user-1"]; !ok || profile["display_name"] != "Stage 5A User" {
+		t.Fatalf("expected user profile projection, got %+v", projection.Profiles)
+	}
+	if message, ok := projection.Messages["message-1"]; !ok || message["conversation_id"] != "conversation-1" {
+		t.Fatalf("expected message projection, got %+v", projection.Messages)
+	}
+	if skill, ok := projection.Skills["superpowers"]; !ok || skill["enabled"] != true {
+		t.Fatalf("expected enabled superpowers skill projection, got %+v", projection.Skills)
+	}
+	if skill, ok := projection.Skills["legacy-skill"]; !ok || skill["enabled"] != false {
+		t.Fatalf("expected disabled legacy skill projection, got %+v", projection.Skills)
+	}
+	if agent, ok := projection.Agents["assistant-main"]; !ok || agent["display_name"] != "Assistant" {
+		t.Fatalf("expected agent projection, got %+v", projection.Agents)
+	}
+	if server, ok := projection.Servers["server-primary"]; !ok || server["base_url"] != "https://agent.example" {
+		t.Fatalf("expected primary server projection, got %+v", projection.Servers)
+	}
+	if _, ok := projection.Servers["server-removed"]; ok {
+		t.Fatalf("expected removed server to be absent, got %+v", projection.Servers)
 	}
 	plugin, ok := projection.Plugins["installation-1"]
-	if !ok || plugin["plugin_key"] != "com.example.hotel" {
-		t.Fatalf("expected installed plugin projection, got %+v", projection.Plugins)
+	if !ok || plugin["plugin_key"] != "com.example.hotel" || plugin["status"] != "active" {
+		t.Fatalf("expected active installed plugin projection, got %+v", projection.Plugins)
 	}
-	permission, ok := projection.PluginPermissions["grant-1"]
-	if !ok || permission["permission_key"] != "plugin.api.call" {
-		t.Fatalf("expected plugin permission projection, got %+v", projection.PluginPermissions)
+	if _, ok := projection.Plugins["installation-removed"]; ok {
+		t.Fatalf("expected uninstalled plugin to be absent, got %+v", projection.Plugins)
 	}
-	if _, ok := projection.Knowledge.Entries["notes/stage5a"]; !ok {
+	if _, ok := projection.PluginPermissions["grant-1"]; ok {
+		t.Fatalf("expected revoked plugin permission grant-1 to be absent, got %+v", projection.PluginPermissions)
+	}
+	permission, ok := projection.PluginPermissions["grant-2"]
+	if !ok || permission["permission_key"] != "plugin.user.confirm" {
+		t.Fatalf("expected active plugin permission grant-2 projection, got %+v", projection.PluginPermissions)
+	}
+	entry, ok := projection.Knowledge.Entries["notes/stage5a"]
+	if !ok {
 		t.Fatalf("expected knowledge projection entry, got %+v", projection.Knowledge.Entries)
+	}
+	if entry.Version != 3 || entry.Status != "deleted" || entry.ContentHash != "hash-stage5a-3" {
+		t.Fatalf("expected deleted v3 knowledge tombstone, got %+v", entry)
 	}
 }
 
@@ -196,10 +224,14 @@ type clientReadyBridgeProjection struct {
 	Cursor struct {
 		LastAppliedSequence uint64 `json:"last_applied_sequence"`
 	} `json:"cursor"`
-	Knowledge         knowledgeBridgeProjection     `json:"knowledge"`
-	Skills            map[string]map[string]any     `json:"skills"`
-	Plugins           map[string]map[string]any     `json:"plugins"`
-	PluginPermissions map[string]map[string]any     `json:"plugin_permissions"`
+	Knowledge         knowledgeBridgeProjection `json:"knowledge"`
+	Profiles          map[string]map[string]any `json:"profiles"`
+	Messages          map[string]map[string]any `json:"messages"`
+	Skills            map[string]map[string]any `json:"skills"`
+	Agents            map[string]map[string]any `json:"agents"`
+	Servers           map[string]map[string]any `json:"servers"`
+	Plugins           map[string]map[string]any `json:"plugins"`
+	PluginPermissions map[string]map[string]any `json:"plugin_permissions"`
 }
 
 type knowledgeBridgeEntry struct {
