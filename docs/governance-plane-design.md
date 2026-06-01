@@ -187,6 +187,6 @@ Implemented readiness controls:
    - Revoked, consumed, and expired receipts cannot be reissued.
 
 5. Release evidence
-   - Unit/integration test baseline: `go test ./...` → 183 passed in 11 packages.
+   - Unit/integration test baseline: `go test ./...` → 189 passed in 11 packages.
    - Local release gate: `./scripts/release-gate-local.sh` passes.
    - Live enforce-readiness smoke: `scripts/smoke-governance-enforce-readiness.sh` verifies enforce-mode denial, stable `governance_denied`, admin policy-decision visibility, summary evidence, approval token reissue/consume, old-token invalidation, and approval receipt revoke semantics.

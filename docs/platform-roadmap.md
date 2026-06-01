@@ -1,7 +1,7 @@
 # AgentOS Backend Platform Roadmap
 
 Updated: 2026-06-01
-Status: Stage 5A client-ready platform slice planning baseline; federation remains out of current roadmap
+Status: current `main` reality baseline after Stage 5A client-ready gates; federation remains out of current roadmap
 Scope: AgentOS Server platform completion, not MVP delivery
 
 ## 1. Direction
@@ -17,14 +17,19 @@ AgentOS Backend is no longer treated as a sequence of isolated MVP slices. The c
 
 ## 2. Current Baseline
 
-Fresh local verification before this roadmap:
+Fresh local verification for this baseline:
 
 ```text
+Backend branch: main
+Backend working tree: clean before documentation cleanup
 Backend: go test ./...
-Result: 183 passed in 11 packages
+Result: 189 passed in 11 packages
 
-Rust SDK: cargo test --workspace --all-targets --locked
-Result: 1560 passed, 2 ignored, 110 suites
+Backend release gate: ./scripts/release-gate-local.sh
+Result: passed
+
+Rust SDK targeted bridge/FFI check: cargo test -p agentos-client-bridge -p agentos-ffi --locked
+Result: 18 passed in 6 suites
 ```
 
 Current backend implementation includes:
@@ -40,15 +45,17 @@ Current backend implementation includes:
 - MinIO-backed object storage foundation with `object_records` and upload/complete/download/delete lifecycle.
 - KB Hub collection/snapshot publishing, immutable snapshot metadata, manifest/content object storage, public discovery, install/subscription, installed access, fulltext fetch, usage records, billing ledger foundation, contributor earnings foundation, lexical search, and async semantic search pipeline.
 - PostgreSQL + pgvector semantic storage, durable embedding queue, deterministic embedding provider, local HTTP embedding worker contract, and Go embedding job worker.
+- SAGE Plugin Open Platform control plane, plugin lifecycle sync, object-backed icon/package bindings, Stage 5A runtime contract gates, and governance client error contract gates.
 
 Current known major gaps:
 
-- SAGE Plugin Open Platform backend foundation is implemented: registry, manifest validation, review/catalog, installation/grants, policy bundle, invocation/report, and developer metrics.
-- SAGE runtime/control-plane smoke is implemented via `scripts/smoke-sage-plugin-runtime.sh`; plugin lifecycle/permission state sync and icon/package object bindings are implemented. Remaining SAGE gaps are richer governance scanning and production policy operations.
+- Skill settings sync exists, but full Skill Hub is not implemented yet: no skill registry, package/version model, public catalog, user install library, admin takedown, or publisher restriction subsystem.
+- AgentOS Client integration is not complete; Stage 5A backend/SDK contract gates are ready, but product client runtime still needs to consume them end-to-end.
+- SAGE Plugin Open Platform backend control plane is implemented; remaining SAGE gaps are real client runtime integration, richer governance scanning, production policy operations, and ecosystem/plugin-server quality.
 - Federation / multi-server networking is intentionally out of scope; existing server-list sync remains a local user configuration feature only.
-- Governance/policy control plane now has Stage 4D approval-workflow foundation: capability taxonomy, policy rules/decisions, kill switches, approval receipts, scanner findings, enforcer integration, admin evidence APIs, stable error codes/details, summary API, approval receipt revoke/reissue APIs, and live enforce-readiness smoke. Remaining gaps are richer scanner coverage, policy DSL/conditions, response inspection, frontend/admin UX, first-class admin bootstrap, and production incident workflows.
-- Production observability is still incomplete; admin operations, release gates, and background job unification now have a Stage 3A foundation via background job run history, admin ops APIs, and `scripts/release-gate-local.sh`.
-- KB Hub now has a Stage 2 productionization foundation for review/takedown/reporting, source/copyright declarations, snapshot archive/restore/diff, subscription expiry cleanup, per-plan entitlement modes, invoice/refund/dispute records, payout period aggregation, and a unified background job runner; remaining gaps are real payment integration, tax/export operations, renewal collection policy, and chunk-level search quality.
+- Governance/policy control plane now has Stage 4D approval-workflow foundation; remaining gaps are richer scanner coverage, policy DSL/conditions, response inspection, frontend/admin UX, first-class admin bootstrap, and production incident workflows.
+- Production observability is still incomplete; admin operations, release gates, and background job unification have a foundation, but structured logs, metrics, dashboards, and runbooks remain.
+- KB Hub has a productionization foundation; remaining gaps are real payment integration, tax/export operations, renewal collection policy, entitlement revocation policy, and chunk-level search quality.
 
 ## 3. Platform Completion Stages
 
@@ -229,9 +236,7 @@ This stage is deliberately placed after SAGE registry design but before allowing
 
 Goal: make the already implemented single-server platform stable enough for AgentOS Client / SDK integration before broad commercialization work.
 
-Stage 5A reference plan:
-
-- `docs/stage5a-client-ready-platform-slice.md`
+Stable Stage 5A client-facing contracts are consolidated in `docs/stage5a-client-integration-handoff.md`. The previous implementation-plan document was retired after the gates landed on `main`.
 
 Primary workstreams:
 
@@ -299,15 +304,15 @@ audit hash-chain smoke
 
 ## 12. Immediate Next Work
 
-The immediate next implementation target is **Stage 5A: Client-Ready Platform Slice**.
+The immediate next implementation target is **Reality Lock 2.1 + Skill Hub**, while preserving the Stage 5A client-ready contract baseline.
 
 Recommended order:
 
-1. Reality Lock 2.0 documentation update and verification evidence refresh;
-2. SDK Client Sync Bridge expansion for plugin / skill / agent / server / knowledge pull envelopes;
-3. SAGE Client Runtime Contract Gate for policy bundle, invocation/report, and governance error semantics;
-4. Release Gate 1.0 client-ready evidence path;
-5. KB chunk-level search quality and Governance 4E production policy operations as follow-up slices.
+1. Reality Lock 2.1: keep README, roadmap, capability matrix, and handoff docs aligned with `main`;
+2. Skill Hub implementation: registry, manifest/package validation, immutable versions, catalog, install library, object-backed package/icon storage, admin takedown, and publisher restriction;
+3. AgentOS Client integration against the Stage 5A sync bridge, SAGE runtime contract, and governance error contract;
+4. KB chunk-level search quality and Governance 4E production policy operations as follow-up slices;
+5. Commercialization/ops: real payments, renewal collection, metrics, structured logs, dashboards, and runbooks.
 
 ### Stage 4B/4C/4D Governance Enforcement Integration
 

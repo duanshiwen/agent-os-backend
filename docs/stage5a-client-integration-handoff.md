@@ -5,6 +5,8 @@ Status: client-ready contract handoff baseline
 
 This handoff summarizes what AgentOS Client / SDK can rely on after the Stage 5A contract gates. The backend remains a single-server control plane. Rust remains integrated through narrow FFI contracts only; no Rust backend sidecar is introduced.
 
+Documentation note: the older Stage 5A implementation-plan document has been retired. This file is now the living client-facing Stage 5A handoff; roadmap-level next work lives in [platform-roadmap.md](./platform-roadmap.md).
+
 ## 1. Stable Contract Surfaces
 
 ### 1.1 Sync Consumer Contract

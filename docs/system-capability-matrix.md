@@ -1,7 +1,7 @@
 # AgentOS Backend System Capability Matrix
 
-Updated: 2026-05-31
-Status source: code inspection, docs inspection, `go test ./...`, and Rust SDK workspace test evidence.
+Updated: 2026-06-01
+Status source: code inspection, docs cleanup scan, `go test ./...`, `./scripts/release-gate-local.sh`, and targeted Rust SDK bridge/FFI test evidence.
 
 Legend:
 
@@ -13,14 +13,18 @@ Legend:
 ## 1. Verification Baseline
 
 ```text
+Backend branch: main
 Backend: go test ./...
-Result: 180 passed in 11 packages
+Result: 189 passed in 11 packages
 
-Rust SDK: cargo test --workspace --all-targets --locked
-Result: 1560 passed, 2 ignored, 110 suites
+Backend release gate: ./scripts/release-gate-local.sh
+Result: passed
+
+Rust SDK targeted bridge/FFI check: cargo test -p agentos-client-bridge -p agentos-ffi --locked
+Result: 18 passed in 6 suites
 ```
 
-Backend working tree at Stage 0 start had one existing README documentation diff that narrows Docker Compose startup guidance to avoid accidental BGE-M3 download.
+Obsolete Phase/M2/M3 progress-history docs were retired; this matrix is the current implementation status index.
 
 ## 2. Capability Matrix
 
@@ -48,11 +52,13 @@ Backend working tree at Stage 0 start had one existing README documentation diff
 | Sync | Idempotency | ✅ | `client_event_id` partial uniqueness | cross-object conflict UX |
 | Sync | Profile sync | ✅ | `profile.updated` | client fixtures for all platforms |
 | Sync | Message sync | ✅ | `message.created` | full conversation reconstruction solely from sync not complete |
-| Sync | Skill settings sync | ✅ | settings routes and events | schema version evolution |
+| Sync | Skill settings sync | ✅ | settings routes and `skill.updated/enabled/disabled` events | schema version evolution; this is not full Skill Hub |
 | Sync | Agent settings sync | ✅ | settings routes and events | schema version evolution |
+| Skill Hub | Registry / package versions / catalog | ⬜ | Not implemented in backend; no `skills`, `skill_versions`, `skill_installations`, or publisher restriction migrations yet | Implement after Reality Lock 2.1 using SDK `skill-core` concepts and MinIO object storage |
+| Skill Hub | User install library / admin takedown | ⬜ | Only Skill settings sync exists today | Add install/pin/latest/disable/uninstall, takedown, and publisher restriction APIs |
 | Sync | Server list and plugin sync | ✅ | `/servers` routes and `plugin.installed/uninstalled/enabled/disabled/permission_granted/permission_revoked` events | not federation |
 | Sync | Personal knowledge sync | ✅ | entry CRUD, tombstone, version conflict, content hash | restore operation and full client merge engine |
-| Sync | Plugin sync taxonomy | 🟡 | SAGE subsystem exists but install/grant state is not yet emitted as sync events | plugin install/grant/enable/disable events and tests |
+| Sync | Plugin sync taxonomy | ✅ | SAGE install/uninstall/enable/disable and permission grant/revoke emit `plugin.*` sync events; Stage 5A fixture and tests cover them | schema version negotiation and full client merge UX |
 | Sync | Schema version negotiation | ⬜ | schema_version stored | `/sync/capabilities`, compatibility strategy |
 | Object storage | Object record metadata | ✅ | `object_records` migration/model | lifecycle cleanup job |
 | Object storage | Upload intent / complete / download / delete APIs | ✅ | `ObjectService`; authenticated routes | malware/content scanning and quota policy |
@@ -103,8 +109,8 @@ Backend working tree at Stage 0 start had one existing README documentation diff
 | Observability | Request IDs | ✅ | `X-Request-ID` middleware; generated or propagated | structured log integration |
 | Observability | Structured logging | ⬜ | standard log today | slog and correlation-aware logs |
 | Ops | Background job runner | ✅ | offline cleanup, sync cleanup, sensitive confirmation cleanup, KB subscription expiry, optional embedding worker, persisted run history, admin run-once trigger | embedding worker per-batch telemetry |
-| Release | Go unit/integration tests | ✅ | 180 passed | CI automation wrapper |
-| Release | Rust SDK tests | ✅ | 1560 passed | backend-pinned FFI artifact gate |
+| Release | Go unit/integration tests | ✅ | 189 passed in 11 packages | CI automation wrapper |
+| Release | Rust SDK bridge/FFI tests | ✅ | targeted `agentos-client-bridge` + `agentos-ffi`: 18 passed in 6 suites | full SDK workspace gate remains useful before SDK releases |
 | Release | Smoke scripts | ✅ | `scripts/release-gate-local.sh` runs tests/syntax checks plus optional migration apply, object storage, SAGE, governance enforcement, governance enforce-readiness, and real local_http semantic smokes | CI full platform release gate |
 
 ## 3. Existing API Surface Summary
