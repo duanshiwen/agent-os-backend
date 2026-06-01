@@ -226,7 +226,7 @@ Client rules:
 
 ## 8. Governance Error Contract
 
-SAGE permission grants and invocation creation can be governed in enforce mode.
+SAGE permission grants and invocation creation can be governed in enforce mode. The dedicated HTTP-level contract is maintained in [governance-client-error-contract.md](./governance-client-error-contract.md).
 
 Stable error codes:
 

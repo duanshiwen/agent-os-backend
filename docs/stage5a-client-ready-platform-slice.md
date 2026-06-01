@@ -141,7 +141,29 @@ Acceptance checks:
 ./scripts/smoke-governance-enforce-readiness.sh
 ```
 
-### 4.5 Release Gate 1.0
+### 4.5 Governance Client Error Contract Gate
+
+Goal: keep client UX stable when backend governance denies, requests approval, or invalidates a request.
+
+Implemented foundation:
+
+- `docs/governance-client-error-contract.md` defines the HTTP-level error envelope, stable codes, details fields, client actions, and evidence path.
+- `TestGovernanceHandlerClientErrorContract` verifies `403 governance_denied`, `428 governance_approval_required`, and `403 governance_approval_invalid` response shapes.
+- `scripts/check-governance-client-error-contract.sh` provides a fast handler-level contract gate.
+- `scripts/release-gate-local.sh` runs the governance client error contract gate in the default local release path.
+
+Remaining extension:
+
+- add dedicated kill-switch client UX scenarios if/when kill-switch errors diverge from the standard `governance_denied` envelope.
+
+Acceptance checks:
+
+```bash
+./scripts/check-governance-client-error-contract.sh
+./scripts/smoke-governance-enforce-readiness.sh
+```
+
+### 4.6 Release Gate 1.0
 
 Goal: make local release evidence repeatable before broader client integration.
 
@@ -159,7 +181,7 @@ Acceptance checks:
 RUN_MIGRATION_GATE=1 RUN_LIVE_SMOKES=1 RUN_LOCAL_HTTP_SEMANTIC=1 ./scripts/release-gate-local.sh
 ```
 
-### 4.6 Search Quality Follow-up
+### 4.7 Search Quality Follow-up
 
 Goal: improve KB retrieval quality after client-ready contracts are stable.
 
@@ -172,7 +194,7 @@ Deferred but next after Stage 5A contract gate:
 
 This is a quality slice, not a provider-architecture rewrite. BGE-M3 + pgvector + durable queue remain the baseline.
 
-### 4.7 Governance 4E Follow-up
+### 4.8 Governance 4E Follow-up
 
 Goal: move governance from enforce-ready foundation to production policy operations.
 

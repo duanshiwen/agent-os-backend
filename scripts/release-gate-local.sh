@@ -41,6 +41,9 @@ echo "==> Stage 5A client-ready sync bridge smoke"
 echo "==> SAGE client runtime contract gate"
 ./scripts/check-sage-client-runtime-contract.sh
 
+echo "==> Governance client error contract gate"
+./scripts/check-governance-client-error-contract.sh
+
 if [[ "$RUN_MIGRATION_GATE" == "1" ]]; then
   echo "==> PostgreSQL migration apply gate"
   ./scripts/check-migrations-local.sh
