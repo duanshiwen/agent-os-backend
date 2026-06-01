@@ -69,7 +69,7 @@ WebSocket notifications are hints. Pull remains the source of truth because it r
 | Object family | Baseline API | Notes |
 |---|---|---|
 | `profile` | `GET /api/v1/users/me` | Current authenticated user profile. |
-| `message` | `GET /api/v1/conversations`, `GET /api/v1/conversations/:id/messages` | Conversation history remains domain-loaded. |
+| `conversation` / `participant` / `message` | `GET /api/v1/conversations`, `GET /api/v1/conversations/:id/messages` | Conversation list, membership, and history remain domain-loaded for baseline/repair. |
 | `skill` | `GET /api/v1/skills/settings` | User skill settings. |
 | `agent` | `GET /api/v1/agents/settings` | User agent settings. |
 | `server` | `GET /api/v1/servers` | User server connection list. Local configuration only; not Federation. |
@@ -193,7 +193,27 @@ set display_name/avatar_url from payload
 record source sequence after durable write
 ```
 
-### 9.2 Message
+### 9.2 Conversation and Participant
+
+Supported events:
+
+- `conversation.created`
+- `conversation.updated`
+- `participant.added`
+- `participant.removed`
+
+Apply rule:
+
+```text
+conversation.created/updated: upsert conversation by conversation_id / object_id
+participant.added: upsert membership by conversation_id + user_id with status=active
+participant.removed: tombstone/remove membership by conversation_id + user_id with status=removed
+ignore duplicate object_id / sequence
+```
+
+Conversation membership and history should still be reconciled through baseline conversation APIs for cold start and repair.
+
+### 9.3 Message
 
 Supported events:
 
@@ -211,9 +231,7 @@ deleted: tombstone local message by object_id, preserving message identity and s
 ignore duplicate message_id / sequence
 ```
 
-Conversation membership and history should still be reconciled through baseline conversation APIs.
-
-### 9.3 Skill Settings
+### 9.4 Skill Settings
 
 Events:
 
@@ -229,7 +247,7 @@ set enabled/config fields from payload
 for disabled events, set enabled=false
 ```
 
-### 9.4 Agent Settings
+### 9.5 Agent Settings
 
 Event: `agent.updated`
 
@@ -240,7 +258,7 @@ upsert agent setting by agent_id / object_id
 replace config fields from payload
 ```
 
-### 9.5 Server List
+### 9.6 Server List
 
 Events:
 
@@ -258,7 +276,7 @@ server.removed: delete or tombstone local server connection by id
 
 Server list sync is local user configuration only. It does not imply Federation, server trust, remote plugin discovery, or cross-server data sync.
 
-### 9.6 SAGE Plugin Lifecycle and Permissions
+### 9.7 SAGE Plugin Lifecycle and Permissions
 
 Events:
 
@@ -484,10 +502,11 @@ Minimum SDK/client tests:
 2. reject unsupported schema version;
 3. ignore duplicate or already-applied sequence;
 4. apply `profile.updated`;
-5. apply `message.created` idempotently;
-6. apply `skill.enabled`, `skill.disabled`, `skill.updated`;
-7. apply `agent.updated`;
-8. apply `server.added`, `server.updated`, `server.removed`;
+5. apply `conversation.created`, `conversation.updated`, `participant.added`, and `participant.removed` idempotently;
+6. apply `message.created`, `message.updated`, and `message.deleted` idempotently;
+7. apply `skill.enabled`, `skill.disabled`, `skill.updated`;
+8. apply `agent.updated`;
+9. apply `server.added`, `server.updated`, `server.removed`;
 9. apply `plugin.installed`, `plugin.uninstalled`, `plugin.enabled`, `plugin.disabled`;
 10. apply `plugin.permission_granted`, `plugin.permission_revoked`;
 11. apply `knowledge.created`;

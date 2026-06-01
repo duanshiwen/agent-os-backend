@@ -44,6 +44,7 @@ func Setup(
 	identitySvc := service.NewIdentityServiceWithAdmission(userRepo, cfg.JWT, signatureVerifier, admissionSvc)
 	identitySvc.SetSyncService(syncSvc)
 	convSvc := service.NewConversationService(convRepo, userRepo)
+	convSvc.SetSyncService(syncSvc)
 	pairingRepo := repository.NewDevicePairingRepo(db)
 	pairingSvc := service.NewDevicePairingService(pairingRepo, userRepo, signatureVerifier)
 	pairingSvc.SetAuditService(auditSvc)

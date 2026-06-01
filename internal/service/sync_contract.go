@@ -8,13 +8,15 @@ import (
 const SyncSchemaVersion = 1
 
 const (
-	SyncObjectMessage   = "message"
-	SyncObjectKnowledge = "knowledge"
-	SyncObjectSkill     = "skill"
-	SyncObjectAgent     = "agent"
-	SyncObjectServer    = "server"
-	SyncObjectPlugin    = "plugin"
-	SyncObjectProfile   = "profile"
+	SyncObjectMessage      = "message"
+	SyncObjectConversation = "conversation"
+	SyncObjectParticipant  = "participant"
+	SyncObjectKnowledge    = "knowledge"
+	SyncObjectSkill        = "skill"
+	SyncObjectAgent        = "agent"
+	SyncObjectServer       = "server"
+	SyncObjectPlugin       = "plugin"
+	SyncObjectProfile      = "profile"
 )
 
 const (
@@ -34,13 +36,15 @@ const (
 // Compatibility aliases kept while the rest of the backend still uses the
 // original event/action names.
 const (
-	SyncEventMessage   = SyncObjectMessage
-	SyncEventKnowledge = SyncObjectKnowledge
-	SyncEventSkill     = SyncObjectSkill
-	SyncEventAgent     = SyncObjectAgent
-	SyncEventServer    = SyncObjectServer
-	SyncEventPlugin    = SyncObjectPlugin
-	SyncEventProfile   = SyncObjectProfile
+	SyncEventMessage      = SyncObjectMessage
+	SyncEventConversation = SyncObjectConversation
+	SyncEventParticipant  = SyncObjectParticipant
+	SyncEventKnowledge    = SyncObjectKnowledge
+	SyncEventSkill        = SyncObjectSkill
+	SyncEventAgent        = SyncObjectAgent
+	SyncEventServer       = SyncObjectServer
+	SyncEventPlugin       = SyncObjectPlugin
+	SyncEventProfile      = SyncObjectProfile
 
 	SyncActionCreated           = SyncOperationCreated
 	SyncActionUpdated           = SyncOperationUpdated
@@ -65,6 +69,14 @@ var supportedSyncOperations = map[string]map[string]bool{
 		SyncOperationCreated: true,
 		SyncOperationUpdated: true,
 		SyncOperationDeleted: true,
+	},
+	SyncObjectConversation: {
+		SyncOperationCreated: true,
+		SyncOperationUpdated: true,
+	},
+	SyncObjectParticipant: {
+		SyncOperationAdded:   true,
+		SyncOperationRemoved: true,
 	},
 	SyncObjectKnowledge: {
 		SyncOperationCreated: true,

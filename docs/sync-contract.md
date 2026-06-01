@@ -186,6 +186,55 @@ Clients load conversation list and message history through existing REST APIs:
 
 ### Incremental changes
 
+Conversations are represented as `conversation.created` and `conversation.updated` sync events. Membership changes are represented as `participant.added` and `participant.removed` sync events.
+
+Minimum `conversation.created` / `conversation.updated` payload:
+
+```json
+{
+  "object_id": "conversation uuid",
+  "conversation_id": "conversation uuid",
+  "type": "private|group|agent_conversation",
+  "name": "...",
+  "created_by": "user uuid",
+  "geo_lat": null,
+  "geo_lng": null,
+  "geo_radius": null,
+  "created_at": "...",
+  "updated_at": "..."
+}
+```
+
+Minimum `participant.added` payload:
+
+```json
+{
+  "object_id": "conversation uuid:user uuid",
+  "conversation_id": "conversation uuid",
+  "user_id": "participant user uuid",
+  "role": "member|admin|owner",
+  "status": "active",
+  "joined_at": "...",
+  "added_by": "actor user uuid",
+  "updated_at": "..."
+}
+```
+
+Minimum `participant.removed` payload:
+
+```json
+{
+  "object_id": "conversation uuid:user uuid",
+  "conversation_id": "conversation uuid",
+  "user_id": "participant user uuid",
+  "role": "member|admin|owner",
+  "status": "removed",
+  "joined_at": "...",
+  "removed_by": "actor user uuid",
+  "updated_at": "..."
+}
+```
+
 Messages are represented as `message.created`, `message.updated`, and `message.deleted` sync events.
 
 Minimum `message.created` / `message.updated` payload:

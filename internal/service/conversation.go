@@ -7,15 +7,21 @@ import (
 	"github.com/agent-os/backend/internal/model"
 	"github.com/agent-os/backend/internal/repository"
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 )
 
 type ConversationService struct {
 	convRepo *repository.ConversationRepo
 	userRepo *repository.UserRepo
+	syncSvc  *SyncService
 }
 
 func NewConversationService(convRepo *repository.ConversationRepo, userRepo *repository.UserRepo) *ConversationService {
 	return &ConversationService{convRepo: convRepo, userRepo: userRepo}
+}
+
+func (s *ConversationService) SetSyncService(syncSvc *SyncService) {
+	s.syncSvc = syncSvc
 }
 
 type CreateConversationRequest struct {
@@ -70,6 +76,11 @@ func (s *ConversationService) createPrivate(creatorID uuid.UUID, participantIDs 
 			return nil, fmt.Errorf("add participant: %w", err)
 		}
 	}
+	participants, err := s.convRepo.GetParticipants(conv.ID)
+	if err != nil {
+		return nil, fmt.Errorf("get participants: %w", err)
+	}
+	s.recordConversationSyncEvents(participants, conv, SyncActionCreated)
 
 	return conv, nil
 }
@@ -113,6 +124,11 @@ func (s *ConversationService) createGroup(creatorID uuid.UUID, req *CreateConver
 			return nil, fmt.Errorf("add participant: %w", err)
 		}
 	}
+	participants, err := s.convRepo.GetParticipants(conv.ID)
+	if err != nil {
+		return nil, fmt.Errorf("get participants: %w", err)
+	}
+	s.recordConversationSyncEvents(participants, conv, SyncActionCreated)
 
 	return conv, nil
 }
@@ -145,11 +161,31 @@ func (s *ConversationService) AddParticipant(convID, actorID, targetID uuid.UUID
 		Role:           "member",
 		JoinedAt:       time.Now(),
 	}
-	return s.convRepo.AddParticipant(cp)
+	if err := s.convRepo.AddParticipant(cp); err != nil {
+		return err
+	}
+	participants, err := s.convRepo.GetParticipants(convID)
+	if err != nil {
+		return fmt.Errorf("get participants: %w", err)
+	}
+	s.recordParticipantSyncEvents(participants, cp, SyncActionAdded, actorID)
+	return nil
 }
 
 func (s *ConversationService) LeaveConversation(convID, userID uuid.UUID) error {
-	return s.convRepo.RemoveParticipant(convID, userID)
+	removedParticipant, err := s.convRepo.GetParticipant(convID, userID)
+	if err != nil {
+		return err
+	}
+	participantsBefore, err := s.convRepo.GetParticipants(convID)
+	if err != nil {
+		return fmt.Errorf("get participants: %w", err)
+	}
+	if err := s.convRepo.RemoveParticipant(convID, userID); err != nil {
+		return err
+	}
+	s.recordParticipantSyncEvents(participantsBefore, removedParticipant, SyncActionRemoved, userID)
+	return nil
 }
 
 func (s *ConversationService) GetMessages(convID, userID uuid.UUID, limit int, before *time.Time) ([]model.Message, error) {
@@ -165,4 +201,73 @@ func (s *ConversationService) GetMessages(convID, userID uuid.UUID, limit int, b
 
 func (s *ConversationService) GetParticipants(convID uuid.UUID) ([]model.ConversationParticipant, error) {
 	return s.convRepo.GetParticipants(convID)
+}
+
+func (s *ConversationService) recordConversationSyncEvents(participants []model.ConversationParticipant, conv *model.Conversation, operation string) {
+	if s.syncSvc == nil {
+		return
+	}
+	payload := conversationSyncPayload(conv)
+	for _, p := range participants {
+		_, _ = s.syncSvc.RecordEnvelope(SyncEnvelope{
+			UserID:     p.UserID,
+			ObjectType: SyncObjectConversation,
+			ObjectID:   conv.ID.String(),
+			Operation:  operation,
+			Payload:    payload,
+		})
+	}
+}
+
+func (s *ConversationService) recordParticipantSyncEvents(recipients []model.ConversationParticipant, participant *model.ConversationParticipant, operation string, actorID uuid.UUID) {
+	if s.syncSvc == nil {
+		return
+	}
+	payload := participantSyncPayload(participant, operation, actorID)
+	objectID := participant.ConversationID.String() + ":" + participant.UserID.String()
+	for _, p := range recipients {
+		_, _ = s.syncSvc.RecordEnvelope(SyncEnvelope{
+			UserID:     p.UserID,
+			ObjectType: SyncObjectParticipant,
+			ObjectID:   objectID,
+			Operation:  operation,
+			Payload:    payload,
+		})
+	}
+}
+
+func conversationSyncPayload(conv *model.Conversation) datatypes.JSONMap {
+	return datatypes.JSONMap{
+		"object_id":       conv.ID.String(),
+		"conversation_id": conv.ID.String(),
+		"type":            conv.Type,
+		"name":            conv.Name,
+		"created_by":      conv.CreatedBy.String(),
+		"geo_lat":         conv.GeoLat,
+		"geo_lng":         conv.GeoLng,
+		"geo_radius":      conv.GeoRadius,
+		"created_at":      conv.CreatedAt,
+		"updated_at":      conv.UpdatedAt,
+	}
+}
+
+func participantSyncPayload(participant *model.ConversationParticipant, operation string, actorID uuid.UUID) datatypes.JSONMap {
+	status := "active"
+	payload := datatypes.JSONMap{
+		"object_id":       participant.ConversationID.String() + ":" + participant.UserID.String(),
+		"conversation_id": participant.ConversationID.String(),
+		"user_id":         participant.UserID.String(),
+		"role":            participant.Role,
+		"status":          status,
+		"joined_at":       participant.JoinedAt,
+		"updated_at":      time.Now(),
+	}
+	if operation == SyncActionAdded {
+		payload["added_by"] = actorID.String()
+	}
+	if operation == SyncActionRemoved {
+		payload["status"] = "removed"
+		payload["removed_by"] = actorID.String()
+	}
+	return payload
 }
