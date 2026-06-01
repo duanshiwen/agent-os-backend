@@ -61,6 +61,12 @@ const (
 	AuditActionSAGEPluginReviewed            = "sage.plugin.reviewed"
 	AuditActionSAGEPluginSuspended           = "sage.plugin.suspended"
 	AuditActionSAGEPluginInstalled           = "sage.plugin.installed"
+	AuditActionSkillCreated                  = "skill.created"
+	AuditActionSkillVersionPublished         = "skill.version.published"
+	AuditActionSkillInstalled                = "skill.installed"
+	AuditActionSkillTakedown                 = "skill.takedown"
+	AuditActionSkillPublisherRestricted      = "skill.publisher.restricted"
+	AuditActionSkillPublisherRestrictionLift = "skill.publisher.restriction_lifted"
 )
 
 type AuditService struct {
@@ -101,11 +107,11 @@ type VerifyAuditHashChainInput struct {
 }
 
 type AuditHashChainVerification struct {
-	Valid       bool                  `json:"valid"`
-	Checked     int                   `json:"checked"`
-	HeadHash    string                `json:"head_hash"`
+	Valid        bool                  `json:"valid"`
+	Checked      int                   `json:"checked"`
+	HeadHash     string                `json:"head_hash"`
 	HeadSequence int64                 `json:"head_sequence"`
-	Breaks      []AuditHashChainBreak `json:"breaks"`
+	Breaks       []AuditHashChainBreak `json:"breaks"`
 }
 
 type AuditHashChainBreak struct {

@@ -11,7 +11,7 @@ Backend 当前以 `main` 上的单服务器平台内核为基线推进；过时�
 - [`docs/architecture-boundaries.md`](docs/architecture-boundaries.md) — Go/Rust、存储、同步、KB、SAGE、治理、对象存储等边界冻结
 - [`docs/stage5a-client-integration-handoff.md`](docs/stage5a-client-integration-handoff.md) — Stage 5A 客户端集成契约交接
 
-当前特别注意：Skill settings sync 已实现；完整 Skill Hub（registry / package versioning / catalog / install library / admin takedown / publisher restriction）尚未实现，是后续主要新增平台模块。
+当前特别注意：Skill Hub MVP 已实现 registry / package versioning / catalog / install library / admin takedown / publisher restriction。Skill settings sync 仍保留为兼容旧客户端的轻量设置同步接口。尚未实现评分、下载统计、商业化、复杂审核、后端执行 Skill 等非 MVP 能力。
 
 ## 快速开始
 
@@ -106,7 +106,28 @@ go run ./cmd/server
 | DELETE | `/api/v1/conversations/:id/participants/:user_id` | 管理员移除参与者，产生 `participant.removed` 同步事件 |
 | DELETE | `/api/v1/conversations/:id/participants/me` | 退出会话，产生 `participant.removed` 同步事件 |
 
-#### Skill 设置
+#### Skill Hub
+
+Skill Hub MVP 是开放技能分享目录。Backend 负责 Skill metadata、manifest 版本快照、基础校验、目录、安装库、对象资源绑定和最低限度治理；不执行 Skill 代码，不做商业化、评分、下载统计或复杂人工审核。
+
+| 方法 | 路径 | 描述 |
+|------|------|------|
+| GET | `/api/v1/skills/catalog` | 公开 Skill 目录搜索，支持 `q`、`category`、`limit`、`offset` |
+| GET | `/api/v1/skills/catalog/:skill_key` | 获取公开 Skill 详情 |
+| POST | `/api/v1/skills` | 创建 Skill draft |
+| POST | `/api/v1/skills/:skill_id/versions` | 提交 Skill manifest 版本；校验通过后 MVP 直接公开发布 |
+| GET | `/api/v1/skills/:skill_id/versions/:version_id/validation` | 获取版本校验结果 |
+| POST | `/api/v1/skills/catalog/:skill_key/install` | 安装 Skill，产生 `skill.installed` 同步事件 |
+| GET | `/api/v1/skills/installations` | 获取当前用户 Skill Library |
+| PUT | `/api/v1/skills/installations/:installation_id/config` | 更新安装配置 / track mode / pin version，产生 `skill.updated` 同步事件 |
+| POST | `/api/v1/skills/installations/:installation_id/enable` | 启用已安装 Skill，产生 `skill.enabled` 同步事件 |
+| POST | `/api/v1/skills/installations/:installation_id/disable` | 禁用已安装 Skill，产生 `skill.disabled` 同步事件 |
+| DELETE | `/api/v1/skills/installations/:installation_id` | 卸载 Skill，产生 `skill.uninstalled` 同步事件 |
+| POST | `/api/v1/admin/skills/:skill_id/takedown` | 管理员下架 Skill；隐藏目录但保留安装历史 |
+| POST | `/api/v1/admin/skills/publishers/:publisher_id/restrict` | 管理员限制发布者继续上传 Skill |
+| POST | `/api/v1/admin/skills/publishers/:publisher_id/lift-restriction` | 管理员解除发布者上传限制 |
+
+#### Skill 设置（兼容旧客户端）
 
 | 方法 | 路径 | 描述 |
 |------|------|------|
