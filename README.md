@@ -10,6 +10,14 @@ Federation / multi-server networking is intentionally out of scope for the curre
 
 Last verified locally: 2026-06-02.
 
+Active milestone: **Stage 5B — Runtime Consumption Loop**.
+
+Stage 5B rule:
+
+> No new platform surface unless it is consumed by Client / SDK / Agent Runtime in an end-to-end user-visible loop.
+
+This branch shifts the project from control-plane expansion to runtime capability realization: Skill Hub, SAGE Plugin Platform, KB Hub, Sync, and Governance must prove that backend state changes reach runtime behavior.
+
 ```text
 Backend branch: main
 Backend latest observed commit: 7977ba6 feat: add contact management sync
@@ -29,7 +37,7 @@ Default release gate currently covers:
 - SAGE client runtime contract gate
 - governance client error contract gate
 
-Optional gates are available for PostgreSQL migrations, live-stack smokes, and real local HTTP semantic search.
+Optional gates are available for PostgreSQL migrations, live-stack smokes, real local HTTP semantic search, and Stage 5B SDK/runtime contract checks.
 
 ## Current Capability Summary
 
@@ -53,9 +61,9 @@ Optional gates are available for PostgreSQL migrations, live-stack smokes, and r
 | Commercialization | 🟡 Internal foundation | invoices/refunds/disputes/payout records exist; real external payment/reconciliation/tax/export not implemented |
 | Federation | 🚫 Non-goal | no server discovery, signed server handshake, remote plugin/KB discovery, or cross-server sync |
 
-## Immediate Product Direction
+## Stage 5B Runtime Consumption Loop
 
-The backend is no longer the main bottleneck for basic platform capability. The next meaningful milestone is a runtime consumption loop:
+The backend is no longer the main bottleneck for basic platform capability. The active milestone is the runtime consumption loop:
 
 ```text
 User installs a Skill and/or SAGE Plugin
@@ -66,13 +74,35 @@ User installs a Skill and/or SAGE Plugin
 → Backend receives invocation report, sync events, audit evidence, and usage records
 ```
 
+Stage 5B contract matrix:
+
+| Backend object / surface | Sync/API contract | Client / SDK projection | Runtime consumer | Stage 5B proof |
+|---|---|---|---|---|
+| Skill installation | `skill.installed`, `skill.updated`, `skill.enabled`, `skill.disabled`, `skill.uninstalled` | `ClientReadySyncProjection.skills` | task-scoped Skill instruction bundle | install reaches runtime context; uninstall removes behavior |
+| SAGE plugin installation | `plugin.installed`, `plugin.enabled`, `plugin.disabled`, `plugin.uninstalled` | `ClientReadySyncProjection.plugins` | plugin runtime executor | installed plugin can be selected for execution |
+| SAGE permission grant | `plugin.permission_granted`, `plugin.permission_revoked` | `ClientReadySyncProjection.plugin_permissions` | policy/permission decision | allow / deny / requires-confirmation decision is deterministic |
+| Knowledge entry / KB runtime context | `knowledge.created`, `knowledge.updated`, `knowledge.deleted` plus installed KB access APIs | `ClientReadySyncProjection.knowledge` | citation-ready retriever | runtime can retrieve relevant context with citations |
+| Governance errors | stable error codes and policy bundle outcomes | client error handling | execution guard / confirmation UI | high-risk actions are blocked or require confirmation before execution |
+| Sync cursor | `/sync/events`, `/sync/ack`, monotonic sequence | `ServerSyncCursor.last_applied_sequence` | durable local projection | hosts ack only after local projection succeeds |
+
+Stage 5B Definition of Done:
+
+1. Skill install state reaches SDK/client projection.
+2. Runtime can load/apply a Skill instruction bundle to a task-scoped context.
+3. Disabled/uninstalled Skill is no longer applied.
+4. SAGE mock/plugin execution can be allowed, denied, or confirmation-gated from projected policy state.
+5. SAGE invocation/report remains a backend responsibility after client-side execution.
+6. Knowledge projection can supply citation-ready runtime context.
+7. Runtime loop checks are covered by SDK tests and optional release-gate commands.
+8. Backend `go test ./...` and default `./scripts/release-gate-local.sh` remain green.
+
 Recommended next work:
 
-1. AgentOS Client integration against auth, sync, Skill Hub, SAGE policy bundle, KB access, and governance errors.
-2. SDK / Agent Runtime loading of installed Skill manifests/packages.
-3. Client-side SAGE runtime execution loop using approved manifest snapshots and policy bundles.
-4. KB semantic quality upgrades: chunk-level retrieval, passage embeddings, hybrid reranking, and eval fixtures.
-5. Production operations: structured logs, metrics, dashboards, CI release gate, runbooks, real payments, reconciliation, tax/export.
+1. Integrate the SDK Stage 5B projection helpers into the real AgentOS Client UI/runtime.
+2. Replace fixture Skill entrypoint content with real Skill package/object download and cache handling.
+3. Connect the SAGE decision contract to a real client-side plugin flow executor.
+4. Connect KB citations to installed KB collection access and later improve semantic quality with chunking/reranking/evals.
+5. Add production-grade metrics, dashboards, runbooks, and CI runtime gates after the loops are productized.
 
 ## Quick Start
 
@@ -570,6 +600,9 @@ RUN_LIVE_SMOKES=1 BASE_URL=http://localhost:8080 ./scripts/release-gate-local.sh
 
 # Run real local_http semantic smoke.
 RUN_LOCAL_HTTP_SEMANTIC=1 EMBEDDING_ENDPOINT=http://localhost:8091 ./scripts/release-gate-local.sh
+
+# Run Stage 5B SDK/runtime consumption contract checks.
+RUN_RUNTIME_LOOP_GATES=1 SDK_REPO=/Users/yakii/code/agent-os/Infrastructure/connor-agent-core ./scripts/release-gate-local.sh
 ```
 
 Useful smoke scripts:

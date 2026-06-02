@@ -5,6 +5,8 @@ BASE_URL="${BASE_URL:-http://localhost:8080}"
 RUN_LIVE_SMOKES="${RUN_LIVE_SMOKES:-0}"
 RUN_LOCAL_HTTP_SEMANTIC="${RUN_LOCAL_HTTP_SEMANTIC:-0}"
 RUN_MIGRATION_GATE="${RUN_MIGRATION_GATE:-0}"
+RUN_RUNTIME_LOOP_GATES="${RUN_RUNTIME_LOOP_GATES:-0}"
+SDK_REPO="${SDK_REPO:-/Users/yakii/code/agent-os/Infrastructure/connor-agent-core}"
 EMBEDDING_ENDPOINT="${EMBEDDING_ENDPOINT:-http://localhost:8091}"
 
 require_tool() {
@@ -49,6 +51,18 @@ if [[ "$RUN_MIGRATION_GATE" == "1" ]]; then
   ./scripts/check-migrations-local.sh
 else
   echo "==> Skipping PostgreSQL migration apply gate (set RUN_MIGRATION_GATE=1)"
+fi
+
+if [[ "$RUN_RUNTIME_LOOP_GATES" == "1" ]]; then
+  require_tool cargo
+  if [[ ! -d "$SDK_REPO" ]]; then
+    echo "SDK_REPO does not exist: $SDK_REPO" >&2
+    exit 1
+  fi
+  echo "==> Stage 5B SDK/runtime consumption contract gate"
+  (cd "$SDK_REPO" && cargo test -p agentos-client-bridge --locked)
+else
+  echo "==> Skipping Stage 5B SDK/runtime consumption gate (set RUN_RUNTIME_LOOP_GATES=1)"
 fi
 
 if [[ "$RUN_LIVE_SMOKES" == "1" ]]; then
